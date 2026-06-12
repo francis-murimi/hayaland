@@ -1,4 +1,5 @@
-use crate::email::{build_verification_email, generate_verification_token, EmailSender};
+use crate::email::queue::EmailQueue;
+use crate::email::{build_verification_email, generate_verification_token};
 use crate::errors::ApplicationError;
 use crate::users::dto::{CreateUserCommand, CreateUserResult};
 use async_trait::async_trait;
@@ -21,7 +22,7 @@ pub trait PasswordHasher: Send + Sync {
 pub struct CreateUser {
     repo: Arc<dyn UserRepository>,
     verification_repo: Arc<dyn EmailVerificationRepository>,
-    email_sender: Arc<dyn EmailSender>,
+    email_queue: Arc<dyn EmailQueue>,
     hasher: Arc<dyn PasswordHasher>,
     base_url: String,
     token_expiry_seconds: i64,
@@ -31,7 +32,7 @@ impl CreateUser {
     pub fn new(
         repo: Arc<dyn UserRepository>,
         verification_repo: Arc<dyn EmailVerificationRepository>,
-        email_sender: Arc<dyn EmailSender>,
+        email_queue: Arc<dyn EmailQueue>,
         hasher: Arc<dyn PasswordHasher>,
         base_url: String,
         token_expiry_seconds: i64,
@@ -39,7 +40,7 @@ impl CreateUser {
         Self {
             repo,
             verification_repo,
-            email_sender,
+            email_queue,
             hasher,
             base_url,
             token_expiry_seconds,
@@ -87,13 +88,10 @@ impl CreateUser {
             .await?;
 
         let expiry_hours = self.token_expiry_seconds / 3600;
-        let (subject, body) = build_verification_email(&self.base_url, &token, expiry_hours);
-        if let Err(e) = self
-            .email_sender
-            .send(user.email.as_str(), &subject, &body)
-            .await
-        {
-            warn!(user_id = %id, error = %e, "failed to send verification email");
+        let email_item =
+            build_verification_email(user.email.as_str(), &self.base_url, &token, expiry_hours);
+        if let Err(e) = self.email_queue.enqueue(email_item).await {
+            warn!(user_id = %id, error = %e, "failed to enqueue verification email");
             return Err(ApplicationError::EmailSendFailed);
         }
 
@@ -114,7 +112,7 @@ fn validate_password(password: &str) -> Result<(), ApplicationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{FakeEmailSender, FakeEmailVerificationRepo, FakeHasher, FakeRepo};
+    use crate::test_helpers::{FakeEmailQueue, FakeEmailVerificationRepo, FakeHasher, FakeRepo};
     use std::sync::Arc;
 
     fn service() -> CreateUser {
@@ -123,7 +121,7 @@ mod tests {
                 users: Default::default(),
             }),
             Arc::new(FakeEmailVerificationRepo::default()),
-            Arc::new(FakeEmailSender::default()),
+            Arc::new(FakeEmailQueue::default()),
             Arc::new(FakeHasher),
             "https://app.hayaland.local".to_string(),
             86400,
@@ -249,14 +247,14 @@ mod tests {
 
     #[tokio::test]
     async fn stores_verification_token() {
-        let sender = Arc::new(FakeEmailSender::default());
+        let queue = Arc::new(FakeEmailQueue::default());
         let verification_repo = Arc::new(FakeEmailVerificationRepo::default());
         let svc = CreateUser::new(
             Arc::new(FakeRepo {
                 users: Default::default(),
             }),
             verification_repo.clone(),
-            sender.clone(),
+            queue.clone(),
             Arc::new(FakeHasher),
             "https://app.hayaland.local".to_string(),
             86400,
@@ -270,7 +268,7 @@ mod tests {
             .await
             .unwrap();
 
-        let body = sender.sent.lock().unwrap()[0].2.clone();
+        let body = queue.items.lock().unwrap()[0].2.clone();
         let token = body
             .split("token=")
             .nth(1)
@@ -289,14 +287,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sends_verification_email() {
-        let sender = Arc::new(FakeEmailSender::default());
+    async fn enqueues_verification_email() {
+        let queue = Arc::new(FakeEmailQueue::default());
         let svc = CreateUser::new(
             Arc::new(FakeRepo {
                 users: Default::default(),
             }),
             Arc::new(FakeEmailVerificationRepo::default()),
-            sender.clone(),
+            queue.clone(),
             Arc::new(FakeHasher),
             "https://app.hayaland.local".to_string(),
             86400,
@@ -310,31 +308,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(sender.sent.lock().unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn returns_error_when_email_sending_fails() {
-        let sender = Arc::new(FakeEmailSender::failing());
-        let svc = CreateUser::new(
-            Arc::new(FakeRepo {
-                users: Default::default(),
-            }),
-            Arc::new(FakeEmailVerificationRepo::default()),
-            sender.clone(),
-            Arc::new(FakeHasher),
-            "https://app.hayaland.local".to_string(),
-            86400,
-        );
-
-        let result = svc
-            .execute(CreateUserCommand {
-                email: "fail@example.com".to_string(),
-                username: "fail".to_string(),
-                password: "password123".to_string(),
-            })
-            .await;
-
-        assert!(matches!(result, Err(ApplicationError::EmailSendFailed)));
+        assert_eq!(queue.items.lock().unwrap().len(), 1);
+        assert_eq!(queue.items.lock().unwrap()[0].0, "email@example.com");
     }
 }

@@ -62,6 +62,12 @@ pub struct EmailSettings {
     pub verification_token_expiry_seconds: i64,
     #[serde(default = "default_password_reset_token_expiry")]
     pub password_reset_token_expiry_seconds: i64,
+    #[serde(default = "default_email_max_retries")]
+    pub email_max_retries: u32,
+    #[serde(default = "default_email_retry_base_delay_ms")]
+    pub email_retry_base_delay_ms: u64,
+    #[serde(default = "default_email_retry_max_delay_ms")]
+    pub email_retry_max_delay_ms: u64,
 }
 
 fn default_smtp_port() -> u16 {
@@ -90,6 +96,18 @@ fn default_token_expiry() -> i64 {
 
 fn default_password_reset_token_expiry() -> i64 {
     3600
+}
+
+fn default_email_max_retries() -> u32 {
+    3
+}
+
+fn default_email_retry_base_delay_ms() -> u64 {
+    500
+}
+
+fn default_email_retry_max_delay_ms() -> u64 {
+    5000
 }
 
 impl EmailSettings {

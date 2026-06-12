@@ -3,9 +3,9 @@ use actix_web::{http::header, test, web::Data};
 use api::routes;
 use api::AppState;
 use application::email::dto::VerifyEmailCommand;
+use application::email::queue::{EmailQueue, EmailQueueItem};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
-use application::email::EmailSender;
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
@@ -277,26 +277,20 @@ impl PasswordResetRepository for FakePasswordResetRepo {
 }
 
 #[derive(Default)]
-struct FakeEmailSender {
-    sent: Mutex<Vec<(String, String, String)>>,
-    failing: bool,
+struct FakeEmailQueue {
+    items: Mutex<Vec<(String, String, String)>>,
 }
 
 #[async_trait]
-impl EmailSender for FakeEmailSender {
-    async fn send(
+impl EmailQueue for FakeEmailQueue {
+    async fn enqueue(
         &self,
-        to: &str,
-        subject: &str,
-        body: &str,
+        item: EmailQueueItem,
     ) -> Result<(), application::errors::ApplicationError> {
-        if self.failing {
-            return Err(application::errors::ApplicationError::EmailSendFailed);
-        }
-        self.sent
+        self.items
             .lock()
             .unwrap()
-            .push((to.to_string(), subject.to_string(), body.to_string()));
+            .push((item.to, item.subject, item.body));
         Ok(())
     }
 }
@@ -304,7 +298,7 @@ impl EmailSender for FakeEmailSender {
 struct TestFixtures {
     state: AppState,
     repo: Arc<FakeRepo>,
-    sender: Arc<FakeEmailSender>,
+    queue: Arc<FakeEmailQueue>,
 }
 
 fn seeded_role_repo() -> Arc<FakeRoleRepo> {
@@ -343,7 +337,7 @@ fn test_fixtures() -> TestFixtures {
         Arc::new(FakePasswordResetRepo::default());
     let role_repo: Arc<dyn RoleRepository> = seeded_role_repo();
     let hasher: Arc<dyn PasswordHasher> = Arc::new(FakeHasher);
-    let sender: Arc<FakeEmailSender> = Arc::new(FakeEmailSender::default());
+    let queue: Arc<FakeEmailQueue> = Arc::new(FakeEmailQueue::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -353,7 +347,7 @@ fn test_fixtures() -> TestFixtures {
         create_user: CreateUser::new(
             repo.clone(),
             verification_repo.clone(),
-            sender.clone(),
+            queue.clone(),
             hasher.clone(),
             "https://app.hayaland.local".to_string(),
             86400,
@@ -373,14 +367,14 @@ fn test_fixtures() -> TestFixtures {
         resend_verification_email: ResendVerificationEmail::new(
             repo.clone(),
             verification_repo.clone(),
-            sender.clone(),
+            queue.clone(),
             "https://app.hayaland.local".to_string(),
             86400,
         ),
         request_password_reset: RequestPasswordReset::new(
             repo.clone(),
             password_reset_repo.clone(),
-            sender.clone(),
+            queue.clone(),
             "https://app.hayaland.local".to_string(),
             3600,
         ),
@@ -390,24 +384,20 @@ fn test_fixtures() -> TestFixtures {
         token_validator: token,
     };
 
-    TestFixtures {
-        state,
-        repo,
-        sender,
-    }
+    TestFixtures { state, repo, queue }
 }
 
-fn extract_token_for_email(sender: &FakeEmailSender, email: &str) -> String {
-    extract_token_for_email_with_path(sender, email, "/auth/verify-email?token=")
+fn extract_token_for_email(queue: &FakeEmailQueue, email: &str) -> String {
+    extract_token_for_email_with_path(queue, email, "/auth/verify-email?token=")
 }
 
-fn extract_reset_token_for_email(sender: &FakeEmailSender, email: &str) -> String {
-    extract_token_for_email_with_path(sender, email, "/auth/reset-password?token=")
+fn extract_reset_token_for_email(queue: &FakeEmailQueue, email: &str) -> String {
+    extract_token_for_email_with_path(queue, email, "/auth/reset-password?token=")
 }
 
-fn extract_token_for_email_with_path(sender: &FakeEmailSender, email: &str, path: &str) -> String {
-    let sent = sender.sent.lock().unwrap();
-    let (_, _, body) = sent
+fn extract_token_for_email_with_path(queue: &FakeEmailQueue, email: &str, path: &str) -> String {
+    let items = queue.items.lock().unwrap();
+    let (_, _, body) = items
         .iter()
         .rev()
         .find(|(to, _, body)| to == email && body.contains(path))
@@ -449,7 +439,7 @@ async fn login(fixtures: &TestFixtures, email: &str) -> String {
         .unwrap()
         .unwrap();
     if !user.is_active {
-        let token = extract_token_for_email(&fixtures.sender, email);
+        let token = extract_token_for_email(&fixtures.queue, email);
         fixtures
             .state
             .verify_email
@@ -948,7 +938,7 @@ async fn verify_email_activates_user() {
         .await
         .unwrap();
 
-    let token = extract_token_for_email(&fixtures.sender, "verify@example.com");
+    let token = extract_token_for_email(&fixtures.queue, "verify@example.com");
 
     let app = test::init_service(
         actix_web::App::new()
@@ -1259,7 +1249,7 @@ async fn reset_password_changes_password_and_allows_login() {
     let resp = test::call_service(&app, forgot).await;
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
-    let token = extract_reset_token_for_email(&fixtures.sender, "reset@example.com");
+    let token = extract_reset_token_for_email(&fixtures.queue, "reset@example.com");
 
     let reset = test::TestRequest::post()
         .uri("/api/v1/auth/reset-password")
@@ -1326,7 +1316,7 @@ async fn reset_password_returns_400_for_short_password() {
     let resp = test::call_service(&app, forgot).await;
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
-    let token = extract_reset_token_for_email(&fixtures.sender, "short@example.com");
+    let token = extract_reset_token_for_email(&fixtures.queue, "short@example.com");
 
     let reset = test::TestRequest::post()
         .uri("/api/v1/auth/reset-password")

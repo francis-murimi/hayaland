@@ -1,5 +1,6 @@
 use crate::email::dto::ResendVerificationCommand;
-use crate::email::{build_verification_email, generate_verification_token, EmailSender};
+use crate::email::queue::EmailQueue;
+use crate::email::{build_verification_email, generate_verification_token};
 use crate::errors::ApplicationError;
 use domain::entities::{Email, EmailVerification};
 use domain::repositories::{EmailVerificationRepository, UserRepository};
@@ -11,7 +12,7 @@ use tracing::{info, instrument, warn};
 pub struct ResendVerificationEmail {
     user_repo: Arc<dyn UserRepository>,
     verification_repo: Arc<dyn EmailVerificationRepository>,
-    email_sender: Arc<dyn EmailSender>,
+    email_queue: Arc<dyn EmailQueue>,
     base_url: String,
     token_expiry_seconds: i64,
 }
@@ -20,14 +21,14 @@ impl ResendVerificationEmail {
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
         verification_repo: Arc<dyn EmailVerificationRepository>,
-        email_sender: Arc<dyn EmailSender>,
+        email_queue: Arc<dyn EmailQueue>,
         base_url: String,
         token_expiry_seconds: i64,
     ) -> Self {
         Self {
             user_repo,
             verification_repo,
-            email_sender,
+            email_queue,
             base_url,
             token_expiry_seconds,
         }
@@ -64,15 +65,12 @@ impl ResendVerificationEmail {
             .await?;
 
         let expiry_hours = self.token_expiry_seconds / 3600;
-        let (subject, body) = build_verification_email(&self.base_url, &token, expiry_hours);
+        let email_item =
+            build_verification_email(user.email.as_str(), &self.base_url, &token, expiry_hours);
 
-        if let Err(e) = self
-            .email_sender
-            .send(user.email.as_str(), &subject, &body)
-            .await
-        {
-            warn!(user_id = %user.id, error = %e, "failed to resend verification email");
-            return Err(e);
+        if let Err(e) = self.email_queue.enqueue(email_item).await {
+            warn!(user_id = %user.id, error = %e, "failed to enqueue verification email");
+            return Err(ApplicationError::EmailSendFailed);
         }
 
         info!(user_id = %user.id, "verification email resent");
@@ -83,18 +81,18 @@ impl ResendVerificationEmail {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{test_user, FakeEmailSender, FakeEmailVerificationRepo, FakeRepo};
+    use crate::test_helpers::{test_user, FakeEmailQueue, FakeEmailVerificationRepo, FakeRepo};
     use std::sync::Arc;
 
     fn service(
         user_repo: Arc<dyn UserRepository>,
         verification_repo: Arc<dyn EmailVerificationRepository>,
-        email_sender: Arc<dyn EmailSender>,
+        email_queue: Arc<dyn EmailQueue>,
     ) -> ResendVerificationEmail {
         ResendVerificationEmail::new(
             user_repo,
             verification_repo,
-            email_sender,
+            email_queue,
             "https://app.hayaland.local".to_string(),
             86400,
         )
@@ -109,16 +107,16 @@ mod tests {
             users: std::sync::Mutex::new([(user_id, user)].into_iter().collect()),
         });
         let verification_repo = Arc::new(FakeEmailVerificationRepo::default());
-        let sender = Arc::new(FakeEmailSender::default());
+        let queue = Arc::new(FakeEmailQueue::default());
 
-        service(user_repo, verification_repo.clone(), sender.clone())
+        service(user_repo, verification_repo.clone(), queue.clone())
             .execute(ResendVerificationCommand {
                 email: "resend@example.com".to_string(),
             })
             .await
             .unwrap();
 
-        assert_eq!(sender.sent.lock().unwrap().len(), 1);
+        assert_eq!(queue.items.lock().unwrap().len(), 1);
         assert_eq!(verification_repo.count_for_user(user_id).await, 1);
     }
 
@@ -130,16 +128,16 @@ mod tests {
             users: std::sync::Mutex::new([(user_id, user)].into_iter().collect()),
         });
         let verification_repo = Arc::new(FakeEmailVerificationRepo::default());
-        let sender = Arc::new(FakeEmailSender::default());
+        let queue = Arc::new(FakeEmailQueue::default());
 
-        service(user_repo, verification_repo.clone(), sender.clone())
+        service(user_repo, verification_repo.clone(), queue.clone())
             .execute(ResendVerificationCommand {
                 email: "active@example.com".to_string(),
             })
             .await
             .unwrap();
 
-        assert_eq!(sender.sent.lock().unwrap().len(), 0);
+        assert_eq!(queue.items.lock().unwrap().len(), 0);
         assert_eq!(verification_repo.count_for_user(user_id).await, 0);
     }
 
@@ -149,15 +147,15 @@ mod tests {
             users: std::sync::Mutex::new(std::collections::HashMap::new()),
         });
         let verification_repo = Arc::new(FakeEmailVerificationRepo::default());
-        let sender = Arc::new(FakeEmailSender::default());
+        let queue = Arc::new(FakeEmailQueue::default());
 
-        service(user_repo, verification_repo, sender.clone())
+        service(user_repo, verification_repo, queue.clone())
             .execute(ResendVerificationCommand {
                 email: "missing@example.com".to_string(),
             })
             .await
             .unwrap();
 
-        assert_eq!(sender.sent.lock().unwrap().len(), 0);
+        assert_eq!(queue.items.lock().unwrap().len(), 0);
     }
 }

@@ -1,4 +1,5 @@
-use crate::email::{build_password_reset_email, generate_verification_token, EmailSender};
+use crate::email::queue::EmailQueue;
+use crate::email::{build_password_reset_email, generate_verification_token};
 use crate::errors::ApplicationError;
 use crate::password_reset::dto::RequestPasswordResetCommand;
 use domain::entities::{Email, PasswordResetToken};
@@ -11,7 +12,7 @@ use tracing::{info, instrument, warn};
 pub struct RequestPasswordReset {
     user_repo: Arc<dyn UserRepository>,
     reset_repo: Arc<dyn PasswordResetRepository>,
-    email_sender: Arc<dyn EmailSender>,
+    email_queue: Arc<dyn EmailQueue>,
     base_url: String,
     token_expiry_seconds: i64,
 }
@@ -20,14 +21,14 @@ impl RequestPasswordReset {
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
         reset_repo: Arc<dyn PasswordResetRepository>,
-        email_sender: Arc<dyn EmailSender>,
+        email_queue: Arc<dyn EmailQueue>,
         base_url: String,
         token_expiry_seconds: i64,
     ) -> Self {
         Self {
             user_repo,
             reset_repo,
-            email_sender,
+            email_queue,
             base_url,
             token_expiry_seconds,
         }
@@ -58,18 +59,15 @@ impl RequestPasswordReset {
             .await?;
 
         let expiry_minutes = self.token_expiry_seconds / 60;
-        let (subject, body) = build_password_reset_email(&self.base_url, &token, expiry_minutes);
+        let email_item =
+            build_password_reset_email(user.email.as_str(), &self.base_url, &token, expiry_minutes);
 
-        if let Err(e) = self
-            .email_sender
-            .send(user.email.as_str(), &subject, &body)
-            .await
-        {
-            warn!(user_id = %user.id, error = %e, "failed to send password reset email");
+        if let Err(e) = self.email_queue.enqueue(email_item).await {
+            warn!(user_id = %user.id, error = %e, "failed to enqueue password reset email");
             return Err(ApplicationError::EmailSendFailed);
         }
 
-        info!(user_id = %user.id, "password reset email sent");
+        info!(user_id = %user.id, "password reset email queued");
         Ok(())
     }
 }
@@ -77,41 +75,41 @@ impl RequestPasswordReset {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{test_user, FakeEmailSender, FakePasswordResetRepo, FakeRepo};
+    use crate::test_helpers::{test_user, FakeEmailQueue, FakePasswordResetRepo, FakeRepo};
     use std::sync::Arc;
 
     fn service(
         user_repo: Arc<dyn UserRepository>,
         reset_repo: Arc<dyn PasswordResetRepository>,
-        email_sender: Arc<dyn EmailSender>,
+        email_queue: Arc<dyn EmailQueue>,
     ) -> RequestPasswordReset {
         RequestPasswordReset::new(
             user_repo,
             reset_repo,
-            email_sender,
+            email_queue,
             "https://app.hayaland.local".to_string(),
             3600,
         )
     }
 
     #[tokio::test]
-    async fn sends_email_for_existing_user() {
+    async fn queues_email_for_existing_user() {
         let user = test_user("reset@example.com", "reset", "password123");
         let user_id = user.id;
         let user_repo = Arc::new(FakeRepo {
             users: std::sync::Mutex::new([(user_id, user)].into_iter().collect()),
         });
         let reset_repo = Arc::new(FakePasswordResetRepo::default());
-        let sender = Arc::new(FakeEmailSender::default());
+        let queue = Arc::new(FakeEmailQueue::default());
 
-        service(user_repo, reset_repo.clone(), sender.clone())
+        service(user_repo, reset_repo.clone(), queue.clone())
             .execute(RequestPasswordResetCommand {
                 email: "reset@example.com".to_string(),
             })
             .await
             .unwrap();
 
-        assert_eq!(sender.sent.lock().unwrap().len(), 1);
+        assert_eq!(queue.items.lock().unwrap().len(), 1);
         assert_eq!(reset_repo.count_for_user(user_id).await, 1);
     }
 
@@ -121,29 +119,29 @@ mod tests {
             users: std::sync::Mutex::new(std::collections::HashMap::new()),
         });
         let reset_repo = Arc::new(FakePasswordResetRepo::default());
-        let sender = Arc::new(FakeEmailSender::default());
+        let queue = Arc::new(FakeEmailQueue::default());
 
-        service(user_repo, reset_repo, sender.clone())
+        service(user_repo, reset_repo, queue.clone())
             .execute(RequestPasswordResetCommand {
                 email: "missing@example.com".to_string(),
             })
             .await
             .unwrap();
 
-        assert_eq!(sender.sent.lock().unwrap().len(), 0);
+        assert_eq!(queue.items.lock().unwrap().len(), 0);
     }
 
     #[tokio::test]
-    async fn returns_error_when_email_sending_fails() {
+    async fn returns_error_when_enqueue_fails() {
         let user = test_user("fail@example.com", "fail", "password123");
         let user_id = user.id;
         let user_repo = Arc::new(FakeRepo {
             users: std::sync::Mutex::new([(user_id, user)].into_iter().collect()),
         });
         let reset_repo = Arc::new(FakePasswordResetRepo::default());
-        let sender = Arc::new(FakeEmailSender::failing());
+        let queue = Arc::new(FakeEmailQueue::failing());
 
-        let result = service(user_repo, reset_repo, sender)
+        let result = service(user_repo, reset_repo, queue)
             .execute(RequestPasswordResetCommand {
                 email: "fail@example.com".to_string(),
             })

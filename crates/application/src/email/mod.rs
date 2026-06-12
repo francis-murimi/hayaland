@@ -1,7 +1,9 @@
+use crate::email::queue::EmailQueueItem;
 use crate::errors::ApplicationError;
 use async_trait::async_trait;
 
 pub mod dto;
+pub mod queue;
 pub mod resend_verification;
 pub mod verify_email;
 
@@ -11,10 +13,11 @@ pub trait EmailSender: Send + Sync {
 }
 
 pub fn build_verification_email(
+    to: &str,
     base_url: &str,
     token: &str,
     expiry_hours: i64,
-) -> (String, String) {
+) -> EmailQueueItem {
     let subject = "Verify your Hayaland account".to_string();
     let link = format!("{base_url}/api/v1/auth/verify-email?token={token}");
     let body = format!(
@@ -23,14 +26,19 @@ pub fn build_verification_email(
         {link}\n\n\
         This link expires in {expiry_hours} hours."
     );
-    (subject, body)
+    EmailQueueItem {
+        to: to.to_string(),
+        subject,
+        body,
+    }
 }
 
 pub fn build_password_reset_email(
+    to: &str,
     base_url: &str,
     token: &str,
     expiry_minutes: i64,
-) -> (String, String) {
+) -> EmailQueueItem {
     let subject = "Reset your Hayaland password".to_string();
     let link = format!("{base_url}/api/v1/auth/reset-password?token={token}");
     let body = format!(
@@ -39,7 +47,11 @@ pub fn build_password_reset_email(
         {link}\n\n\
         This link expires in {expiry_minutes} minutes. If you did not request this, you can safely ignore this email."
     );
-    (subject, body)
+    EmailQueueItem {
+        to: to.to_string(),
+        subject,
+        body,
+    }
 }
 
 pub fn generate_verification_token() -> String {

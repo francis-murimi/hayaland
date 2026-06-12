@@ -1,4 +1,6 @@
 #[cfg(test)]
+use crate::email::queue::{EmailQueue, EmailQueueItem};
+#[cfg(test)]
 use crate::email::EmailSender;
 #[cfg(test)]
 use crate::errors::ApplicationError;
@@ -305,6 +307,38 @@ impl PasswordResetRepository for FakePasswordResetRepo {
                 t.used = true;
             }
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeEmailQueue {
+    pub items: Mutex<Vec<(String, String, String)>>,
+    failing: bool,
+}
+
+#[cfg(test)]
+impl FakeEmailQueue {
+    pub fn failing() -> Self {
+        Self {
+            items: Default::default(),
+            failing: true,
+        }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl EmailQueue for FakeEmailQueue {
+    async fn enqueue(&self, item: EmailQueueItem) -> Result<(), ApplicationError> {
+        if self.failing {
+            return Err(ApplicationError::EmailSendFailed);
+        }
+        self.items
+            .lock()
+            .unwrap()
+            .push((item.to, item.subject, item.body));
         Ok(())
     }
 }

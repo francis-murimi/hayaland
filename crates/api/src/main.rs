@@ -18,7 +18,7 @@ use domain::repositories::{
 };
 use infrastructure::{
     config, database,
-    email::SmtpEmailSender,
+    email::{run_worker, InMemoryEmailQueue, SmtpEmailSender},
     migrations,
     repositories::{
         PostgresEmailVerificationRepository, PostgresPasswordResetRepository,
@@ -63,11 +63,21 @@ async fn main() -> anyhow::Result<()> {
     let email_sender =
         Arc::new(SmtpEmailSender::new(&settings.email).context("failed to create email sender")?);
 
+    let (email_queue, receiver) = InMemoryEmailQueue::new();
+    let email_queue: Arc<dyn application::email::queue::EmailQueue> = Arc::new(email_queue);
+    tokio::spawn(run_worker(
+        receiver,
+        email_sender,
+        settings.email.email_max_retries,
+        settings.email.email_retry_base_delay_ms,
+        settings.email.email_retry_max_delay_ms,
+    ));
+
     let state = AppState {
         create_user: CreateUser::new(
             repo.clone(),
             verification_repo.clone(),
-            email_sender.clone(),
+            email_queue.clone(),
             hasher.clone(),
             settings.email.verification_base_url.clone(),
             settings.email.verification_token_expiry_seconds,
@@ -87,14 +97,14 @@ async fn main() -> anyhow::Result<()> {
         resend_verification_email: ResendVerificationEmail::new(
             repo.clone(),
             verification_repo,
-            email_sender.clone(),
+            email_queue.clone(),
             settings.email.verification_base_url.clone(),
             settings.email.verification_token_expiry_seconds,
         ),
         request_password_reset: RequestPasswordReset::new(
             repo.clone(),
             password_reset_repo.clone(),
-            email_sender.clone(),
+            email_queue.clone(),
             settings.email.verification_base_url.clone(),
             settings.email.password_reset_token_expiry_seconds,
         ),
