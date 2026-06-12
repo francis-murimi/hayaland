@@ -1,10 +1,12 @@
+use crate::email::{build_verification_email, generate_verification_token, EmailSender};
 use crate::errors::ApplicationError;
 use crate::users::dto::{CreateUserCommand, CreateUserResult};
 use async_trait::async_trait;
-use domain::entities::{Email, PasswordHash, User, Username};
-use domain::repositories::UserRepository;
+use domain::entities::{Email, EmailVerification, PasswordHash, User, Username};
+use domain::repositories::{EmailVerificationRepository, UserRepository};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use time::OffsetDateTime;
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 /// Outbound port for password hashing. The domain never sees plaintext passwords.
@@ -18,12 +20,30 @@ pub trait PasswordHasher: Send + Sync {
 #[derive(Clone)]
 pub struct CreateUser {
     repo: Arc<dyn UserRepository>,
+    verification_repo: Arc<dyn EmailVerificationRepository>,
+    email_sender: Arc<dyn EmailSender>,
     hasher: Arc<dyn PasswordHasher>,
+    base_url: String,
+    token_expiry_seconds: i64,
 }
 
 impl CreateUser {
-    pub fn new(repo: Arc<dyn UserRepository>, hasher: Arc<dyn PasswordHasher>) -> Self {
-        Self { repo, hasher }
+    pub fn new(
+        repo: Arc<dyn UserRepository>,
+        verification_repo: Arc<dyn EmailVerificationRepository>,
+        email_sender: Arc<dyn EmailSender>,
+        hasher: Arc<dyn PasswordHasher>,
+        base_url: String,
+        token_expiry_seconds: i64,
+    ) -> Self {
+        Self {
+            repo,
+            verification_repo,
+            email_sender,
+            hasher,
+            base_url,
+            token_expiry_seconds,
+        }
     }
 
     #[instrument(skip(self, cmd), fields(email = %cmd.email, username = %cmd.username))]
@@ -54,8 +74,30 @@ impl CreateUser {
             info!(%id, "first user registered as protected admin");
         }
 
+        // Every account, including the first admin, must verify its email.
+        user.is_active = false;
+
         self.repo.create(&user).await?;
-        info!(%id, roles = ?user.roles, protected = user.protected, "created user");
+
+        let token = generate_verification_token();
+        let expires_at =
+            OffsetDateTime::now_utc() + time::Duration::seconds(self.token_expiry_seconds);
+        self.verification_repo
+            .save(&EmailVerification::new(token.clone(), id, expires_at))
+            .await?;
+
+        let expiry_hours = self.token_expiry_seconds / 3600;
+        let (subject, body) = build_verification_email(&self.base_url, &token, expiry_hours);
+        if let Err(e) = self
+            .email_sender
+            .send(user.email.as_str(), &subject, &body)
+            .await
+        {
+            warn!(user_id = %id, error = %e, "failed to send verification email");
+            return Err(ApplicationError::EmailSendFailed);
+        }
+
+        info!(%id, roles = ?user.roles, protected = user.protected, "created user pending email verification");
         Ok(CreateUserResult { id })
     }
 }
@@ -72,7 +114,7 @@ fn validate_password(password: &str) -> Result<(), ApplicationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{FakeHasher, FakeRepo};
+    use crate::test_helpers::{FakeEmailSender, FakeEmailVerificationRepo, FakeHasher, FakeRepo};
     use std::sync::Arc;
 
     fn service() -> CreateUser {
@@ -80,7 +122,11 @@ mod tests {
             Arc::new(FakeRepo {
                 users: Default::default(),
             }),
+            Arc::new(FakeEmailVerificationRepo::default()),
+            Arc::new(FakeEmailSender::default()),
             Arc::new(FakeHasher),
+            "https://app.hayaland.local".to_string(),
+            86400,
         )
     }
 
@@ -98,7 +144,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn first_user_becomes_protected_admin() {
+    async fn first_user_becomes_protected_admin_but_inactive() {
         let svc = service();
         let result = svc
             .execute(CreateUserCommand {
@@ -113,10 +159,11 @@ mod tests {
         let user = repo.find_by_id(result.id).await.unwrap().unwrap();
         assert!(user.has_role("admin"));
         assert!(user.protected);
+        assert!(!user.is_active);
     }
 
     #[tokio::test]
-    async fn subsequent_users_are_regular_users() {
+    async fn subsequent_users_are_regular_users_and_inactive() {
         let svc = service();
         svc.execute(CreateUserCommand {
             email: "first@example.com".to_string(),
@@ -140,6 +187,7 @@ mod tests {
         assert!(user.has_role("user"));
         assert!(!user.has_role("admin"));
         assert!(!user.protected);
+        assert!(!user.is_active);
     }
 
     #[tokio::test]
@@ -197,5 +245,96 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(ApplicationError::WeakPassword { .. })));
+    }
+
+    #[tokio::test]
+    async fn stores_verification_token() {
+        let sender = Arc::new(FakeEmailSender::default());
+        let verification_repo = Arc::new(FakeEmailVerificationRepo::default());
+        let svc = CreateUser::new(
+            Arc::new(FakeRepo {
+                users: Default::default(),
+            }),
+            verification_repo.clone(),
+            sender.clone(),
+            Arc::new(FakeHasher),
+            "https://app.hayaland.local".to_string(),
+            86400,
+        );
+        let result = svc
+            .execute(CreateUserCommand {
+                email: "token@example.com".to_string(),
+                username: "token".to_string(),
+                password: "password123".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let body = sender.sent.lock().unwrap()[0].2.clone();
+        let token = body
+            .split("token=")
+            .nth(1)
+            .unwrap()
+            .split('\n')
+            .next()
+            .unwrap()
+            .to_string();
+        let verification = verification_repo
+            .find_by_token(&token)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(verification.user_id, result.id);
+        assert!(!verification.used);
+    }
+
+    #[tokio::test]
+    async fn sends_verification_email() {
+        let sender = Arc::new(FakeEmailSender::default());
+        let svc = CreateUser::new(
+            Arc::new(FakeRepo {
+                users: Default::default(),
+            }),
+            Arc::new(FakeEmailVerificationRepo::default()),
+            sender.clone(),
+            Arc::new(FakeHasher),
+            "https://app.hayaland.local".to_string(),
+            86400,
+        );
+
+        svc.execute(CreateUserCommand {
+            email: "email@example.com".to_string(),
+            username: "email".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(sender.sent.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn returns_error_when_email_sending_fails() {
+        let sender = Arc::new(FakeEmailSender::failing());
+        let svc = CreateUser::new(
+            Arc::new(FakeRepo {
+                users: Default::default(),
+            }),
+            Arc::new(FakeEmailVerificationRepo::default()),
+            sender.clone(),
+            Arc::new(FakeHasher),
+            "https://app.hayaland.local".to_string(),
+            86400,
+        );
+
+        let result = svc
+            .execute(CreateUserCommand {
+                email: "fail@example.com".to_string(),
+                username: "fail".to_string(),
+                password: "password123".to_string(),
+            })
+            .await;
+
+        assert!(matches!(result, Err(ApplicationError::EmailSendFailed)));
     }
 }

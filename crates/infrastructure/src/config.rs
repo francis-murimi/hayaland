@@ -10,6 +10,8 @@ pub struct Settings {
     #[serde(default)]
     pub log: LogSettings,
     pub auth: AuthSettings,
+    #[serde(default)]
+    pub email: EmailSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -43,6 +45,27 @@ pub struct AuthSettings {
     pub token_expiry_seconds: i64,
 }
 
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct EmailSettings {
+    pub smtp_host: String,
+    #[serde(default = "default_smtp_port")]
+    pub smtp_port: u16,
+    pub smtp_username: String,
+    pub smtp_password: SecretString,
+    #[serde(default)]
+    pub from_address: String,
+    #[serde(default)]
+    pub from_name: String,
+    #[serde(default)]
+    pub verification_base_url: String,
+    #[serde(default = "default_token_expiry")]
+    pub verification_token_expiry_seconds: i64,
+}
+
+fn default_smtp_port() -> u16 {
+    587
+}
+
 fn default_max_connections() -> u32 {
     10
 }
@@ -61,6 +84,12 @@ fn default_log_level() -> String {
 
 fn default_token_expiry() -> i64 {
     86400
+}
+
+impl EmailSettings {
+    pub fn verification_base_url(&self) -> &str {
+        &self.verification_base_url
+    }
 }
 
 impl DatabaseSettings {

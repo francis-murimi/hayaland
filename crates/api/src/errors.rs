@@ -35,9 +35,14 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::Forbidden)
             | ApiError::Application(ApplicationError::CannotDeactivateAdmin)
             | ApiError::Application(ApplicationError::CannotRemoveFirstAdmin)
+            | ApiError::Application(ApplicationError::AlreadyVerified)
             | ApiError::Forbidden => StatusCode::FORBIDDEN,
-            ApiError::Application(ApplicationError::Infrastructure(_)) => {
+            ApiError::Application(ApplicationError::EmailSendFailed)
+            | ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken) => {
+                StatusCode::BAD_REQUEST
             }
         }
     }
@@ -59,6 +64,11 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::CannotRemoveFirstAdmin) => {
                 "cannot_remove_first_admin"
             }
+            ApiError::Application(ApplicationError::EmailSendFailed) => "email_send_failed",
+            ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken) => {
+                "invalid_or_expired_token"
+            }
+            ApiError::Application(ApplicationError::AlreadyVerified) => "already_verified",
             ApiError::Application(ApplicationError::Infrastructure(_)) => "internal_error",
             ApiError::Validation(_) => "validation_error",
             ApiError::Forbidden => "forbidden",

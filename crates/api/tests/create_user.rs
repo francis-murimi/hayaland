@@ -2,6 +2,10 @@ use actix_web::http::StatusCode;
 use actix_web::{http::header, test, web::Data};
 use api::routes;
 use api::AppState;
+use application::email::dto::VerifyEmailCommand;
+use application::email::resend_verification::ResendVerificationEmail;
+use application::email::verify_email::VerifyEmail;
+use application::email::EmailSender;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -13,9 +17,9 @@ use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
-use domain::entities::{Email, Role, User, Username};
+use domain::entities::{Email, EmailVerification, Role, User, Username};
 use domain::errors::DomainError;
-use domain::repositories::{RoleRepository, UserRepository};
+use domain::repositories::{EmailVerificationRepository, RoleRepository, UserRepository};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use uuid::Uuid;
@@ -196,6 +200,73 @@ impl RoleRepository for FakeRoleRepo {
     }
 }
 
+#[derive(Default)]
+struct FakeEmailVerificationRepo {
+    verifications: Mutex<HashMap<String, EmailVerification>>,
+}
+
+#[async_trait]
+impl EmailVerificationRepository for FakeEmailVerificationRepo {
+    async fn save(&self, verification: &EmailVerification) -> Result<(), DomainError> {
+        self.verifications
+            .lock()
+            .unwrap()
+            .insert(verification.token.clone(), verification.clone());
+        Ok(())
+    }
+
+    async fn find_by_token(&self, token: &str) -> Result<Option<EmailVerification>, DomainError> {
+        Ok(self.verifications.lock().unwrap().get(token).cloned())
+    }
+
+    async fn mark_used(&self, token: &str) -> Result<(), DomainError> {
+        if let Some(v) = self.verifications.lock().unwrap().get_mut(token) {
+            v.used = true;
+        }
+        Ok(())
+    }
+
+    async fn invalidate_unused_for_user(&self, user_id: Uuid) -> Result<(), DomainError> {
+        for v in self.verifications.lock().unwrap().values_mut() {
+            if v.user_id == user_id && !v.used {
+                v.used = true;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct FakeEmailSender {
+    sent: Mutex<Vec<(String, String, String)>>,
+    failing: bool,
+}
+
+#[async_trait]
+impl EmailSender for FakeEmailSender {
+    async fn send(
+        &self,
+        to: &str,
+        subject: &str,
+        body: &str,
+    ) -> Result<(), application::errors::ApplicationError> {
+        if self.failing {
+            return Err(application::errors::ApplicationError::EmailSendFailed);
+        }
+        self.sent
+            .lock()
+            .unwrap()
+            .push((to.to_string(), subject.to_string(), body.to_string()));
+        Ok(())
+    }
+}
+
+struct TestFixtures {
+    state: AppState,
+    repo: Arc<FakeRepo>,
+    sender: Arc<FakeEmailSender>,
+}
+
 fn seeded_role_repo() -> Arc<FakeRoleRepo> {
     Arc::new(FakeRoleRepo {
         roles: Mutex::new(HashMap::from([
@@ -222,19 +293,29 @@ fn seeded_role_repo() -> Arc<FakeRoleRepo> {
     })
 }
 
-fn test_state() -> AppState {
-    let repo: Arc<dyn UserRepository> = Arc::new(FakeRepo {
+fn test_fixtures() -> TestFixtures {
+    let repo: Arc<FakeRepo> = Arc::new(FakeRepo {
         users: Mutex::new(HashMap::new()),
     });
+    let verification_repo: Arc<FakeEmailVerificationRepo> =
+        Arc::new(FakeEmailVerificationRepo::default());
     let role_repo: Arc<dyn RoleRepository> = seeded_role_repo();
     let hasher: Arc<dyn PasswordHasher> = Arc::new(FakeHasher);
+    let sender: Arc<FakeEmailSender> = Arc::new(FakeEmailSender::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
     });
 
-    AppState {
-        create_user: CreateUser::new(repo.clone(), hasher.clone()),
+    let state = AppState {
+        create_user: CreateUser::new(
+            repo.clone(),
+            verification_repo.clone(),
+            sender.clone(),
+            hasher.clone(),
+            "https://app.hayaland.local".to_string(),
+            86400,
+        ),
         get_user: GetUser::new(repo.clone()),
         list_users: ListUsers::new(repo.clone()),
         update_user: UpdateUser::new(repo.clone()),
@@ -246,16 +327,81 @@ fn test_state() -> AppState {
             hasher,
             token.clone(),
         ),
+        verify_email: VerifyEmail::new(repo.clone(), verification_repo.clone()),
+        resend_verification_email: ResendVerificationEmail::new(
+            repo.clone(),
+            verification_repo.clone(),
+            sender.clone(),
+            "https://app.hayaland.local".to_string(),
+            86400,
+        ),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
         token_validator: token,
+    };
+
+    TestFixtures {
+        state,
+        repo,
+        sender,
     }
 }
 
-async fn login(state: &AppState, email: &str) -> String {
+fn extract_token_for_email(sender: &FakeEmailSender, email: &str) -> String {
+    let sent = sender.sent.lock().unwrap();
+    let (_, _, body) = sent
+        .iter()
+        .find(|(to, _, _)| to == email)
+        .expect("verification email not sent");
+    body.split("token=")
+        .nth(1)
+        .unwrap()
+        .split('\n')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+async fn login(fixtures: &TestFixtures, email: &str) -> String {
+    let email_obj = Email::new(email).unwrap();
+    if fixtures
+        .repo
+        .find_by_email(&email_obj)
+        .await
+        .unwrap()
+        .is_none()
+    {
+        fixtures
+            .state
+            .create_user
+            .execute(application::users::dto::CreateUserCommand {
+                email: email.to_string(),
+                username: email.split('@').next().unwrap().to_string(),
+                password: "password123".to_string(),
+            })
+            .await
+            .unwrap();
+    }
+
+    let user = fixtures
+        .repo
+        .find_by_email(&email_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    if !user.is_active {
+        let token = extract_token_for_email(&fixtures.sender, email);
+        fixtures
+            .state
+            .verify_email
+            .execute(VerifyEmailCommand { token })
+            .await
+            .unwrap();
+    }
+
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state.clone()))
+            .app_data(Data::new(fixtures.state.clone()))
             .configure(routes::configure),
     )
     .await;
@@ -275,7 +421,7 @@ async fn health_returns_ok() {
     init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(test_fixtures().state))
             .configure(routes::configure),
     )
     .await;
@@ -290,7 +436,7 @@ async fn create_user_returns_201() {
     init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(test_fixtures().state))
             .configure(routes::configure),
     )
     .await;
@@ -316,7 +462,7 @@ async fn create_user_returns_400_for_invalid_input() {
     init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(test_fixtures().state))
             .configure(routes::configure),
     )
     .await;
@@ -339,7 +485,7 @@ async fn get_user_returns_401_when_unauthenticated() {
     init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(test_fixtures().state))
             .configure(routes::configure),
     )
     .await;
@@ -356,7 +502,7 @@ async fn get_user_returns_401_for_invalid_token() {
     init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(test_fixtures().state))
             .configure(routes::configure),
     )
     .await;
@@ -372,8 +518,9 @@ async fn get_user_returns_401_for_invalid_token() {
 #[actix_rt::test]
 async fn get_user_returns_200_when_authenticated() {
     init_test_tracing();
-    let state = test_state();
-    let created = state
+    let fixtures = test_fixtures();
+    let created = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "get@example.com".to_string(),
@@ -382,11 +529,11 @@ async fn get_user_returns_200_when_authenticated() {
         })
         .await
         .unwrap();
-    let token = login(&state, "get@example.com").await;
+    let token = login(&fixtures, "get@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -403,8 +550,9 @@ async fn get_user_returns_200_when_authenticated() {
 #[actix_rt::test]
 async fn get_user_returns_404_when_missing() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "missing@example.com".to_string(),
@@ -413,11 +561,11 @@ async fn get_user_returns_404_when_missing() {
         })
         .await
         .unwrap();
-    let token = login(&state, "missing@example.com").await;
+    let token = login(&fixtures, "missing@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -436,7 +584,7 @@ async fn list_users_returns_401_when_unauthenticated() {
     init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(test_fixtures().state))
             .configure(routes::configure),
     )
     .await;
@@ -452,8 +600,9 @@ async fn list_users_returns_401_when_unauthenticated() {
 #[actix_rt::test]
 async fn list_users_returns_200_when_authenticated() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "list@example.com".to_string(),
@@ -462,11 +611,11 @@ async fn list_users_returns_200_when_authenticated() {
         })
         .await
         .unwrap();
-    let token = login(&state, "list@example.com").await;
+    let token = login(&fixtures, "list@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -483,8 +632,9 @@ async fn list_users_returns_200_when_authenticated() {
 #[actix_rt::test]
 async fn update_user_returns_200_for_owner() {
     init_test_tracing();
-    let state = test_state();
-    let created = state
+    let fixtures = test_fixtures();
+    let created = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "update@example.com".to_string(),
@@ -493,11 +643,11 @@ async fn update_user_returns_200_for_owner() {
         })
         .await
         .unwrap();
-    let token = login(&state, "update@example.com").await;
+    let token = login(&fixtures, "update@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -515,8 +665,9 @@ async fn update_user_returns_200_for_owner() {
 #[actix_rt::test]
 async fn update_user_returns_403_for_non_owner() {
     init_test_tracing();
-    let state = test_state();
-    let owner = state
+    let fixtures = test_fixtures();
+    let owner = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "owner@example.com".to_string(),
@@ -525,7 +676,8 @@ async fn update_user_returns_403_for_non_owner() {
         })
         .await
         .unwrap();
-    state
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "other@example.com".to_string(),
@@ -534,11 +686,11 @@ async fn update_user_returns_403_for_non_owner() {
         })
         .await
         .unwrap();
-    let token = login(&state, "other@example.com").await;
+    let token = login(&fixtures, "other@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -556,9 +708,10 @@ async fn update_user_returns_403_for_non_owner() {
 #[actix_rt::test]
 async fn deactivate_user_returns_200_and_blocks_login() {
     init_test_tracing();
-    let state = test_state();
+    let fixtures = test_fixtures();
     // First user becomes the protected admin.
-    state
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "admin@example.com".to_string(),
@@ -567,7 +720,8 @@ async fn deactivate_user_returns_200_and_blocks_login() {
         })
         .await
         .unwrap();
-    let created = state
+    let created = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "inactive@example.com".to_string(),
@@ -576,11 +730,11 @@ async fn deactivate_user_returns_200_and_blocks_login() {
         })
         .await
         .unwrap();
-    let token = login(&state, "inactive@example.com").await;
+    let token = login(&fixtures, "inactive@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -606,8 +760,9 @@ async fn deactivate_user_returns_200_and_blocks_login() {
 #[actix_rt::test]
 async fn deactivate_admin_returns_403() {
     init_test_tracing();
-    let state = test_state();
-    let admin = state
+    let fixtures = test_fixtures();
+    let admin = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "admin@example.com".to_string(),
@@ -616,11 +771,11 @@ async fn deactivate_admin_returns_403() {
         })
         .await
         .unwrap();
-    let token = login(&state, "admin@example.com").await;
+    let token = login(&fixtures, "admin@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -634,10 +789,44 @@ async fn deactivate_admin_returns_403() {
 }
 
 #[actix_rt::test]
-async fn login_returns_200_for_active_user() {
+async fn login_returns_401_for_unverified_user() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "unverified@example.com".to_string(),
+            username: "unverified".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/login")
+        .set_json(serde_json::json!({
+            "email": "unverified@example.com",
+            "password": "password123"
+        }))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[actix_rt::test]
+async fn login_returns_200_for_verified_user() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "login@example.com".to_string(),
@@ -647,32 +836,16 @@ async fn login_returns_200_for_active_user() {
         .await
         .unwrap();
 
-    let app = test::init_service(
-        actix_web::App::new()
-            .app_data(Data::new(state))
-            .configure(routes::configure),
-    )
-    .await;
-    let req = test::TestRequest::post()
-        .uri("/api/v1/auth/login")
-        .set_json(serde_json::json!({
-            "email": "login@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert!(body.get("token").is_some());
+    let token = login(&fixtures, "login@example.com").await;
+    assert!(token.starts_with("token-"));
 }
 
 #[actix_rt::test]
 async fn login_returns_401_for_invalid_credentials() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "bad@example.com".to_string(),
@@ -681,10 +854,11 @@ async fn login_returns_401_for_invalid_credentials() {
         })
         .await
         .unwrap();
+    let _token = login(&fixtures, "bad@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -701,10 +875,96 @@ async fn login_returns_401_for_invalid_credentials() {
 }
 
 #[actix_rt::test]
+async fn verify_email_activates_user() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let created = fixtures
+        .state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "verify@example.com".to_string(),
+            username: "verify".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let token = extract_token_for_email(&fixtures.sender, "verify@example.com");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/auth/verify-email?token={token}"))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "verified");
+    assert_eq!(body["user_id"], created.id.to_string());
+
+    let user = fixtures.repo.find_by_id(created.id).await.unwrap().unwrap();
+    assert!(user.is_active);
+}
+
+#[actix_rt::test]
+async fn verify_email_rejects_invalid_token() {
+    init_test_tracing();
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_fixtures().state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/auth/verify-email?token=not-a-token")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[actix_rt::test]
+async fn resend_verification_returns_202() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    fixtures
+        .state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "resend@example.com".to_string(),
+            username: "resend".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/resend-verification")
+        .set_json(serde_json::json!({ "email": "resend@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+}
+
+#[actix_rt::test]
 async fn admin_can_list_roles() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "admin@example.com".to_string(),
@@ -713,11 +973,11 @@ async fn admin_can_list_roles() {
         })
         .await
         .unwrap();
-    let token = login(&state, "admin@example.com").await;
+    let token = login(&fixtures, "admin@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -737,8 +997,9 @@ async fn admin_can_list_roles() {
 #[actix_rt::test]
 async fn admin_can_update_role_scopes() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "admin@example.com".to_string(),
@@ -747,11 +1008,11 @@ async fn admin_can_update_role_scopes() {
         })
         .await
         .unwrap();
-    let token = login(&state, "admin@example.com").await;
+    let token = login(&fixtures, "admin@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -775,8 +1036,9 @@ async fn admin_can_update_role_scopes() {
 #[actix_rt::test]
 async fn admin_can_assign_roles_to_user() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "admin@example.com".to_string(),
@@ -785,7 +1047,8 @@ async fn admin_can_assign_roles_to_user() {
         })
         .await
         .unwrap();
-    let target = state
+    let target = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "target@example.com".to_string(),
@@ -794,11 +1057,11 @@ async fn admin_can_assign_roles_to_user() {
         })
         .await
         .unwrap();
-    let token = login(&state, "admin@example.com").await;
+    let token = login(&fixtures, "admin@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;
@@ -821,8 +1084,9 @@ async fn admin_can_assign_roles_to_user() {
 #[actix_rt::test]
 async fn non_admin_cannot_assign_roles() {
     init_test_tracing();
-    let state = test_state();
-    state
+    let fixtures = test_fixtures();
+    fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "admin@example.com".to_string(),
@@ -831,7 +1095,8 @@ async fn non_admin_cannot_assign_roles() {
         })
         .await
         .unwrap();
-    let target = state
+    let target = fixtures
+        .state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
             email: "target@example.com".to_string(),
@@ -840,11 +1105,11 @@ async fn non_admin_cannot_assign_roles() {
         })
         .await
         .unwrap();
-    let token = login(&state, "target@example.com").await;
+    let token = login(&fixtures, "target@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(fixtures.state))
             .configure(routes::configure),
     )
     .await;

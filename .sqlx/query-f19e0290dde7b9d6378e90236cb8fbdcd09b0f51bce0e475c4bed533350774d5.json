@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE email_verifications\n            SET used = true\n            WHERE user_id = $1 AND used = false\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f19e0290dde7b9d6378e90236cb8fbdcd09b0f51bce0e475c4bed533350774d5"
+}

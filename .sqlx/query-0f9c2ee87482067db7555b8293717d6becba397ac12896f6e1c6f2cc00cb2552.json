@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT token, user_id, expires_at, used\n            FROM email_verifications\n            WHERE token = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "token",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "email_verifications",
+            "name": "token"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "email_verifications",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "email_verifications",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "used",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "email_verifications",
+            "name": "used"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0f9c2ee87482067db7555b8293717d6becba397ac12896f6e1c6f2cc00cb2552"
+}

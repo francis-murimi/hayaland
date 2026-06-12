@@ -36,6 +36,15 @@ pub enum ApplicationError {
     #[error("cannot remove admin role from the first admin")]
     CannotRemoveFirstAdmin,
 
+    #[error("failed to send email")]
+    EmailSendFailed,
+
+    #[error("invalid or expired verification token")]
+    InvalidOrExpiredVerificationToken,
+
+    #[error("account is already verified")]
+    AlreadyVerified,
+
     #[error("infrastructure error: {0}")]
     Infrastructure(String),
 }

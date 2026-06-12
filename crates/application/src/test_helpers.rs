@@ -1,4 +1,6 @@
 #[cfg(test)]
+use crate::email::EmailSender;
+#[cfg(test)]
 use crate::errors::ApplicationError;
 #[cfg(test)]
 use crate::users::create_user::PasswordHasher;
@@ -7,11 +9,11 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]
-use domain::entities::{Email, PasswordHash, Role, User, Username};
+use domain::entities::{Email, EmailVerification, PasswordHash, Role, User, Username};
 #[cfg(test)]
 use domain::errors::DomainError;
 #[cfg(test)]
-use domain::repositories::{RoleRepository, UserRepository};
+use domain::repositories::{EmailVerificationRepository, RoleRepository, UserRepository};
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
@@ -192,4 +194,95 @@ pub fn test_repo_with(user: User) -> Arc<FakeRepo> {
     Arc::new(FakeRepo {
         users: Mutex::new(map),
     })
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeEmailVerificationRepo {
+    verifications: Mutex<HashMap<String, EmailVerification>>,
+}
+
+#[cfg(test)]
+impl FakeEmailVerificationRepo {
+    pub async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<EmailVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|v| v.user_id == user_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn count_for_user(&self, user_id: Uuid) -> usize {
+        self.find_by_user_id(user_id).await.unwrap().len()
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl EmailVerificationRepository for FakeEmailVerificationRepo {
+    async fn save(&self, verification: &EmailVerification) -> Result<(), DomainError> {
+        self.verifications
+            .lock()
+            .unwrap()
+            .insert(verification.token.clone(), verification.clone());
+        Ok(())
+    }
+
+    async fn find_by_token(&self, token: &str) -> Result<Option<EmailVerification>, DomainError> {
+        Ok(self.verifications.lock().unwrap().get(token).cloned())
+    }
+
+    async fn mark_used(&self, token: &str) -> Result<(), DomainError> {
+        if let Some(v) = self.verifications.lock().unwrap().get_mut(token) {
+            v.used = true;
+        }
+        Ok(())
+    }
+
+    async fn invalidate_unused_for_user(&self, user_id: Uuid) -> Result<(), DomainError> {
+        for v in self.verifications.lock().unwrap().values_mut() {
+            if v.user_id == user_id && !v.used {
+                v.used = true;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeEmailSender {
+    pub sent: Mutex<Vec<(String, String, String)>>,
+    failing: bool,
+}
+
+#[cfg(test)]
+impl FakeEmailSender {
+    pub fn failing() -> Self {
+        Self {
+            sent: Default::default(),
+            failing: true,
+        }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl EmailSender for FakeEmailSender {
+    async fn send(&self, to: &str, subject: &str, body: &str) -> Result<(), ApplicationError> {
+        if self.failing {
+            return Err(ApplicationError::EmailSendFailed);
+        }
+        self.sent
+            .lock()
+            .unwrap()
+            .push((to.to_string(), subject.to_string(), body.to_string()));
+        Ok(())
+    }
 }

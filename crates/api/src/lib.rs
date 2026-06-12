@@ -6,6 +6,8 @@ pub mod routes;
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use application::email::resend_verification::ResendVerificationEmail;
+use application::email::verify_email::VerifyEmail;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -30,6 +32,8 @@ pub struct AppState {
     pub assign_user_roles: AssignUserRoles,
     pub deactivate_user: DeactivateUser,
     pub authenticate_user: AuthenticateUser,
+    pub verify_email: VerifyEmail,
+    pub resend_verification_email: ResendVerificationEmail,
     pub list_roles: ListRoles,
     pub update_role_scopes: UpdateRoleScopes,
     pub token_validator: Arc<dyn TokenVerifier>,

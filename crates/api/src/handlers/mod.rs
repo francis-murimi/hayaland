@@ -4,5 +4,7 @@ pub mod deactivate_user;
 pub mod get_user;
 pub mod list_users;
 pub mod login;
+pub mod resend_verification;
 pub mod roles;
 pub mod update_user;
+pub mod verify_email;

@@ -15,6 +15,8 @@ const PUBLIC_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v1/health"),
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/users"),
+    ("GET", "/api/v1/auth/verify-email"),
+    ("POST", "/api/v1/auth/resend-verification"),
 ];
 
 /// Middleware that validates a `Bearer` JWT for protected routes and inserts the

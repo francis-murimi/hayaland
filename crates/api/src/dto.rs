@@ -110,3 +110,9 @@ impl From<Vec<RoleDto>> for RolesResponse {
         Self { roles }
     }
 }
+
+#[derive(Debug, Serialize)]
+pub struct VerifyEmailResponse {
+    pub status: String,
+    pub user_id: Uuid,
+}
