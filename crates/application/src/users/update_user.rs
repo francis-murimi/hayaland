@@ -51,3 +51,89 @@ impl UpdateUser {
         Ok(UserDto::from(user))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{test_repo_with, test_user, FakeRepo};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn updates_email_and_username() {
+        let user = test_user("old@example.com", "olduser", "password123");
+        let id = user.id;
+        let repo = test_repo_with(user);
+
+        let result = UpdateUser::new(repo)
+            .execute(UpdateUserCommand {
+                id,
+                email: Some("new@example.com".to_string()),
+                username: Some("newuser".to_string()),
+            })
+            .await;
+
+        assert!(result.is_ok());
+        let dto = result.unwrap();
+        assert_eq!(dto.email, "new@example.com");
+        assert_eq!(dto.username, "newuser");
+    }
+
+    #[tokio::test]
+    async fn rejects_duplicate_email() {
+        let first = test_user("first@example.com", "first", "password123");
+        let second = test_user("second@example.com", "second", "password123");
+        let second_id = second.id;
+        let repo = Arc::new(FakeRepo {
+            users: Default::default(),
+        });
+        repo.create(&first).await.unwrap();
+        repo.create(&second).await.unwrap();
+
+        let result = UpdateUser::new(repo)
+            .execute(UpdateUserCommand {
+                id: second_id,
+                email: Some("first@example.com".to_string()),
+                username: None,
+            })
+            .await;
+
+        assert!(matches!(result, Err(ApplicationError::DuplicateEmail)));
+    }
+
+    #[tokio::test]
+    async fn rejects_duplicate_username() {
+        let first = test_user("first@example.com", "first", "password123");
+        let second = test_user("second@example.com", "second", "password123");
+        let second_id = second.id;
+        let repo = Arc::new(FakeRepo {
+            users: Default::default(),
+        });
+        repo.create(&first).await.unwrap();
+        repo.create(&second).await.unwrap();
+
+        let result = UpdateUser::new(repo)
+            .execute(UpdateUserCommand {
+                id: second_id,
+                email: None,
+                username: Some("first".to_string()),
+            })
+            .await;
+
+        assert!(matches!(result, Err(ApplicationError::DuplicateUsername)));
+    }
+
+    #[tokio::test]
+    async fn returns_not_found_when_missing() {
+        let repo = test_repo_with(test_user("other@example.com", "other", "password123"));
+        let result = UpdateUser::new(repo)
+            .execute(UpdateUserCommand {
+                id: Uuid::now_v7(),
+                email: Some("new@example.com".to_string()),
+                username: None,
+            })
+            .await;
+
+        assert!(matches!(result, Err(ApplicationError::NotFound)));
+    }
+}

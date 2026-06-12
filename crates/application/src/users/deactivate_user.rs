@@ -27,3 +27,34 @@ impl DeactivateUser {
         Ok(UserDto::from(user))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{test_repo_with, test_user};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn deactivates_user() {
+        let user = test_user("active@example.com", "active", "password123");
+        let id = user.id;
+        let repo = test_repo_with(user);
+
+        let result = DeactivateUser::new(repo)
+            .execute(DeactivateUserCommand { id })
+            .await;
+
+        assert!(result.is_ok());
+        assert!(!result.unwrap().is_active);
+    }
+
+    #[tokio::test]
+    async fn returns_not_found_when_missing() {
+        let repo = test_repo_with(test_user("other@example.com", "other", "password123"));
+        let result = DeactivateUser::new(repo)
+            .execute(DeactivateUserCommand { id: Uuid::now_v7() })
+            .await;
+
+        assert!(matches!(result, Err(ApplicationError::NotFound)));
+    }
+}

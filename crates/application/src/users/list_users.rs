@@ -45,3 +45,75 @@ impl ListUsers {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{test_repo_with, test_user, FakeRepo};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn lists_users_paginated() {
+        let repo = Arc::new(FakeRepo {
+            users: Default::default(),
+        });
+        repo.create(&test_user("alice@example.com", "alice", "password123"))
+            .await
+            .unwrap();
+        repo.create(&test_user("bob@example.com", "bob", "password123"))
+            .await
+            .unwrap();
+
+        let result = ListUsers::new(repo)
+            .execute(ListUsersQuery {
+                page: Some(1),
+                per_page: Some(1),
+                active_only: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.users.len(), 1);
+        assert_eq!(result.page, 1);
+        assert_eq!(result.per_page, 1);
+    }
+
+    #[tokio::test]
+    async fn filters_active_only() {
+        let mut inactive = test_user("inactive@example.com", "inactive", "password123");
+        inactive.is_active = false;
+        let repo = test_repo_with(inactive);
+        repo.create(&test_user("active@example.com", "active", "password123"))
+            .await
+            .unwrap();
+
+        let result = ListUsers::new(repo)
+            .execute(ListUsersQuery {
+                page: None,
+                per_page: None,
+                active_only: Some(true),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.users.len(), 1);
+        assert!(result.users[0].is_active);
+    }
+
+    #[tokio::test]
+    async fn clamps_out_of_range_pagination() {
+        let repo = test_repo_with(test_user("only@example.com", "only", "password123"));
+
+        let result = ListUsers::new(repo)
+            .execute(ListUsersQuery {
+                page: Some(0),
+                per_page: Some(500),
+                active_only: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.page, 1);
+        assert_eq!(result.per_page, 100);
+    }
+}

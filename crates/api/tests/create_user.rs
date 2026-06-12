@@ -53,16 +53,25 @@ impl UserRepository for FakeRepo {
 
     async fn list(
         &self,
-        _limit: i64,
-        _offset: i64,
+        limit: i64,
+        offset: i64,
         active_only: Option<bool>,
     ) -> Result<Vec<User>, DomainError> {
         let users: Vec<User> = self.users.lock().unwrap().values().cloned().collect();
-        match active_only {
-            Some(true) => Ok(users.into_iter().filter(|u| u.is_active).collect()),
-            Some(false) => Ok(users.into_iter().filter(|u| !u.is_active).collect()),
-            None => Ok(users),
-        }
+        let filtered = match active_only {
+            Some(true) => users
+                .into_iter()
+                .filter(|u| u.is_active)
+                .collect::<Vec<_>>(),
+            Some(false) => users
+                .into_iter()
+                .filter(|u| !u.is_active)
+                .collect::<Vec<_>>(),
+            None => users,
+        };
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        Ok(filtered.into_iter().skip(start).take(end - start).collect())
     }
 
     async fn update(&self, user: &User) -> Result<(), DomainError> {
@@ -121,6 +130,20 @@ fn test_state() -> AppState {
 }
 
 #[actix_rt::test]
+async fn health_returns_ok() {
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_state()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get().uri("/api/v1/health").to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[actix_rt::test]
 async fn create_user_returns_201() {
     let app = test::init_service(
         actix_web::App::new()
@@ -168,7 +191,94 @@ async fn create_user_returns_400_for_invalid_input() {
 }
 
 #[actix_rt::test]
-async fn login_rejects_inactive_user() {
+async fn get_user_returns_200() {
+    let state = test_state();
+    let created = state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "get@example.com".to_string(),
+            username: "getuser".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/users/{}", created.id))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[actix_rt::test]
+async fn get_user_returns_404_when_missing() {
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_state()))
+            .configure(routes::configure),
+    )
+    .await;
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/users/{}", Uuid::nil()))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[actix_rt::test]
+async fn list_users_returns_200() {
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_state()))
+            .configure(routes::configure),
+    )
+    .await;
+    let req = test::TestRequest::get()
+        .uri("/api/v1/users?page=1&per_page=10")
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[actix_rt::test]
+async fn update_user_returns_200() {
+    let state = test_state();
+    let created = state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "update@example.com".to_string(),
+            username: "updateuser".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+    let req = test::TestRequest::patch()
+        .uri(&format!("/api/v1/users/{}", created.id))
+        .set_json(serde_json::json!({ "username": "updateduser" }))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[actix_rt::test]
+async fn deactivate_user_returns_200_and_blocks_login() {
     let state = test_state();
     let created = state
         .create_user
@@ -180,9 +290,40 @@ async fn login_rejects_inactive_user() {
         .await
         .unwrap();
 
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let deactivate = test::TestRequest::delete()
+        .uri(&format!("/api/v1/users/{}", created.id))
+        .to_request();
+    let resp = test::call_service(&app, deactivate).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let login = test::TestRequest::post()
+        .uri("/api/v1/auth/login")
+        .set_json(serde_json::json!({
+            "email": "inactive@example.com",
+            "password": "password123"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, login).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[actix_rt::test]
+async fn login_returns_200_for_active_user() {
+    let state = test_state();
     state
-        .deactivate_user
-        .execute(application::users::dto::DeactivateUserCommand { id: created.id })
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "login@example.com".to_string(),
+            username: "loginuser".to_string(),
+            password: "password123".to_string(),
+        })
         .await
         .unwrap();
 
@@ -192,12 +333,42 @@ async fn login_rejects_inactive_user() {
             .configure(routes::configure),
     )
     .await;
-
     let req = test::TestRequest::post()
         .uri("/api/v1/auth/login")
         .set_json(serde_json::json!({
-            "email": "inactive@example.com",
+            "email": "login@example.com",
             "password": "password123"
+        }))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[actix_rt::test]
+async fn login_returns_401_for_invalid_credentials() {
+    let state = test_state();
+    state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "bad@example.com".to_string(),
+            username: "baduser".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/login")
+        .set_json(serde_json::json!({
+            "email": "bad@example.com",
+            "password": "wrongpassword"
         }))
         .to_request();
 

@@ -7,6 +7,7 @@ use std::env;
 pub struct Settings {
     pub database: DatabaseSettings,
     pub server: ServerSettings,
+    #[serde(default)]
     pub log: LogSettings,
     pub auth: AuthSettings,
 }
@@ -27,7 +28,7 @@ pub struct ServerSettings {
     pub port: u16,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct LogSettings {
     #[serde(default = "default_log_level")]
     pub level: String,

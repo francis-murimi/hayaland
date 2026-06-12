@@ -64,92 +64,13 @@ fn validate_password(password: &str) -> Result<(), ApplicationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::entities::{Email, User, Username};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    struct FakeRepo {
-        users: Mutex<HashMap<Uuid, User>>,
-    }
-
-    #[async_trait]
-    impl UserRepository for FakeRepo {
-        async fn create(&self, user: &User) -> Result<(), domain::errors::DomainError> {
-            self.users.lock().unwrap().insert(user.id, user.clone());
-            Ok(())
-        }
-
-        async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, domain::errors::DomainError> {
-            Ok(self.users.lock().unwrap().get(&id).cloned())
-        }
-
-        async fn find_by_email(
-            &self,
-            email: &Email,
-        ) -> Result<Option<User>, domain::errors::DomainError> {
-            Ok(self
-                .users
-                .lock()
-                .unwrap()
-                .values()
-                .find(|u| u.email == *email)
-                .cloned())
-        }
-
-        async fn find_by_username(
-            &self,
-            username: &Username,
-        ) -> Result<Option<User>, domain::errors::DomainError> {
-            Ok(self
-                .users
-                .lock()
-                .unwrap()
-                .values()
-                .find(|u| u.username == *username)
-                .cloned())
-        }
-
-        async fn list(
-            &self,
-            _limit: i64,
-            _offset: i64,
-            active_only: Option<bool>,
-        ) -> Result<Vec<User>, domain::errors::DomainError> {
-            let users: Vec<User> = self.users.lock().unwrap().values().cloned().collect();
-            match active_only {
-                Some(true) => Ok(users.into_iter().filter(|u| u.is_active).collect()),
-                Some(false) => Ok(users.into_iter().filter(|u| !u.is_active).collect()),
-                None => Ok(users),
-            }
-        }
-
-        async fn update(&self, user: &User) -> Result<(), domain::errors::DomainError> {
-            self.users.lock().unwrap().insert(user.id, user.clone());
-            Ok(())
-        }
-    }
-
-    struct FakeHasher;
-
-    #[async_trait]
-    impl PasswordHasher for FakeHasher {
-        async fn hash_password(&self, password: &str) -> Result<String, ApplicationError> {
-            Ok(format!("hashed:{password}"))
-        }
-
-        async fn verify_password(
-            &self,
-            password: &str,
-            hash: &str,
-        ) -> Result<bool, ApplicationError> {
-            Ok(hash == format!("hashed:{password}"))
-        }
-    }
+    use crate::test_helpers::{FakeHasher, FakeRepo};
+    use std::sync::Arc;
 
     fn service() -> CreateUser {
         CreateUser::new(
             Arc::new(FakeRepo {
-                users: Mutex::new(HashMap::new()),
+                users: Default::default(),
             }),
             Arc::new(FakeHasher),
         )
