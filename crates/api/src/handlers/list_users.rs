@@ -1,15 +1,19 @@
 use crate::dto::{ListUsersQuery, UsersResponse};
 use crate::errors::ApiError;
+use crate::middleware::auth::require_scope;
 use crate::AppState;
 use actix_web::{web, HttpResponse};
 use application::users::dto::ListUsersQuery as AppListUsersQuery;
+use application::users::token::AuthContext;
 use validator::Validate;
 
 pub async fn list_users(
     state: web::Data<AppState>,
     query: web::Query<ListUsersQuery>,
+    ctx: web::ReqData<AuthContext>,
 ) -> Result<HttpResponse, ApiError> {
     query.validate().map_err(ApiError::from)?;
+    require_scope(&ctx, "users:read")?;
 
     let app_query = AppListUsersQuery {
         page: query.page,

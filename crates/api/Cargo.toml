@@ -39,3 +39,4 @@ serde_json.workspace = true
 async-trait.workspace = true
 domain = { workspace = true }
 application = { workspace = true }
+tracing-subscriber.workspace = true

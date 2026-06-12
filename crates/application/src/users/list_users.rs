@@ -8,6 +8,7 @@ const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 20;
 const MAX_PER_PAGE: i64 = 100;
 
+#[derive(Clone)]
 pub struct ListUsers {
     repo: Arc<dyn UserRepository>,
 }

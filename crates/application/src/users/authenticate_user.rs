@@ -1,12 +1,13 @@
 use crate::errors::ApplicationError;
 use crate::users::create_user::PasswordHasher;
 use crate::users::dto::{AuthenticateUserCommand, AuthenticateUserResult};
-use crate::users::token::TokenGenerator;
+use crate::users::token::{scopes_from_roles, AuthContext, TokenGenerator};
 use domain::entities::Email;
 use domain::repositories::UserRepository;
 use std::sync::Arc;
 use tracing::{info, instrument, warn};
 
+#[derive(Clone)]
 pub struct AuthenticateUser {
     repo: Arc<dyn UserRepository>,
     hasher: Arc<dyn PasswordHasher>,
@@ -53,8 +54,13 @@ impl AuthenticateUser {
             return Err(ApplicationError::AccountInactive);
         }
 
-        let token = self.token_generator.generate(user.id).await?;
-        info!(user_id = %user.id, "user authenticated");
+        let ctx = AuthContext {
+            user_id: user.id,
+            scopes: scopes_from_roles(&user.roles),
+            roles: user.roles.clone(),
+        };
+        let token = self.token_generator.generate(&ctx).await?;
+        info!(user_id = %user.id, roles = ?ctx.roles, scopes = ?ctx.scopes, "user authenticated");
         Ok(AuthenticateUserResult {
             user_id: user.id,
             token,

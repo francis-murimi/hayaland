@@ -22,6 +22,8 @@ pub struct UserDto {
     pub email: String,
     pub username: String,
     pub is_active: bool,
+    pub roles: Vec<String>,
+    pub protected: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -34,6 +36,8 @@ impl From<domain::entities::User> for UserDto {
             email: user.email.as_str().to_string(),
             username: user.username.as_str().to_string(),
             is_active: user.is_active,
+            roles: user.roles,
+            protected: user.protected,
             created_at: user
                 .created_at
                 .format(&format)
@@ -69,6 +73,7 @@ pub struct UpdateUserCommand {
     pub id: Uuid,
     pub email: Option<String>,
     pub username: Option<String>,
+    pub roles: Option<Vec<String>>,
 }
 
 /// Input to the deactivate-user use case.

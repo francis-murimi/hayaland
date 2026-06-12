@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod errors;
 pub mod handlers;
+pub mod middleware;
 pub mod routes;
 
 use actix_web::dev::Server;
@@ -10,11 +11,14 @@ use application::users::create_user::CreateUser;
 use application::users::deactivate_user::DeactivateUser;
 use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
+use application::users::token::TokenVerifier;
 use application::users::update_user::UpdateUser;
 use std::net::TcpListener;
+use std::sync::Arc;
 use tracing_actix_web::TracingLogger;
 
 /// All application services shared by handlers.
+#[derive(Clone)]
 pub struct AppState {
     pub create_user: CreateUser,
     pub get_user: GetUser,
@@ -22,6 +26,7 @@ pub struct AppState {
     pub update_user: UpdateUser,
     pub deactivate_user: DeactivateUser,
     pub authenticate_user: AuthenticateUser,
+    pub token_validator: Arc<dyn TokenVerifier>,
 }
 
 /// Factory for the Actix HTTP server.

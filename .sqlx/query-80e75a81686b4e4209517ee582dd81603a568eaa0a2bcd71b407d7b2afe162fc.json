@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, email, username, password_hash, is_active, created_at, updated_at\n            FROM users\n            WHERE username = $1\n            ",
+  "query": "\n            SELECT id, email, username, password_hash, is_active, roles, protected, created_at, updated_at\n            FROM users\n            WHERE username = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -70,6 +70,28 @@
       },
       {
         "ordinal": 5,
+        "name": "roles",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "roles"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "protected",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "protected"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -80,7 +102,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -108,8 +130,10 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "7ea578d176428f2556bfce98ad1340b1ae7b5e770b79dd7065d6f6cb38ded051"
+  "hash": "80e75a81686b4e4209517ee582dd81603a568eaa0a2bcd71b407d7b2afe162fc"
 }

@@ -27,6 +27,7 @@ async fn creates_and_finds_user_by_email(pool: PgPool) {
     let found = found.unwrap();
     assert_eq!(found.email, email);
     assert!(found.is_active);
+    assert!(found.has_role("user"));
 }
 
 #[sqlx::test(migrations = "../../migrations")]

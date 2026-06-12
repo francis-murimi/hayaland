@@ -5,6 +5,7 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tracing::{info, instrument, warn};
 
+#[derive(Clone)]
 pub struct DeactivateUser {
     repo: Arc<dyn UserRepository>,
 }
@@ -21,6 +22,11 @@ impl DeactivateUser {
             .find_by_id(cmd.id)
             .await?
             .ok_or(ApplicationError::NotFound)?;
+
+        if user.has_role("admin") || user.protected {
+            warn!(%cmd.id, "attempted to deactivate admin/protected user");
+            return Err(ApplicationError::CannotDeactivateAdmin);
+        }
 
         if !user.is_active {
             warn!(%cmd.id, "user already inactive");
@@ -53,6 +59,23 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(!result.unwrap().is_active);
+    }
+
+    #[tokio::test]
+    async fn rejects_deactivating_admin() {
+        let mut user = test_user("admin@example.com", "admin", "password123");
+        user.roles = vec!["admin".to_string()];
+        let id = user.id;
+        let repo = test_repo_with(user);
+
+        let result = DeactivateUser::new(repo)
+            .execute(DeactivateUserCommand { id })
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ApplicationError::CannotDeactivateAdmin)
+        ));
     }
 
     #[tokio::test]

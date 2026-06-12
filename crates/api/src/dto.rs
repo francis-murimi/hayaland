@@ -24,6 +24,7 @@ pub struct UpdateUserRequest {
     pub email: Option<String>,
     #[validate(length(min = 3, max = 32, message = "username must be 3-32 characters"))]
     pub username: Option<String>,
+    pub roles: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Validate, Default)]

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::{instrument, warn};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct GetUser {
     repo: Arc<dyn UserRepository>,
 }

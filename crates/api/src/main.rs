@@ -10,7 +10,7 @@ use domain::repositories::UserRepository;
 use infrastructure::{
     config, database, migrations,
     repositories::PostgresUserRepository,
-    security::{Argon2PasswordHasher, JwtTokenGenerator},
+    security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
 };
 use secrecy::ExposeSecret;
@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     let repo: Arc<dyn UserRepository> = Arc::new(PostgresUserRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
-    let token_generator = Arc::new(JwtTokenGenerator::new(
+    let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
         settings.auth.token_expiry_seconds,
     ));
@@ -48,7 +48,8 @@ async fn main() -> anyhow::Result<()> {
         list_users: ListUsers::new(repo.clone()),
         update_user: UpdateUser::new(repo.clone()),
         deactivate_user: DeactivateUser::new(repo.clone()),
-        authenticate_user: AuthenticateUser::new(repo, hasher, token_generator),
+        authenticate_user: AuthenticateUser::new(repo, hasher, token_service.clone()),
+        token_validator: token_service,
     };
 
     let address = format!("{}:{}", settings.server.host, settings.server.port);

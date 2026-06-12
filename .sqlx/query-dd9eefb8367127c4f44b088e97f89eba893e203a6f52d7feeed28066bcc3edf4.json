@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE users\n            SET email = $1,\n                username = $2,\n                password_hash = $3,\n                is_active = $4,\n                created_at = $5,\n                updated_at = $6\n            WHERE id = $7\n            ",
+  "query": "\n            UPDATE users\n            SET email = $1,\n                username = $2,\n                password_hash = $3,\n                is_active = $4,\n                roles = $5,\n                protected = $6,\n                created_at = $7,\n                updated_at = $8\n            WHERE id = $9\n            ",
   "describe": {
     "columns": [],
     "parameters": {
@@ -19,6 +19,8 @@
         },
         "Text",
         "Bool",
+        "TextArray",
+        "Bool",
         "Timestamptz",
         "Timestamptz",
         "Uuid"
@@ -26,5 +28,5 @@
     },
     "nullable": []
   },
-  "hash": "5349b8acf9c366d091b468d494ae400eb15bfd2ce14844e6d4bf994d63a9fb1d"
+  "hash": "dd9eefb8367127c4f44b088e97f89eba893e203a6f52d7feeed28066bcc3edf4"
 }

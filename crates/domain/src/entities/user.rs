@@ -79,6 +79,8 @@ pub struct User {
     pub username: Username,
     pub password_hash: PasswordHash,
     pub is_active: bool,
+    pub roles: Vec<String>,
+    pub protected: bool,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -92,9 +94,15 @@ impl User {
             username,
             password_hash,
             is_active: true,
+            roles: vec!["user".to_string()],
+            protected: false,
             created_at: now,
             updated_at: now,
         }
+    }
+
+    pub fn has_role(&self, role: &str) -> bool {
+        self.roles.iter().any(|r| r == role)
     }
 }
 
@@ -132,5 +140,22 @@ mod tests {
     #[test]
     fn password_hash_rejects_empty() {
         assert!(PasswordHash::new(String::new()).is_err());
+    }
+
+    #[test]
+    fn user_has_default_user_role() {
+        let user = test_user("user@example.com", "user");
+        assert!(user.has_role("user"));
+        assert!(!user.has_role("admin"));
+        assert!(!user.protected);
+    }
+
+    fn test_user(email: &str, username: &str) -> User {
+        User::new(
+            Uuid::now_v7(),
+            Email::new(email).unwrap(),
+            Username::new(username).unwrap(),
+            PasswordHash::new("hash".to_string()).unwrap(),
+        )
     }
 }

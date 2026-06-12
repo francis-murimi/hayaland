@@ -15,6 +15,7 @@ pub trait PasswordHasher: Send + Sync {
 }
 
 /// Create-user use case.
+#[derive(Clone)]
 pub struct CreateUser {
     repo: Arc<dyn UserRepository>,
     hasher: Arc<dyn PasswordHasher>,
@@ -44,10 +45,17 @@ impl CreateUser {
         let hash = self.hasher.hash_password(&cmd.password).await?;
         let password_hash = PasswordHash::new(hash).map_err(ApplicationError::from)?;
         let id = Uuid::now_v7();
-        let user = User::new(id, email, username, password_hash);
+        let mut user = User::new(id, email, username, password_hash);
+
+        let is_first = self.repo.count().await? == 0;
+        if is_first {
+            user.roles = vec!["admin".to_string()];
+            user.protected = true;
+            info!(%id, "first user registered as protected admin");
+        }
 
         self.repo.create(&user).await?;
-        info!(%id, "created user");
+        info!(%id, roles = ?user.roles, protected = user.protected, "created user");
         Ok(CreateUserResult { id })
     }
 }
@@ -87,6 +95,51 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn first_user_becomes_protected_admin() {
+        let svc = service();
+        let result = svc
+            .execute(CreateUserCommand {
+                email: "first@example.com".to_string(),
+                username: "first".to_string(),
+                password: "password123".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let repo = svc.repo.clone();
+        let user = repo.find_by_id(result.id).await.unwrap().unwrap();
+        assert!(user.has_role("admin"));
+        assert!(user.protected);
+    }
+
+    #[tokio::test]
+    async fn subsequent_users_are_regular_users() {
+        let svc = service();
+        svc.execute(CreateUserCommand {
+            email: "first@example.com".to_string(),
+            username: "first".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+        let result = svc
+            .execute(CreateUserCommand {
+                email: "second@example.com".to_string(),
+                username: "second".to_string(),
+                password: "password123".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let repo = svc.repo.clone();
+        let user = repo.find_by_id(result.id).await.unwrap().unwrap();
+        assert!(user.has_role("user"));
+        assert!(!user.has_role("admin"));
+        assert!(!user.protected);
     }
 
     #[tokio::test]

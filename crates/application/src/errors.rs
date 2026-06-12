@@ -24,6 +24,18 @@ pub enum ApplicationError {
     #[error("account is inactive")]
     AccountInactive,
 
+    #[error("unauthorized")]
+    Unauthorized,
+
+    #[error("forbidden")]
+    Forbidden,
+
+    #[error("admin users cannot be deactivated")]
+    CannotDeactivateAdmin,
+
+    #[error("cannot remove admin role from the first admin")]
+    CannotRemoveFirstAdmin,
+
     #[error("infrastructure error: {0}")]
     Infrastructure(String),
 }

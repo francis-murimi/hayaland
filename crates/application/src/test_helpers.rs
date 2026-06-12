@@ -3,7 +3,7 @@ use crate::errors::ApplicationError;
 #[cfg(test)]
 use crate::users::create_user::PasswordHasher;
 #[cfg(test)]
-use crate::users::token::TokenGenerator;
+use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]
@@ -83,6 +83,10 @@ impl UserRepository for FakeRepo {
         self.users.lock().unwrap().insert(user.id, user.clone());
         Ok(())
     }
+
+    async fn count(&self) -> Result<i64, DomainError> {
+        Ok(self.users.lock().unwrap().len() as i64)
+    }
 }
 
 #[cfg(test)]
@@ -106,8 +110,27 @@ pub struct FakeTokenGenerator;
 #[cfg(test)]
 #[async_trait]
 impl TokenGenerator for FakeTokenGenerator {
-    async fn generate(&self, user_id: Uuid) -> Result<String, ApplicationError> {
-        Ok(format!("token-{user_id}"))
+    async fn generate(&self, ctx: &AuthContext) -> Result<String, ApplicationError> {
+        Ok(format!("token-{}", ctx.user_id))
+    }
+}
+
+#[cfg(test)]
+pub struct FakeTokenVerifier;
+
+#[cfg(test)]
+#[async_trait]
+impl TokenVerifier for FakeTokenVerifier {
+    async fn verify(&self, token: &str) -> Result<AuthContext, ApplicationError> {
+        let user_id = token
+            .strip_prefix("token-")
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(ApplicationError::Unauthorized)?;
+        Ok(AuthContext {
+            user_id,
+            roles: vec!["user".to_string()],
+            scopes: vec!["users:read".to_string(), "users:write".to_string()],
+        })
     }
 }
 

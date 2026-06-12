@@ -15,6 +15,9 @@ pub enum ApiError {
 
     #[error("validation failed: {0}")]
     Validation(String),
+
+    #[error("forbidden")]
+    Forbidden,
 }
 
 impl ResponseError for ApiError {
@@ -27,7 +30,12 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::DuplicateUsername) => StatusCode::CONFLICT,
             ApiError::Application(ApplicationError::NotFound) => StatusCode::NOT_FOUND,
             ApiError::Application(ApplicationError::InvalidCredentials)
-            | ApiError::Application(ApplicationError::AccountInactive) => StatusCode::UNAUTHORIZED,
+            | ApiError::Application(ApplicationError::AccountInactive)
+            | ApiError::Application(ApplicationError::Unauthorized) => StatusCode::UNAUTHORIZED,
+            ApiError::Application(ApplicationError::Forbidden)
+            | ApiError::Application(ApplicationError::CannotDeactivateAdmin)
+            | ApiError::Application(ApplicationError::CannotRemoveFirstAdmin)
+            | ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -43,8 +51,17 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::NotFound) => "not_found",
             ApiError::Application(ApplicationError::InvalidCredentials) => "invalid_credentials",
             ApiError::Application(ApplicationError::AccountInactive) => "account_inactive",
+            ApiError::Application(ApplicationError::Unauthorized) => "unauthorized",
+            ApiError::Application(ApplicationError::Forbidden) => "forbidden",
+            ApiError::Application(ApplicationError::CannotDeactivateAdmin) => {
+                "cannot_deactivate_admin"
+            }
+            ApiError::Application(ApplicationError::CannotRemoveFirstAdmin) => {
+                "cannot_remove_first_admin"
+            }
             ApiError::Application(ApplicationError::Infrastructure(_)) => "internal_error",
             ApiError::Validation(_) => "validation_error",
+            ApiError::Forbidden => "forbidden",
         };
 
         HttpResponse::build(self.status_code()).json(ErrorBody {

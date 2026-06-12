@@ -1,4 +1,5 @@
-use actix_web::{http::StatusCode, test, web::Data};
+use actix_web::http::StatusCode;
+use actix_web::{http::header, test, web::Data};
 use api::routes;
 use api::AppState;
 use application::users::authenticate_user::AuthenticateUser;
@@ -6,15 +7,26 @@ use application::users::create_user::{CreateUser, PasswordHasher};
 use application::users::deactivate_user::DeactivateUser;
 use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
-use application::users::token::TokenGenerator;
+use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::entities::{Email, User, Username};
 use domain::errors::DomainError;
 use domain::repositories::UserRepository;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use uuid::Uuid;
+
+static INIT_TRACING: Once = Once::new();
+
+fn init_test_tracing() {
+    INIT_TRACING.call_once(|| {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter("info")
+            .with_test_writer()
+            .try_init();
+    });
+}
 
 struct FakeRepo {
     users: Mutex<HashMap<Uuid, User>>,
@@ -78,6 +90,10 @@ impl UserRepository for FakeRepo {
         self.users.lock().unwrap().insert(user.id, user.clone());
         Ok(())
     }
+
+    async fn count(&self) -> Result<i64, DomainError> {
+        Ok(self.users.lock().unwrap().len() as i64)
+    }
 }
 
 struct FakeHasher;
@@ -100,15 +116,33 @@ impl PasswordHasher for FakeHasher {
     }
 }
 
-struct FakeTokenGenerator;
+struct FakeTokenService;
 
 #[async_trait]
-impl TokenGenerator for FakeTokenGenerator {
+impl TokenGenerator for FakeTokenService {
     async fn generate(
         &self,
-        user_id: Uuid,
+        ctx: &AuthContext,
     ) -> Result<String, application::errors::ApplicationError> {
-        Ok(format!("token-{user_id}"))
+        Ok(format!("token-{}", ctx.user_id))
+    }
+}
+
+#[async_trait]
+impl TokenVerifier for FakeTokenService {
+    async fn verify(
+        &self,
+        token: &str,
+    ) -> Result<AuthContext, application::errors::ApplicationError> {
+        let user_id = token
+            .strip_prefix("token-")
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(application::errors::ApplicationError::Unauthorized)?;
+        Ok(AuthContext {
+            user_id,
+            roles: vec!["user".to_string()],
+            scopes: vec!["users:read".to_string(), "users:write".to_string()],
+        })
     }
 }
 
@@ -117,7 +151,7 @@ fn test_state() -> AppState {
         users: Mutex::new(HashMap::new()),
     });
     let hasher: Arc<dyn PasswordHasher> = Arc::new(FakeHasher);
-    let token: Arc<dyn TokenGenerator> = Arc::new(FakeTokenGenerator);
+    let token: Arc<FakeTokenService> = Arc::new(FakeTokenService);
 
     AppState {
         create_user: CreateUser::new(repo.clone(), hasher.clone()),
@@ -125,12 +159,32 @@ fn test_state() -> AppState {
         list_users: ListUsers::new(repo.clone()),
         update_user: UpdateUser::new(repo.clone()),
         deactivate_user: DeactivateUser::new(repo.clone()),
-        authenticate_user: AuthenticateUser::new(repo, hasher, token),
+        authenticate_user: AuthenticateUser::new(repo, hasher, token.clone()),
+        token_validator: token,
     }
+}
+
+async fn login(state: &AppState, email: &str) -> String {
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/login")
+        .set_json(serde_json::json!({ "email": email, "password": "password123" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    body["token"].as_str().unwrap().to_string()
 }
 
 #[actix_rt::test]
 async fn health_returns_ok() {
+    init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
             .app_data(Data::new(test_state()))
@@ -145,6 +199,7 @@ async fn health_returns_ok() {
 
 #[actix_rt::test]
 async fn create_user_returns_201() {
+    init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
             .app_data(Data::new(test_state()))
@@ -170,6 +225,7 @@ async fn create_user_returns_201() {
 
 #[actix_rt::test]
 async fn create_user_returns_400_for_invalid_input() {
+    init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
             .app_data(Data::new(test_state()))
@@ -191,7 +247,43 @@ async fn create_user_returns_400_for_invalid_input() {
 }
 
 #[actix_rt::test]
-async fn get_user_returns_200() {
+async fn get_user_returns_401_when_unauthenticated() {
+    init_test_tracing();
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_state()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/users/{}", Uuid::nil()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[actix_rt::test]
+async fn get_user_returns_401_for_invalid_token() {
+    init_test_tracing();
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_state()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/users/{}", Uuid::nil()))
+        .insert_header((header::AUTHORIZATION, "Bearer not-a-token"))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[actix_rt::test]
+async fn get_user_returns_200_when_authenticated() {
+    init_test_tracing();
     let state = test_state();
     let created = state
         .create_user
@@ -202,6 +294,7 @@ async fn get_user_returns_200() {
         })
         .await
         .unwrap();
+    let token = login(&state, "get@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
@@ -209,8 +302,10 @@ async fn get_user_returns_200() {
             .configure(routes::configure),
     )
     .await;
+
     let req = test::TestRequest::get()
         .uri(&format!("/api/v1/users/{}", created.id))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -219,14 +314,29 @@ async fn get_user_returns_200() {
 
 #[actix_rt::test]
 async fn get_user_returns_404_when_missing() {
+    init_test_tracing();
+    let state = test_state();
+    state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "missing@example.com".to_string(),
+            username: "missing".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+    let token = login(&state, "missing@example.com").await;
+
     let app = test::init_service(
         actix_web::App::new()
-            .app_data(Data::new(test_state()))
+            .app_data(Data::new(state))
             .configure(routes::configure),
     )
     .await;
+
     let req = test::TestRequest::get()
         .uri(&format!("/api/v1/users/{}", Uuid::nil()))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -234,15 +344,48 @@ async fn get_user_returns_404_when_missing() {
 }
 
 #[actix_rt::test]
-async fn list_users_returns_200() {
+async fn list_users_returns_401_when_unauthenticated() {
+    init_test_tracing();
     let app = test::init_service(
         actix_web::App::new()
             .app_data(Data::new(test_state()))
             .configure(routes::configure),
     )
     .await;
+
     let req = test::TestRequest::get()
         .uri("/api/v1/users?page=1&per_page=10")
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[actix_rt::test]
+async fn list_users_returns_200_when_authenticated() {
+    init_test_tracing();
+    let state = test_state();
+    state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "list@example.com".to_string(),
+            username: "listuser".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+    let token = login(&state, "list@example.com").await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/users?page=1&per_page=10")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -250,7 +393,8 @@ async fn list_users_returns_200() {
 }
 
 #[actix_rt::test]
-async fn update_user_returns_200() {
+async fn update_user_returns_200_for_owner() {
+    init_test_tracing();
     let state = test_state();
     let created = state
         .create_user
@@ -261,6 +405,7 @@ async fn update_user_returns_200() {
         })
         .await
         .unwrap();
+    let token = login(&state, "update@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
@@ -268,8 +413,10 @@ async fn update_user_returns_200() {
             .configure(routes::configure),
     )
     .await;
+
     let req = test::TestRequest::patch()
         .uri(&format!("/api/v1/users/{}", created.id))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .set_json(serde_json::json!({ "username": "updateduser" }))
         .to_request();
 
@@ -278,8 +425,60 @@ async fn update_user_returns_200() {
 }
 
 #[actix_rt::test]
-async fn deactivate_user_returns_200_and_blocks_login() {
+async fn update_user_returns_403_for_non_owner() {
+    init_test_tracing();
     let state = test_state();
+    let owner = state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "owner@example.com".to_string(),
+            username: "owner".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+    state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "other@example.com".to_string(),
+            username: "other".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+    let token = login(&state, "other@example.com").await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/api/v1/users/{}", owner.id))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .set_json(serde_json::json!({ "username": "hacked" }))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[actix_rt::test]
+async fn deactivate_user_returns_200_and_blocks_login() {
+    init_test_tracing();
+    let state = test_state();
+    // First user becomes the protected admin.
+    state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "admin@example.com".to_string(),
+            username: "admin".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
     let created = state
         .create_user
         .execute(application::users::dto::CreateUserCommand {
@@ -289,6 +488,7 @@ async fn deactivate_user_returns_200_and_blocks_login() {
         })
         .await
         .unwrap();
+    let token = login(&state, "inactive@example.com").await;
 
     let app = test::init_service(
         actix_web::App::new()
@@ -299,6 +499,7 @@ async fn deactivate_user_returns_200_and_blocks_login() {
 
     let deactivate = test::TestRequest::delete()
         .uri(&format!("/api/v1/users/{}", created.id))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .to_request();
     let resp = test::call_service(&app, deactivate).await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -315,7 +516,38 @@ async fn deactivate_user_returns_200_and_blocks_login() {
 }
 
 #[actix_rt::test]
+async fn deactivate_admin_returns_403() {
+    init_test_tracing();
+    let state = test_state();
+    let admin = state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "admin@example.com".to_string(),
+            username: "admin".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+    let token = login(&state, "admin@example.com").await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/v1/users/{}", admin.id))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[actix_rt::test]
 async fn login_returns_200_for_active_user() {
+    init_test_tracing();
     let state = test_state();
     state
         .create_user
@@ -343,10 +575,14 @@ async fn login_returns_200_for_active_user() {
 
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body.get("token").is_some());
 }
 
 #[actix_rt::test]
 async fn login_returns_401_for_invalid_credentials() {
+    init_test_tracing();
     let state = test_state();
     state
         .create_user

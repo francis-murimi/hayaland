@@ -17,4 +17,5 @@ pub trait UserRepository: Send + Sync {
         active_only: Option<bool>,
     ) -> Result<Vec<User>, DomainError>;
     async fn update(&self, user: &User) -> Result<(), DomainError>;
+    async fn count(&self) -> Result<i64, DomainError>;
 }

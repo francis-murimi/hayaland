@@ -1,0 +1,2 @@
+ALTER TABLE users
+    ADD COLUMN protected BOOLEAN NOT NULL DEFAULT false;
