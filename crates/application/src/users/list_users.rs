@@ -2,6 +2,7 @@ use crate::errors::ApplicationError;
 use crate::users::dto::{ListUsersQuery, ListUsersResult, UserDto};
 use domain::repositories::UserRepository;
 use std::sync::Arc;
+use tracing::instrument;
 
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 20;
@@ -16,6 +17,7 @@ impl ListUsers {
         Self { repo }
     }
 
+    #[instrument(skip(self), fields(page = ?query.page, per_page = ?query.per_page, active_only = ?query.active_only))]
     pub async fn execute(
         &self,
         query: ListUsersQuery,
@@ -27,6 +29,8 @@ impl ListUsers {
             .clamp(1, MAX_PER_PAGE);
         let offset = (page - 1) * per_page;
 
+        tracing::debug!(%page, %per_page, %offset, "listing users");
+
         let users = self
             .repo
             .list(per_page, offset, query.active_only)
@@ -36,6 +40,7 @@ impl ListUsers {
             .collect::<Vec<_>>();
 
         let total = users.len();
+        tracing::info!(%total, %page, %per_page, "listed users");
 
         Ok(ListUsersResult {
             users,

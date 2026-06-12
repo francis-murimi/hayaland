@@ -5,6 +5,7 @@ use crate::users::token::TokenGenerator;
 use domain::entities::Email;
 use domain::repositories::UserRepository;
 use std::sync::Arc;
+use tracing::{info, instrument, warn};
 
 pub struct AuthenticateUser {
     repo: Arc<dyn UserRepository>,
@@ -25,6 +26,7 @@ impl AuthenticateUser {
         }
     }
 
+    #[instrument(skip(self, cmd), fields(email = %cmd.email))]
     pub async fn execute(
         &self,
         cmd: AuthenticateUserCommand,
@@ -42,14 +44,17 @@ impl AuthenticateUser {
             .verify_password(&cmd.password, user.password_hash.as_str())
             .await?;
         if !valid {
+            warn!(user_id = %user.id, "authentication failed: invalid password");
             return Err(ApplicationError::InvalidCredentials);
         }
 
         if !user.is_active {
+            warn!(user_id = %user.id, "authentication failed: account inactive");
             return Err(ApplicationError::AccountInactive);
         }
 
         let token = self.token_generator.generate(user.id).await?;
+        info!(user_id = %user.id, "user authenticated");
         Ok(AuthenticateUserResult {
             user_id: user.id,
             token,

@@ -2,6 +2,7 @@ use crate::errors::ApplicationError;
 use crate::users::dto::UserDto;
 use domain::repositories::UserRepository;
 use std::sync::Arc;
+use tracing::{instrument, warn};
 use uuid::Uuid;
 
 pub struct GetUser {
@@ -13,13 +14,18 @@ impl GetUser {
         Self { repo }
     }
 
+    #[instrument(skip(self), fields(%id))]
     pub async fn execute(&self, id: Uuid) -> Result<UserDto, ApplicationError> {
-        let user = self
-            .repo
-            .find_by_id(id)
-            .await?
-            .ok_or(ApplicationError::NotFound)?;
-        Ok(UserDto::from(user))
+        match self.repo.find_by_id(id).await? {
+            Some(user) => {
+                tracing::debug!(%id, "user found");
+                Ok(UserDto::from(user))
+            }
+            None => {
+                warn!(%id, "user not found");
+                Err(ApplicationError::NotFound)
+            }
+        }
     }
 }
 

@@ -4,6 +4,7 @@ use domain::entities::{Email, Username};
 use domain::repositories::UserRepository;
 use std::sync::Arc;
 use time::OffsetDateTime;
+use tracing::{info, instrument, warn};
 
 pub struct UpdateUser {
     repo: Arc<dyn UserRepository>,
@@ -14,6 +15,7 @@ impl UpdateUser {
         Self { repo }
     }
 
+    #[instrument(skip(self, cmd), fields(%cmd.id))]
     pub async fn execute(&self, cmd: UpdateUserCommand) -> Result<UserDto, ApplicationError> {
         let mut user = self
             .repo
@@ -26,6 +28,7 @@ impl UpdateUser {
             if email != user.email {
                 if let Some(existing) = self.repo.find_by_email(&email).await? {
                     if existing.id != user.id {
+                        warn!(%cmd.id, "duplicate email rejected");
                         return Err(ApplicationError::DuplicateEmail);
                     }
                 }
@@ -39,6 +42,7 @@ impl UpdateUser {
             if username != user.username {
                 if let Some(existing) = self.repo.find_by_username(&username).await? {
                     if existing.id != user.id {
+                        warn!(%cmd.id, "duplicate username rejected");
                         return Err(ApplicationError::DuplicateUsername);
                     }
                 }
@@ -48,6 +52,7 @@ impl UpdateUser {
         }
 
         self.repo.update(&user).await?;
+        info!(id = %cmd.id, "updated user");
         Ok(UserDto::from(user))
     }
 }

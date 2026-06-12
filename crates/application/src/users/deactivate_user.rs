@@ -3,6 +3,7 @@ use crate::users::dto::{DeactivateUserCommand, UserDto};
 use domain::repositories::UserRepository;
 use std::sync::Arc;
 use time::OffsetDateTime;
+use tracing::{info, instrument, warn};
 
 pub struct DeactivateUser {
     repo: Arc<dyn UserRepository>,
@@ -13,6 +14,7 @@ impl DeactivateUser {
         Self { repo }
     }
 
+    #[instrument(skip(self, cmd), fields(%cmd.id))]
     pub async fn execute(&self, cmd: DeactivateUserCommand) -> Result<UserDto, ApplicationError> {
         let mut user = self
             .repo
@@ -20,10 +22,15 @@ impl DeactivateUser {
             .await?
             .ok_or(ApplicationError::NotFound)?;
 
-        user.is_active = false;
-        user.updated_at = OffsetDateTime::now_utc();
+        if !user.is_active {
+            warn!(%cmd.id, "user already inactive");
+        } else {
+            user.is_active = false;
+            user.updated_at = OffsetDateTime::now_utc();
+        }
 
         self.repo.update(&user).await?;
+        info!(id = %cmd.id, "deactivated user");
         Ok(UserDto::from(user))
     }
 }
