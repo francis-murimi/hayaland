@@ -8,7 +8,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .wrap(crate::middleware::auth::Authentication)
             .configure(users::configure)
             .route("/health", web::get().to(health))
-            .route("/auth/login", web::post().to(crate::handlers::login::login)),
+            .route("/auth/login", web::post().to(crate::handlers::login::login))
+            .route("/roles", web::get().to(crate::handlers::roles::list_roles))
+            .route(
+                "/roles/{name}",
+                web::put().to(crate::handlers::roles::update_role_scopes),
+            ),
     );
 }
 

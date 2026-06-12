@@ -7,11 +7,11 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]
-use domain::entities::{Email, PasswordHash, User, Username};
+use domain::entities::{Email, PasswordHash, Role, User, Username};
 #[cfg(test)]
 use domain::errors::DomainError;
 #[cfg(test)]
-use domain::repositories::UserRepository;
+use domain::repositories::{RoleRepository, UserRepository};
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
@@ -131,6 +131,47 @@ impl TokenVerifier for FakeTokenVerifier {
             roles: vec!["user".to_string()],
             scopes: vec!["users:read".to_string(), "users:write".to_string()],
         })
+    }
+}
+
+#[cfg(test)]
+pub struct FakeRoleRepo;
+
+#[cfg(test)]
+#[async_trait]
+impl RoleRepository for FakeRoleRepo {
+    async fn find_by_name(&self, name: &str) -> Result<Option<Role>, DomainError> {
+        match name {
+            "user" => Ok(Some(Role::builtin(
+                "user",
+                vec!["users:read".to_string(), "users:write".to_string()],
+            ))),
+            "admin" => Ok(Some(Role::builtin(
+                "admin",
+                vec![
+                    "users:read".to_string(),
+                    "users:write".to_string(),
+                    "users:admin".to_string(),
+                    "users:delete".to_string(),
+                ],
+            ))),
+            _ => Ok(None),
+        }
+    }
+
+    async fn list(&self) -> Result<Vec<Role>, DomainError> {
+        Ok(vec![
+            self.find_by_name("user").await.unwrap().unwrap(),
+            self.find_by_name("admin").await.unwrap().unwrap(),
+        ])
+    }
+
+    async fn save(&self, _role: &Role) -> Result<(), DomainError> {
+        Ok(())
+    }
+
+    async fn delete(&self, _name: &str) -> Result<(), DomainError> {
+        Ok(())
     }
 }
 

@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT name, scopes, is_builtin\n            FROM role_definitions\n            ORDER BY name\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "role_definitions",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "role_definitions",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "is_builtin",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "role_definitions",
+            "name": "is_builtin"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "aa45b91ba156da5538cbaabbf8515d2d49799f60b365308cc3d9c42c21f4c475"
+}

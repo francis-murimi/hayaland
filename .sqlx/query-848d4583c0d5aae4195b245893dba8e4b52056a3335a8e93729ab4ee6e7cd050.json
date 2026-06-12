@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM role_definitions\n            WHERE name = $1 AND is_builtin = false\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "848d4583c0d5aae4195b245893dba8e4b52056a3335a8e93729ab4ee6e7cd050"
+}

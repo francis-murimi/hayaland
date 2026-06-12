@@ -1,3 +1,4 @@
+use application::roles::dto::RoleDto;
 use application::users::dto::{AuthenticateUserResult, ListUsersResult, UserDto};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -25,6 +26,16 @@ pub struct UpdateUserRequest {
     #[validate(length(min = 3, max = 32, message = "username must be 3-32 characters"))]
     pub username: Option<String>,
     pub roles: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct AssignUserRolesRequest {
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateRoleScopesRequest {
+    pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, Default)]
@@ -86,5 +97,16 @@ impl From<AuthenticateUserResult> for LoginResponse {
             user_id: result.user_id,
             token: result.token,
         }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct RolesResponse {
+    pub roles: Vec<RoleDto>,
+}
+
+impl From<Vec<RoleDto>> for RolesResponse {
+    fn from(roles: Vec<RoleDto>) -> Self {
+        Self { roles }
     }
 }

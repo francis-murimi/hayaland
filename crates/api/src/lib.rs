@@ -6,6 +6,9 @@ pub mod routes;
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use application::roles::assign_user_roles::AssignUserRoles;
+use application::roles::list_roles::ListRoles;
+use application::roles::update_role_scopes::UpdateRoleScopes;
 use application::users::authenticate_user::AuthenticateUser;
 use application::users::create_user::CreateUser;
 use application::users::deactivate_user::DeactivateUser;
@@ -24,8 +27,11 @@ pub struct AppState {
     pub get_user: GetUser,
     pub list_users: ListUsers,
     pub update_user: UpdateUser,
+    pub assign_user_roles: AssignUserRoles,
     pub deactivate_user: DeactivateUser,
     pub authenticate_user: AuthenticateUser,
+    pub list_roles: ListRoles,
+    pub update_role_scopes: UpdateRoleScopes,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

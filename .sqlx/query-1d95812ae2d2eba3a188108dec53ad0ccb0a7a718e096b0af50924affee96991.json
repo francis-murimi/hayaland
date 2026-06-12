@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO role_definitions (name, scopes, is_builtin)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (name) DO UPDATE SET\n                scopes = EXCLUDED.scopes,\n                is_builtin = EXCLUDED.is_builtin\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1d95812ae2d2eba3a188108dec53ad0ccb0a7a718e096b0af50924affee96991"
+}

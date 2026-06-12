@@ -1,15 +1,17 @@
 use crate::errors::ApplicationError;
 use crate::users::create_user::PasswordHasher;
 use crate::users::dto::{AuthenticateUserCommand, AuthenticateUserResult};
-use crate::users::token::{scopes_from_roles, AuthContext, TokenGenerator};
+use crate::users::token::{AuthContext, TokenGenerator};
 use domain::entities::Email;
-use domain::repositories::UserRepository;
+use domain::repositories::{RoleRepository, UserRepository};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{info, instrument, warn};
 
 #[derive(Clone)]
 pub struct AuthenticateUser {
     repo: Arc<dyn UserRepository>,
+    role_repo: Arc<dyn RoleRepository>,
     hasher: Arc<dyn PasswordHasher>,
     token_generator: Arc<dyn TokenGenerator>,
 }
@@ -17,11 +19,13 @@ pub struct AuthenticateUser {
 impl AuthenticateUser {
     pub fn new(
         repo: Arc<dyn UserRepository>,
+        role_repo: Arc<dyn RoleRepository>,
         hasher: Arc<dyn PasswordHasher>,
         token_generator: Arc<dyn TokenGenerator>,
     ) -> Self {
         Self {
             repo,
+            role_repo,
             hasher,
             token_generator,
         }
@@ -54,9 +58,10 @@ impl AuthenticateUser {
             return Err(ApplicationError::AccountInactive);
         }
 
+        let scopes = self.resolve_scopes(&user.roles).await?;
         let ctx = AuthContext {
             user_id: user.id,
-            scopes: scopes_from_roles(&user.roles),
+            scopes,
             roles: user.roles.clone(),
         };
         let token = self.token_generator.generate(&ctx).await?;
@@ -66,16 +71,35 @@ impl AuthenticateUser {
             token,
         })
     }
+
+    async fn resolve_scopes(&self, roles: &[String]) -> Result<Vec<String>, ApplicationError> {
+        let mut scopes = HashSet::new();
+        for role in roles {
+            if let Some(def) = self.role_repo.find_by_name(role).await? {
+                scopes.extend(def.scopes);
+            }
+        }
+        let mut scopes: Vec<_> = scopes.into_iter().collect();
+        scopes.sort();
+        Ok(scopes)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{test_repo_with, test_user, FakeHasher, FakeTokenGenerator};
+    use crate::test_helpers::{
+        test_repo_with, test_user, FakeHasher, FakeRoleRepo, FakeTokenGenerator,
+    };
     use std::sync::Arc;
 
     fn service(repo: Arc<dyn UserRepository>) -> AuthenticateUser {
-        AuthenticateUser::new(repo, Arc::new(FakeHasher), Arc::new(FakeTokenGenerator))
+        AuthenticateUser::new(
+            repo,
+            Arc::new(FakeRoleRepo),
+            Arc::new(FakeHasher),
+            Arc::new(FakeTokenGenerator),
+        )
     }
 
     #[tokio::test]
