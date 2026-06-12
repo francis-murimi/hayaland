@@ -8,6 +8,8 @@ use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::password_reset::request_password_reset::RequestPasswordReset;
+use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -34,6 +36,8 @@ pub struct AppState {
     pub authenticate_user: AuthenticateUser,
     pub verify_email: VerifyEmail,
     pub resend_verification_email: ResendVerificationEmail,
+    pub request_password_reset: RequestPasswordReset,
+    pub reset_password: ResetPassword,
     pub list_roles: ListRoles,
     pub update_role_scopes: UpdateRoleScopes,
     pub token_validator: Arc<dyn TokenVerifier>,

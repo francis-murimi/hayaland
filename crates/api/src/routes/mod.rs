@@ -17,6 +17,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/auth/resend-verification",
                 web::post().to(crate::handlers::resend_verification::resend_verification),
             )
+            .route(
+                "/auth/forgot-password",
+                web::post().to(crate::handlers::forgot_password::forgot_password),
+            )
+            .route(
+                "/auth/reset-password",
+                web::post().to(crate::handlers::reset_password::reset_password),
+            )
             .route("/roles", web::get().to(crate::handlers::roles::list_roles))
             .route(
                 "/roles/{name}",

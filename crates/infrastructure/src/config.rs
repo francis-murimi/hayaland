@@ -60,6 +60,8 @@ pub struct EmailSettings {
     pub verification_base_url: String,
     #[serde(default = "default_token_expiry")]
     pub verification_token_expiry_seconds: i64,
+    #[serde(default = "default_password_reset_token_expiry")]
+    pub password_reset_token_expiry_seconds: i64,
 }
 
 fn default_smtp_port() -> u16 {
@@ -84,6 +86,10 @@ fn default_log_level() -> String {
 
 fn default_token_expiry() -> i64 {
     86400
+}
+
+fn default_password_reset_token_expiry() -> i64 {
+    3600
 }
 
 impl EmailSettings {

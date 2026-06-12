@@ -6,6 +6,8 @@ use application::email::dto::VerifyEmailCommand;
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
 use application::email::EmailSender;
+use application::password_reset::request_password_reset::RequestPasswordReset;
+use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -17,9 +19,11 @@ use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
-use domain::entities::{Email, EmailVerification, Role, User, Username};
+use domain::entities::{Email, EmailVerification, PasswordResetToken, Role, User, Username};
 use domain::errors::DomainError;
-use domain::repositories::{EmailVerificationRepository, RoleRepository, UserRepository};
+use domain::repositories::{
+    EmailVerificationRepository, PasswordResetRepository, RoleRepository, UserRepository,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use uuid::Uuid;
@@ -237,6 +241,42 @@ impl EmailVerificationRepository for FakeEmailVerificationRepo {
 }
 
 #[derive(Default)]
+struct FakePasswordResetRepo {
+    tokens: Mutex<HashMap<String, PasswordResetToken>>,
+}
+
+#[async_trait]
+impl PasswordResetRepository for FakePasswordResetRepo {
+    async fn save(&self, token: &PasswordResetToken) -> Result<(), DomainError> {
+        self.tokens
+            .lock()
+            .unwrap()
+            .insert(token.token.clone(), token.clone());
+        Ok(())
+    }
+
+    async fn find_by_token(&self, token: &str) -> Result<Option<PasswordResetToken>, DomainError> {
+        Ok(self.tokens.lock().unwrap().get(token).cloned())
+    }
+
+    async fn mark_used(&self, token: &str) -> Result<(), DomainError> {
+        if let Some(t) = self.tokens.lock().unwrap().get_mut(token) {
+            t.used = true;
+        }
+        Ok(())
+    }
+
+    async fn invalidate_unused_for_user(&self, user_id: Uuid) -> Result<(), DomainError> {
+        for t in self.tokens.lock().unwrap().values_mut() {
+            if t.user_id == user_id && !t.used {
+                t.used = true;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
 struct FakeEmailSender {
     sent: Mutex<Vec<(String, String, String)>>,
     failing: bool,
@@ -299,6 +339,8 @@ fn test_fixtures() -> TestFixtures {
     });
     let verification_repo: Arc<FakeEmailVerificationRepo> =
         Arc::new(FakeEmailVerificationRepo::default());
+    let password_reset_repo: Arc<FakePasswordResetRepo> =
+        Arc::new(FakePasswordResetRepo::default());
     let role_repo: Arc<dyn RoleRepository> = seeded_role_repo();
     let hasher: Arc<dyn PasswordHasher> = Arc::new(FakeHasher);
     let sender: Arc<FakeEmailSender> = Arc::new(FakeEmailSender::default());
@@ -324,7 +366,7 @@ fn test_fixtures() -> TestFixtures {
         authenticate_user: AuthenticateUser::new(
             repo.clone(),
             role_repo.clone(),
-            hasher,
+            hasher.clone(),
             token.clone(),
         ),
         verify_email: VerifyEmail::new(repo.clone(), verification_repo.clone()),
@@ -335,6 +377,14 @@ fn test_fixtures() -> TestFixtures {
             "https://app.hayaland.local".to_string(),
             86400,
         ),
+        request_password_reset: RequestPasswordReset::new(
+            repo.clone(),
+            password_reset_repo.clone(),
+            sender.clone(),
+            "https://app.hayaland.local".to_string(),
+            3600,
+        ),
+        reset_password: ResetPassword::new(repo.clone(), password_reset_repo, hasher.clone()),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
         token_validator: token,
@@ -348,11 +398,20 @@ fn test_fixtures() -> TestFixtures {
 }
 
 fn extract_token_for_email(sender: &FakeEmailSender, email: &str) -> String {
+    extract_token_for_email_with_path(sender, email, "/auth/verify-email?token=")
+}
+
+fn extract_reset_token_for_email(sender: &FakeEmailSender, email: &str) -> String {
+    extract_token_for_email_with_path(sender, email, "/auth/reset-password?token=")
+}
+
+fn extract_token_for_email_with_path(sender: &FakeEmailSender, email: &str, path: &str) -> String {
     let sent = sender.sent.lock().unwrap();
     let (_, _, body) = sent
         .iter()
-        .find(|(to, _, _)| to == email)
-        .expect("verification email not sent");
+        .rev()
+        .find(|(to, _, body)| to == email && body.contains(path))
+        .expect("email not sent");
     body.split("token=")
         .nth(1)
         .unwrap()
@@ -1121,4 +1180,158 @@ async fn non_admin_cannot_assign_roles() {
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[actix_rt::test]
+async fn forgot_password_returns_202_for_existing_user() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    fixtures
+        .state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "forgot@example.com".to_string(),
+            username: "forgot".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/forgot-password")
+        .set_json(serde_json::json!({ "email": "forgot@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+}
+
+#[actix_rt::test]
+async fn forgot_password_returns_202_for_unknown_email() {
+    init_test_tracing();
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_fixtures().state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/forgot-password")
+        .set_json(serde_json::json!({ "email": "unknown@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+}
+
+#[actix_rt::test]
+async fn reset_password_changes_password_and_allows_login() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    fixtures
+        .state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "reset@example.com".to_string(),
+            username: "reset".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let forgot = test::TestRequest::post()
+        .uri("/api/v1/auth/forgot-password")
+        .set_json(serde_json::json!({ "email": "reset@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, forgot).await;
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    let token = extract_reset_token_for_email(&fixtures.sender, "reset@example.com");
+
+    let reset = test::TestRequest::post()
+        .uri("/api/v1/auth/reset-password")
+        .set_json(serde_json::json!({ "token": token, "password": "newpassword123" }))
+        .to_request();
+    let resp = test::call_service(&app, reset).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let login = test::TestRequest::post()
+        .uri("/api/v1/auth/login")
+        .set_json(serde_json::json!({
+            "email": "reset@example.com",
+            "password": "newpassword123"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, login).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[actix_rt::test]
+async fn reset_password_returns_400_for_invalid_token() {
+    init_test_tracing();
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(test_fixtures().state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/v1/auth/reset-password")
+        .set_json(serde_json::json!({ "token": "not-a-token", "password": "newpassword123" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[actix_rt::test]
+async fn reset_password_returns_400_for_short_password() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    fixtures
+        .state
+        .create_user
+        .execute(application::users::dto::CreateUserCommand {
+            email: "short@example.com".to_string(),
+            username: "short".to_string(),
+            password: "password123".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let forgot = test::TestRequest::post()
+        .uri("/api/v1/auth/forgot-password")
+        .set_json(serde_json::json!({ "email": "short@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, forgot).await;
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    let token = extract_reset_token_for_email(&fixtures.sender, "short@example.com");
+
+    let reset = test::TestRequest::post()
+        .uri("/api/v1/auth/reset-password")
+        .set_json(serde_json::json!({ "token": token, "password": "short" }))
+        .to_request();
+    let resp = test::call_service(&app, reset).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }

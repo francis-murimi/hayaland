@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE password_resets\n            SET used = true\n            WHERE token = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "08e465967f36a183af3696726c4271742a084faa66ddced449e6ff9bd1706b01"
+}

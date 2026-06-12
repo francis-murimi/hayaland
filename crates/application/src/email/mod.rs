@@ -26,6 +26,22 @@ pub fn build_verification_email(
     (subject, body)
 }
 
+pub fn build_password_reset_email(
+    base_url: &str,
+    token: &str,
+    expiry_minutes: i64,
+) -> (String, String) {
+    let subject = "Reset your Hayaland password".to_string();
+    let link = format!("{base_url}/api/v1/auth/reset-password?token={token}");
+    let body = format!(
+        "You requested a password reset for your Hayaland account.\n\n\
+        Click the link below to set a new password:\n\
+        {link}\n\n\
+        This link expires in {expiry_minutes} minutes. If you did not request this, you can safely ignore this email."
+    );
+    (subject, body)
+}
+
 pub fn generate_verification_token() -> String {
     let mut bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);

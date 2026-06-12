@@ -9,11 +9,15 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]
-use domain::entities::{Email, EmailVerification, PasswordHash, Role, User, Username};
+use domain::entities::{
+    Email, EmailVerification, PasswordHash, PasswordResetToken, Role, User, Username,
+};
 #[cfg(test)]
 use domain::errors::DomainError;
 #[cfg(test)]
-use domain::repositories::{EmailVerificationRepository, RoleRepository, UserRepository};
+use domain::repositories::{
+    EmailVerificationRepository, PasswordResetRepository, RoleRepository, UserRepository,
+};
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
@@ -249,6 +253,56 @@ impl EmailVerificationRepository for FakeEmailVerificationRepo {
         for v in self.verifications.lock().unwrap().values_mut() {
             if v.user_id == user_id && !v.used {
                 v.used = true;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakePasswordResetRepo {
+    tokens: Mutex<HashMap<String, PasswordResetToken>>,
+}
+
+#[cfg(test)]
+impl FakePasswordResetRepo {
+    pub async fn count_for_user(&self, user_id: Uuid) -> usize {
+        self.tokens
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|t| t.user_id == user_id)
+            .count()
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl PasswordResetRepository for FakePasswordResetRepo {
+    async fn save(&self, token: &PasswordResetToken) -> Result<(), DomainError> {
+        self.tokens
+            .lock()
+            .unwrap()
+            .insert(token.token.clone(), token.clone());
+        Ok(())
+    }
+
+    async fn find_by_token(&self, token: &str) -> Result<Option<PasswordResetToken>, DomainError> {
+        Ok(self.tokens.lock().unwrap().get(token).cloned())
+    }
+
+    async fn mark_used(&self, token: &str) -> Result<(), DomainError> {
+        if let Some(t) = self.tokens.lock().unwrap().get_mut(token) {
+            t.used = true;
+        }
+        Ok(())
+    }
+
+    async fn invalidate_unused_for_user(&self, user_id: Uuid) -> Result<(), DomainError> {
+        for t in self.tokens.lock().unwrap().values_mut() {
+            if t.user_id == user_id && !t.used {
+                t.used = true;
             }
         }
         Ok(())

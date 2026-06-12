@@ -41,7 +41,8 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
-            ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken) => {
+            ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken)
+            | ApiError::Application(ApplicationError::InvalidOrExpiredPasswordResetToken) => {
                 StatusCode::BAD_REQUEST
             }
         }
@@ -65,7 +66,8 @@ impl ResponseError for ApiError {
                 "cannot_remove_first_admin"
             }
             ApiError::Application(ApplicationError::EmailSendFailed) => "email_send_failed",
-            ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken) => {
+            ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken)
+            | ApiError::Application(ApplicationError::InvalidOrExpiredPasswordResetToken) => {
                 "invalid_or_expired_token"
             }
             ApiError::Application(ApplicationError::AlreadyVerified) => "already_verified",

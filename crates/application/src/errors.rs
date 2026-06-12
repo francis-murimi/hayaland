@@ -42,6 +42,9 @@ pub enum ApplicationError {
     #[error("invalid or expired verification token")]
     InvalidOrExpiredVerificationToken,
 
+    #[error("invalid or expired password reset token")]
+    InvalidOrExpiredPasswordResetToken,
+
     #[error("account is already verified")]
     AlreadyVerified,
 

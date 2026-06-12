@@ -2,6 +2,8 @@ use anyhow::Context;
 use api::{run, AppState};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::password_reset::request_password_reset::RequestPasswordReset;
+use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -11,13 +13,16 @@ use application::users::deactivate_user::DeactivateUser;
 use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
-use domain::repositories::{EmailVerificationRepository, RoleRepository, UserRepository};
+use domain::repositories::{
+    EmailVerificationRepository, PasswordResetRepository, RoleRepository, UserRepository,
+};
 use infrastructure::{
     config, database,
     email::SmtpEmailSender,
     migrations,
     repositories::{
-        PostgresEmailVerificationRepository, PostgresRoleRepository, PostgresUserRepository,
+        PostgresEmailVerificationRepository, PostgresPasswordResetRepository,
+        PostgresRoleRepository, PostgresUserRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -47,6 +52,8 @@ async fn main() -> anyhow::Result<()> {
     let repo: Arc<dyn UserRepository> = Arc::new(PostgresUserRepository::new(pool.clone()));
     let verification_repo: Arc<dyn EmailVerificationRepository> =
         Arc::new(PostgresEmailVerificationRepository::new(pool.clone()));
+    let password_reset_repo: Arc<dyn PasswordResetRepository> =
+        Arc::new(PostgresPasswordResetRepository::new(pool.clone()));
     let role_repo: Arc<dyn RoleRepository> = Arc::new(PostgresRoleRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
@@ -73,17 +80,25 @@ async fn main() -> anyhow::Result<()> {
         authenticate_user: AuthenticateUser::new(
             repo.clone(),
             role_repo.clone(),
-            hasher,
+            hasher.clone(),
             token_service.clone(),
         ),
         verify_email: VerifyEmail::new(repo.clone(), verification_repo.clone()),
         resend_verification_email: ResendVerificationEmail::new(
-            repo,
+            repo.clone(),
             verification_repo,
-            email_sender,
-            settings.email.verification_base_url,
+            email_sender.clone(),
+            settings.email.verification_base_url.clone(),
             settings.email.verification_token_expiry_seconds,
         ),
+        request_password_reset: RequestPasswordReset::new(
+            repo.clone(),
+            password_reset_repo.clone(),
+            email_sender.clone(),
+            settings.email.verification_base_url.clone(),
+            settings.email.password_reset_token_expiry_seconds,
+        ),
+        reset_password: ResetPassword::new(repo.clone(), password_reset_repo, hasher),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
         token_validator: token_service,

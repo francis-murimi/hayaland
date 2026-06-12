@@ -1,7 +1,9 @@
 pub mod postgres_email_verification_repository;
+pub mod postgres_password_reset_repository;
 pub mod postgres_role_repository;
 pub mod postgres_user_repository;
 
 pub use postgres_email_verification_repository::PostgresEmailVerificationRepository;
+pub use postgres_password_reset_repository::PostgresPasswordResetRepository;
 pub use postgres_role_repository::PostgresRoleRepository;
 pub use postgres_user_repository::PostgresUserRepository;

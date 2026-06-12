@@ -1,10 +1,12 @@
 pub mod assign_user_roles;
 pub mod create_user;
 pub mod deactivate_user;
+pub mod forgot_password;
 pub mod get_user;
 pub mod list_users;
 pub mod login;
 pub mod resend_verification;
+pub mod reset_password;
 pub mod roles;
 pub mod update_user;
 pub mod verify_email;

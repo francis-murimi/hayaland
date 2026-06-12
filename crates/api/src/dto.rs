@@ -116,3 +116,9 @@ pub struct VerifyEmailResponse {
     pub status: String,
     pub user_id: Uuid,
 }
+
+#[derive(Debug, Serialize)]
+pub struct ResetPasswordResponse {
+    pub status: String,
+    pub user_id: Uuid,
+}
