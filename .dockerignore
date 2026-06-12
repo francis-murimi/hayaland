@@ -1,0 +1,5 @@
+target
+.pgdata
+.env
+*.log
+.github

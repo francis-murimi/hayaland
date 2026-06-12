@@ -1,0 +1,33 @@
+[package]
+name = "infrastructure"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+domain = { workspace = true }
+application = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+time.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+sqlx.workspace = true
+config.workspace = true
+secrecy.workspace = true
+argon2.workspace = true
+password-hash.workspace = true
+rand.workspace = true
+jsonwebtoken.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true

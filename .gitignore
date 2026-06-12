@@ -1,0 +1,6 @@
+/target
+/.pgdata
+*.log
+.env
+Cargo.lock
+# Keep .sqlx/ — it holds compile-time query metadata for offline builds.
