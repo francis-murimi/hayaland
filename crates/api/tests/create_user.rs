@@ -6,6 +6,10 @@ use application::email::dto::VerifyEmailCommand;
 use application::email::queue::{EmailQueue, EmailQueueItem};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::parties::{
+    AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
+    SearchParties, SoftDeleteParty, UpdateParty,
+};
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
@@ -19,10 +23,16 @@ use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
-use domain::entities::{Email, EmailVerification, PasswordResetToken, Role, User, Username};
+use domain::entities::{
+    DealRole, Email, EmailVerification, PasswordHash, PasswordResetToken, Role, RoleProfile, User,
+    Username,
+};
+use domain::entities::{Party, PartyType, UserPartyMembership};
 use domain::errors::DomainError;
+use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
-    EmailVerificationRepository, PasswordResetRepository, RoleRepository, UserRepository,
+    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
+    UserRepository,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
@@ -281,6 +291,194 @@ struct FakeEmailQueue {
     items: Mutex<Vec<(String, String, String)>>,
 }
 
+#[derive(Default)]
+struct FakePartyRepo {
+    parties: Mutex<HashMap<Uuid, Party>>,
+    memberships: Mutex<Vec<UserPartyMembership>>,
+    roles: Mutex<Vec<(Uuid, DealRole, RoleProfile)>>,
+}
+
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let earth_radius_km = 6371.0;
+    let d_lat = (lat2 - lat1).to_radians();
+    let d_lon = (lon2 - lon1).to_radians();
+    let a = (d_lat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
+    2.0 * earth_radius_km * a.sqrt().atan2((1.0 - a).sqrt())
+}
+
+#[async_trait]
+impl PartyRepository for FakePartyRepo {
+    async fn create(&self, party: &Party) -> Result<(), DomainError> {
+        self.parties.lock().unwrap().insert(party.id, party.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Party>, DomainError> {
+        Ok(self.parties.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn find_by_email(&self, email: &Email) -> Result<Option<Party>, DomainError> {
+        Ok(self
+            .parties
+            .lock()
+            .unwrap()
+            .values()
+            .find(|p| p.email == *email)
+            .cloned())
+    }
+
+    async fn update(&self, party: &Party) -> Result<(), DomainError> {
+        self.parties.lock().unwrap().insert(party.id, party.clone());
+        Ok(())
+    }
+
+    async fn soft_delete(&self, id: Uuid) -> Result<(), DomainError> {
+        if let Some(p) = self.parties.lock().unwrap().get_mut(&id) {
+            p.is_active = false;
+        }
+        Ok(())
+    }
+
+    async fn list(&self, criteria: &PartySearchCriteria) -> Result<Vec<Party>, DomainError> {
+        let mut parties: Vec<Party> = self.parties.lock().unwrap().values().cloned().collect();
+        if let Some(q) = &criteria.query {
+            let q = q.to_lowercase();
+            parties.retain(|p| {
+                p.display_name.as_str().to_lowercase().contains(&q)
+                    || p.email.as_str().to_lowercase().contains(&q)
+            });
+        }
+        if let Some(true) = criteria.active_only {
+            parties.retain(|p| p.is_active);
+        }
+        if let Some(min) = criteria.min_trust_score {
+            parties.retain(|p| p.trust_score >= min);
+        }
+        if let Some(max) = criteria.max_trust_score {
+            parties.retain(|p| p.trust_score <= max);
+        }
+        if let (Some(lat), Some(lng), Some(radius)) =
+            (criteria.latitude, criteria.longitude, criteria.radius_km)
+        {
+            parties.retain(|p| {
+                p.location
+                    .map(|loc| haversine_km(loc.latitude, loc.longitude, lat, lng) <= radius)
+                    .unwrap_or(false)
+            });
+        }
+        Ok(parties)
+    }
+
+    async fn count(&self, criteria: &PartySearchCriteria) -> Result<i64, DomainError> {
+        self.list(criteria).await.map(|p| p.len() as i64)
+    }
+
+    async fn add_role(
+        &self,
+        party_id: Uuid,
+        role: DealRole,
+        profile: RoleProfile,
+    ) -> Result<(), DomainError> {
+        let mut roles = self.roles.lock().unwrap();
+        if let Some(entry) = roles
+            .iter_mut()
+            .find(|(pid, r, _)| *pid == party_id && *r == role)
+        {
+            entry.2 = profile;
+        } else {
+            roles.push((party_id, role, profile));
+        }
+        Ok(())
+    }
+
+    async fn remove_role(&self, party_id: Uuid, role: DealRole) -> Result<(), DomainError> {
+        self.roles
+            .lock()
+            .unwrap()
+            .retain(|(pid, r, _)| !(*pid == party_id && *r == role));
+        Ok(())
+    }
+
+    async fn list_roles(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Vec<(DealRole, RoleProfile)>, DomainError> {
+        Ok(self
+            .roles
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(pid, _, _)| *pid == party_id)
+            .map(|(_, r, p)| (*r, p.clone()))
+            .collect())
+    }
+
+    async fn has_role(&self, party_id: Uuid, role: DealRole) -> Result<bool, DomainError> {
+        Ok(self
+            .roles
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(pid, r, _)| *pid == party_id && *r == role))
+    }
+
+    async fn count_active_deals_for_role(
+        &self,
+        _party_id: Uuid,
+        _role: DealRole,
+    ) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn count_active_deals(&self, _party_id: Uuid) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn add_membership(&self, membership: &UserPartyMembership) -> Result<(), DomainError> {
+        self.memberships.lock().unwrap().push(membership.clone());
+        Ok(())
+    }
+
+    async fn list_memberships_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<(UserPartyMembership, Party)>, DomainError> {
+        let parties = self.parties.lock().unwrap();
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.user_id == user_id)
+            .map(|m| {
+                (
+                    m.clone(),
+                    parties.get(&m.party_id).cloned().expect("party exists"),
+                )
+            })
+            .collect())
+    }
+
+    async fn find_membership(
+        &self,
+        user_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<Option<UserPartyMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.user_id == user_id && m.party_id == party_id)
+            .cloned())
+    }
+
+    async fn touch(&self, _id: Uuid, _updated_at: time::OffsetDateTime) -> Result<(), DomainError> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl EmailQueue for FakeEmailQueue {
     async fn enqueue(
@@ -338,6 +536,7 @@ fn test_fixtures() -> TestFixtures {
     let role_repo: Arc<dyn RoleRepository> = seeded_role_repo();
     let hasher: Arc<dyn PasswordHasher> = Arc::new(FakeHasher);
     let queue: Arc<FakeEmailQueue> = Arc::new(FakeEmailQueue::default());
+    let party_repo: Arc<FakePartyRepo> = Arc::new(FakePartyRepo::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -381,6 +580,15 @@ fn test_fixtures() -> TestFixtures {
         reset_password: ResetPassword::new(repo.clone(), password_reset_repo, hasher.clone()),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
+        create_party: CreateParty::new(party_repo.clone()),
+        get_party: GetParty::new(party_repo.clone()),
+        list_my_parties: ListMyParties::new(party_repo.clone()),
+        search_parties: SearchParties::new(party_repo.clone()),
+        update_party: UpdateParty::new(party_repo.clone()),
+        delete_party: SoftDeleteParty::new(party_repo.clone()),
+        add_party_role: AddPartyRole::new(party_repo.clone()),
+        remove_party_role: RemovePartyRole::new(party_repo.clone()),
+        list_party_roles: ListPartyRoles::new(party_repo.clone()),
         token_validator: token,
     };
 
@@ -1323,5 +1531,398 @@ async fn reset_password_returns_400_for_short_password() {
         .set_json(serde_json::json!({ "token": token, "password": "short" }))
         .to_request();
     let resp = test::call_service(&app, reset).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ============================================================================
+// Party handler tests
+// ============================================================================
+
+fn seed_user(fixtures: &TestFixtures, email: &str, role: &str) -> Uuid {
+    let id = Uuid::now_v7();
+    let username = email.split('@').next().unwrap();
+    let mut user = User::new(
+        id,
+        Email::new(email).unwrap(),
+        Username::new(username).unwrap(),
+        PasswordHash::new("hash".to_string()).unwrap(),
+    );
+    user.is_active = true;
+    user.roles = vec![role.to_string()];
+    fixtures.repo.users.lock().unwrap().insert(id, user);
+    id
+}
+
+fn bearer(id: Uuid) -> String {
+    format!("Bearer token-{id}")
+}
+
+macro_rules! create_party {
+    ($app:expr, $token:expr, $email:expr) => {{
+        let req = test::TestRequest::post()
+            .uri("/api/v1/parties")
+            .insert_header((header::AUTHORIZATION, $token.to_string()))
+            .set_json(serde_json::json!({
+                "display_name": "Green Acres Farm",
+                "email": $email,
+                "party_type": "ORGANIZATION",
+                "roles": []
+            }))
+            .to_request();
+        let resp = test::call_service($app, req).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
+    }};
+}
+
+#[actix_rt::test]
+async fn create_party_returns_201() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let id = create_party!(&app, &bearer(owner_id), "farm@example.com");
+    assert!(!id.to_string().is_empty());
+}
+
+#[actix_rt::test]
+async fn get_party_returns_200_for_owner() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner2@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let party_id = create_party!(&app, &bearer(owner_id), "farm2@example.com");
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["email"], "farm2@example.com");
+}
+
+#[actix_rt::test]
+async fn list_my_parties_returns_owned_parties() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner3@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    create_party!(&app, &bearer(owner_id), "farm3a@example.com");
+    create_party!(&app, &bearer(owner_id), "farm3b@example.com");
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/parties/me")
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["parties"].as_array().unwrap().len(), 2);
+}
+
+#[actix_rt::test]
+async fn list_parties_requires_admin() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let user_id = seed_user(&fixtures, "regular@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/parties")
+        .insert_header((header::AUTHORIZATION, bearer(user_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[actix_rt::test]
+async fn search_parties_returns_results_for_admin() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let admin_id = seed_user(&fixtures, "admin@example.com", "admin");
+    let owner_id = seed_user(&fixtures, "owner4@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    create_party!(&app, &bearer(owner_id), "searchable@example.com");
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/parties/search?q=searchable")
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["parties"].as_array().unwrap().len(), 1);
+}
+
+#[actix_rt::test]
+async fn update_party_returns_200_for_owner() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner5@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let party_id = create_party!(&app, &bearer(owner_id), "farm5@example.com");
+
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/v1/parties/{party_id}"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .set_json(serde_json::json!({ "display_name": "Updated Farm" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["display_name"], "Updated Farm");
+}
+
+#[actix_rt::test]
+async fn add_and_remove_party_role() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner6@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let party_id = create_party!(&app, &bearer(owner_id), "farm6@example.com");
+
+    let add = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/roles"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .set_json(serde_json::json!({
+            "role_type": "SUPPLIER",
+            "profile": {
+                "type": "SUPPLIER",
+                "resource_type_ids": [],
+                "preferred_compensation": [],
+                "insurance_verified": false
+            }
+        }))
+        .to_request();
+    let resp = test::call_service(&app, add).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let list = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/roles"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, list).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["roles"].as_array().unwrap().len(), 1);
+
+    let remove = test::TestRequest::delete()
+        .uri(&format!("/api/v1/parties/{party_id}/roles/SUPPLIER"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, remove).await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[actix_rt::test]
+async fn delete_party_returns_204_for_owner() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner7@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let party_id = create_party!(&app, &bearer(owner_id), "farm7@example.com");
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/v1/parties/{party_id}"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+async fn seed_party_with_location(
+    state: &AppState,
+    owner_id: Uuid,
+    email: &str,
+    lat: f64,
+    lng: f64,
+) -> Uuid {
+    let result = state
+        .create_party
+        .execute(application::parties::dto::CreatePartyCommand {
+            actor_user_id: owner_id,
+            party_type: PartyType::Organization,
+            display_name: "Located Farm".to_string(),
+            email: email.to_string(),
+            phone: None,
+            tax_id: None,
+            primary_domain_id: None,
+            latitude: Some(lat),
+            longitude: Some(lng),
+            service_radius_km: Some(10.0),
+            roles: vec![],
+        })
+        .await
+        .unwrap();
+    result.id
+}
+
+#[actix_rt::test]
+async fn search_parties_with_radius_returns_results() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let admin_id = seed_user(&fixtures, "admin_radius@example.com", "admin");
+    let owner_id = seed_user(&fixtures, "owner_radius@example.com", "user");
+
+    seed_party_with_location(
+        &fixtures.state,
+        owner_id,
+        "within@example.com",
+        37.7749,
+        -122.4194,
+    )
+    .await;
+    seed_party_with_location(
+        &fixtures.state,
+        owner_id,
+        "outside@example.com",
+        40.7128,
+        -74.0060,
+    )
+    .await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/parties/search?lat=37.7749&lng=-122.4194&radiusKm=10")
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["parties"].as_array().unwrap().len(), 1);
+    assert_eq!(body["total"], 1);
+}
+
+#[actix_rt::test]
+async fn nearby_parties_returns_parties_within_radius() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner_nearby@example.com", "user");
+
+    seed_party_with_location(
+        &fixtures.state,
+        owner_id,
+        "nearby_a@example.com",
+        37.7750,
+        -122.4195,
+    )
+    .await;
+    seed_party_with_location(
+        &fixtures.state,
+        owner_id,
+        "nearby_b@example.com",
+        37.7760,
+        -122.4200,
+    )
+    .await;
+    seed_party_with_location(
+        &fixtures.state,
+        owner_id,
+        "far_away@example.com",
+        48.8566,
+        2.3522,
+    )
+    .await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/parties/nearby?lat=37.7749&lng=-122.4194&radiusKm=1")
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["parties"].as_array().unwrap().len(), 2);
+    assert_eq!(body["total"], 2);
+}
+
+#[actix_rt::test]
+async fn nearby_parties_requires_radius_and_coordinates() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner_badgeo@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/parties/nearby?lat=37.7749")
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }

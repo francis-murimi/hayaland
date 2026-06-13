@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse};
 
+pub mod parties;
 pub mod users;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -7,6 +8,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/api/v1")
             .wrap(crate::middleware::auth::Authentication)
             .configure(users::configure)
+            .configure(parties::configure)
             .route("/health", web::get().to(health))
             .route("/auth/login", web::post().to(crate::handlers::login::login))
             .route(

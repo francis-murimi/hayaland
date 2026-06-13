@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as count\n            FROM parties\n            WHERE ($1::text IS NULL OR display_name ILIKE $1 OR email ILIKE $1)\n              AND ($2::text[] IS NULL OR party_type = ANY($2))\n              AND ($3::text[] IS NULL OR verification_status = ANY($3))\n              AND ($4::bool IS NULL OR is_active = $4)\n              AND ($5::float8 IS NULL OR trust_score >= $5)\n              AND ($6::float8 IS NULL OR trust_score <= $6)\n              AND ($7::uuid IS NULL OR primary_domain_id = $7)\n              AND ($8::text[] IS NULL OR id IN (\n                  SELECT party_id FROM party_roles WHERE role_type = ANY($8) AND is_active = true\n              ))\n              AND ($9::float8 IS NULL OR $10::float8 IS NULL OR $11::float8 IS NULL\n                  OR ST_DWithin(\n                      location_geo,\n                      ST_SetSRID(ST_MakePoint($10, $9), 4326)::geography,\n                      $11 * 1000\n                  ))\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "TextArray",
+        "Bool",
+        "Float8",
+        "Float8",
+        "Uuid",
+        "TextArray",
+        "Float8",
+        "Float8",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b82defd91b3f4e14969131fd431c2b59a8a8186aa7a72716cfd4bc4feb48f2d9"
+}

@@ -27,8 +27,12 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::WeakPassword { .. })
             | ApiError::Validation(_) => StatusCode::BAD_REQUEST,
             ApiError::Application(ApplicationError::DuplicateEmail)
-            | ApiError::Application(ApplicationError::DuplicateUsername) => StatusCode::CONFLICT,
-            ApiError::Application(ApplicationError::NotFound) => StatusCode::NOT_FOUND,
+            | ApiError::Application(ApplicationError::DuplicateUsername)
+            | ApiError::Application(ApplicationError::DuplicatePartyEmail)
+            | ApiError::Application(ApplicationError::DuplicatePartyRole) => StatusCode::CONFLICT,
+            ApiError::Application(ApplicationError::NotFound)
+            | ApiError::Application(ApplicationError::PartyNotFound)
+            | ApiError::Application(ApplicationError::RoleNotFound) => StatusCode::NOT_FOUND,
             ApiError::Application(ApplicationError::InvalidCredentials)
             | ApiError::Application(ApplicationError::AccountInactive)
             | ApiError::Application(ApplicationError::Unauthorized) => StatusCode::UNAUTHORIZED,
@@ -37,6 +41,10 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::CannotRemoveFirstAdmin)
             | ApiError::Application(ApplicationError::AlreadyVerified)
             | ApiError::Forbidden => StatusCode::FORBIDDEN,
+            ApiError::Application(ApplicationError::PartyHasActiveDeals)
+            | ApiError::Application(ApplicationError::PartyRoleHasActiveDeals) => {
+                StatusCode::CONFLICT
+            }
             ApiError::Application(ApplicationError::EmailSendFailed)
             | ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -53,8 +61,12 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::Validation(_)) => "validation_error",
             ApiError::Application(ApplicationError::DuplicateEmail) => "duplicate_email",
             ApiError::Application(ApplicationError::DuplicateUsername) => "duplicate_username",
+            ApiError::Application(ApplicationError::DuplicatePartyEmail) => "duplicate_party_email",
+            ApiError::Application(ApplicationError::DuplicatePartyRole) => "duplicate_party_role",
             ApiError::Application(ApplicationError::WeakPassword { .. }) => "weak_password",
             ApiError::Application(ApplicationError::NotFound) => "not_found",
+            ApiError::Application(ApplicationError::PartyNotFound) => "party_not_found",
+            ApiError::Application(ApplicationError::RoleNotFound) => "role_not_found",
             ApiError::Application(ApplicationError::InvalidCredentials) => "invalid_credentials",
             ApiError::Application(ApplicationError::AccountInactive) => "account_inactive",
             ApiError::Application(ApplicationError::Unauthorized) => "unauthorized",
@@ -71,6 +83,12 @@ impl ResponseError for ApiError {
                 "invalid_or_expired_token"
             }
             ApiError::Application(ApplicationError::AlreadyVerified) => "already_verified",
+            ApiError::Application(ApplicationError::PartyHasActiveDeals) => {
+                "party_has_active_deals"
+            }
+            ApiError::Application(ApplicationError::PartyRoleHasActiveDeals) => {
+                "party_role_has_active_deals"
+            }
             ApiError::Application(ApplicationError::Infrastructure(_)) => "internal_error",
             ApiError::Validation(_) => "validation_error",
             ApiError::Forbidden => "forbidden",

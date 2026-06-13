@@ -12,13 +12,19 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
-    Email, EmailVerification, PasswordHash, PasswordResetToken, Role, User, Username,
+    DealRole, Email, EmailVerification, PasswordHash, PasswordResetToken, Role, RoleProfile, User,
+    Username,
 };
+#[cfg(test)]
+use domain::entities::{Party, UserPartyMembership};
 #[cfg(test)]
 use domain::errors::DomainError;
 #[cfg(test)]
+use domain::repositories::PartySearchCriteria;
+#[cfg(test)]
 use domain::repositories::{
-    EmailVerificationRepository, PasswordResetRepository, RoleRepository, UserRepository,
+    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
+    UserRepository,
 };
 #[cfg(test)]
 use std::collections::HashMap;
@@ -371,6 +377,161 @@ impl EmailSender for FakeEmailSender {
             .lock()
             .unwrap()
             .push((to.to_string(), subject.to_string(), body.to_string()));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakePartyRepo {
+    pub parties: Mutex<HashMap<Uuid, Party>>,
+    pub memberships: Mutex<Vec<UserPartyMembership>>,
+    pub roles: Mutex<Vec<(Uuid, DealRole, RoleProfile)>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl PartyRepository for FakePartyRepo {
+    async fn create(&self, party: &Party) -> Result<(), DomainError> {
+        self.parties.lock().unwrap().insert(party.id, party.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Party>, DomainError> {
+        Ok(self.parties.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn find_by_email(&self, email: &Email) -> Result<Option<Party>, DomainError> {
+        Ok(self
+            .parties
+            .lock()
+            .unwrap()
+            .values()
+            .find(|p| p.email == *email)
+            .cloned())
+    }
+
+    async fn update(&self, party: &Party) -> Result<(), DomainError> {
+        self.parties.lock().unwrap().insert(party.id, party.clone());
+        Ok(())
+    }
+
+    async fn soft_delete(&self, id: Uuid) -> Result<(), DomainError> {
+        if let Some(p) = self.parties.lock().unwrap().get_mut(&id) {
+            p.is_active = false;
+        }
+        Ok(())
+    }
+
+    async fn list(&self, _criteria: &PartySearchCriteria) -> Result<Vec<Party>, DomainError> {
+        Ok(self.parties.lock().unwrap().values().cloned().collect())
+    }
+
+    async fn count(&self, _criteria: &PartySearchCriteria) -> Result<i64, DomainError> {
+        Ok(self.parties.lock().unwrap().len() as i64)
+    }
+
+    async fn add_role(
+        &self,
+        party_id: Uuid,
+        role: DealRole,
+        profile: RoleProfile,
+    ) -> Result<(), DomainError> {
+        let mut roles = self.roles.lock().unwrap();
+        if let Some(entry) = roles
+            .iter_mut()
+            .find(|(pid, r, _)| *pid == party_id && *r == role)
+        {
+            entry.2 = profile;
+        } else {
+            roles.push((party_id, role, profile));
+        }
+        Ok(())
+    }
+
+    async fn remove_role(&self, party_id: Uuid, role: DealRole) -> Result<(), DomainError> {
+        self.roles
+            .lock()
+            .unwrap()
+            .retain(|(pid, r, _)| !(*pid == party_id && *r == role));
+        Ok(())
+    }
+
+    async fn list_roles(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Vec<(DealRole, RoleProfile)>, DomainError> {
+        Ok(self
+            .roles
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(pid, _, _)| *pid == party_id)
+            .map(|(_, r, p)| (*r, p.clone()))
+            .collect())
+    }
+
+    async fn has_role(&self, party_id: Uuid, role: DealRole) -> Result<bool, DomainError> {
+        Ok(self
+            .roles
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(pid, r, _)| *pid == party_id && *r == role))
+    }
+
+    async fn count_active_deals_for_role(
+        &self,
+        _party_id: Uuid,
+        _role: DealRole,
+    ) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn count_active_deals(&self, _party_id: Uuid) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn add_membership(&self, membership: &UserPartyMembership) -> Result<(), DomainError> {
+        self.memberships.lock().unwrap().push(membership.clone());
+        Ok(())
+    }
+
+    async fn list_memberships_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<(UserPartyMembership, Party)>, DomainError> {
+        let parties = self.parties.lock().unwrap();
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.user_id == user_id)
+            .map(|m| {
+                (
+                    m.clone(),
+                    parties.get(&m.party_id).cloned().expect("party exists"),
+                )
+            })
+            .collect())
+    }
+
+    async fn find_membership(
+        &self,
+        user_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<Option<UserPartyMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.user_id == user_id && m.party_id == party_id)
+            .cloned())
+    }
+
+    async fn touch(&self, _id: Uuid, _updated_at: time::OffsetDateTime) -> Result<(), DomainError> {
         Ok(())
     }
 }

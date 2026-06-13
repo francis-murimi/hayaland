@@ -164,6 +164,91 @@ A Party that bridges the gap between Supplier and Consumer by providing enabling
 - `serviceRadiusKm` defines how far the Party is willing to operate from its primary location.
 - Used by the matching engine for geographic fit scoring.
 
+### 4.4 PostGIS Proximity & Radius Coverage
+
+Party locations are stored as PostGIS `GEOGRAPHY(POINT, 4326)` so the platform can perform accurate, index-backed geospatial queries. The `serviceRadiusKm` field turns each Party into a service circle on the earth's surface.
+
+#### Coverage model
+
+A Party *covers* a target coordinate when the geodesic distance from the Party's primary location to the target is less than or equal to `serviceRadiusKm`:
+
+```sql
+ST_DWithin(
+  parties.location_geo,
+  ST_SetSRID(ST_MakePoint(target_longitude, target_latitude), 4326)::geography,
+  parties.service_radius_km * 1000  -- metres
+)
+```
+
+If `serviceRadiusKm` is `NULL`, the Party is treated as having no geographic restriction and can match anywhere (or be excluded from radius-filtered searches, depending on product policy).
+
+#### Radius-filtered search
+
+Search accepts explicit numeric parameters rather than a single composite string:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `lat` | Decimal | Target latitude (`-90` to `90`). |
+| `lng` | Decimal | Target longitude (`-180` to `180`). |
+| `radiusKm` | Decimal | How far from `(lat, lng)` to look. |
+
+Example:
+
+```http
+GET /api/v1/parties/search?role=SUPPLIER&lat=37.7749&lng=-122.4194&radiusKm=50
+```
+
+The query planner uses the `GIST` index on `location_geo` when the filter is expressed as:
+
+```sql
+WHERE ST_DWithin(
+  location_geo,
+  ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography,
+  $radiusKm * 1000
+)
+```
+
+#### Proximity ranking
+
+For discovery and match scoring, results are ordered by distance from the target:
+
+```sql
+ORDER BY ST_Distance(
+  location_geo,
+  ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography
+)
+```
+
+The API response includes the computed distance:
+
+```json
+{
+  "partyId": "...",
+  "displayName": "Sunset Valley Farm",
+  "distanceKm": 12.4,
+  "withinServiceRadius": true
+}
+```
+
+#### Fallback for non-PostGIS deployments
+
+If PostGIS is unavailable, the schema falls back to plain `latitude` and `longitude` columns. The application layer can use the haversine formula for approximate radius filtering. This fallback is less accurate and cannot use a spatial index, so it should only be used in development or legacy environments.
+
+#### Required migration
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+ALTER TABLE parties
+  ADD COLUMN location_geo GEOGRAPHY(POINT, 4326);
+
+UPDATE parties
+SET location_geo = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+
+CREATE INDEX idx_parties_geo ON parties USING GIST(location_geo);
+```
+
 ---
 
 ## 5. User-to-Party Relationship
@@ -447,7 +532,9 @@ Parties can be searched and filtered to find potential deal partners.
 | `domainCategoryId` | UUID | Filter by primary domain category. |
 | `verificationStatus` | String | `VERIFIED`, `UNVERIFIED`, etc. |
 | `minTrustScore` | Decimal | Minimum trust score (0–5). |
-| `location` | String | Geo search: `lat,long,radiusKm`. |
+| `lat` | Decimal | Target latitude for proximity search. |
+| `lng` | Decimal | Target longitude for proximity search. |
+| `radiusKm` | Decimal | Search radius around `(lat, lng)`. |
 | `available` | Boolean | Only parties available for new deals. |
 
 ### 12.2 Search Response
@@ -465,6 +552,8 @@ Search results include public fields only:
   "location": { "city": "San Jose", "region": "CA" },
   "primaryDomainName": "Agriculture",
   "matchScore": 0.92,
+  "distanceKm": 12.4,
+  "withinServiceRadius": true,
   "resourceSummary": "25 acres farmland, organic certified"
 }
 ```
@@ -615,10 +704,36 @@ Returns all Parties associated with the authenticated User.
 ### 13.4 Search Parties
 
 ```http
-GET /api/v1/parties/search?role=SUPPLIER&domainCategoryId=...&minTrustScore=4.0
+GET /api/v1/parties/search?role=SUPPLIER&domainCategoryId=...&minTrustScore=4.0&lat=37.7749&lng=-122.4194&radiusKm=50
 ```
 
-### 13.5 Party Group Management
+Query parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `q` | String | Free-text search on display name / email. |
+| `role` | Enum[] | Filter by active party role. |
+| `partyType` | String[] | `INDIVIDUAL`, `ORGANIZATION`, `PARTY_GROUP`. |
+| `verificationStatus` | String[] | `UNVERIFIED`, `PENDING`, `VERIFIED`, `REJECTED`. |
+| `minTrustScore` | Decimal | Minimum trust score. |
+| `maxTrustScore` | Decimal | Maximum trust score. |
+| `lat` | Decimal | Target latitude for radius filter. |
+| `lng` | Decimal | Target longitude for radius filter. |
+| `radiusKm` | Decimal | Search radius in kilometres. Requires `lat` and `lng`. |
+| `limit` / `offset` | Integer | Pagination. |
+
+### 13.5 Nearby Parties
+
+Dedicated endpoint for geographic discovery. Returns active parties whose primary location falls within the requested radius, ordered by distance from the target point.
+
+```http
+GET /api/v1/parties/nearby?lat=37.7749&lng=-122.4194&radiusKm=10&role=SUPPLIER
+Authorization: Bearer <jwt>
+```
+
+`lat`, `lng`, and `radiusKm` are all required. The response uses the same shape as `/parties/search`.
+
+### 13.6 Party Group Management
 
 #### Create Party Group
 
@@ -700,6 +815,9 @@ GET /api/v1/parties/{partyId}/verification
 ### 14.1 Core Tables
 
 ```sql
+-- Enable PostGIS for GEOGRAPHY columns and GIST spatial indexes.
+CREATE EXTENSION IF NOT EXISTS postgis;
+
 CREATE TABLE parties (
     id UUID PRIMARY KEY,
     party_type TEXT NOT NULL CHECK (party_type IN ('INDIVIDUAL','ORGANIZATION','PARTY_GROUP')),
@@ -709,7 +827,11 @@ CREATE TABLE parties (
     tax_id TEXT,
     verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
     primary_domain_id UUID REFERENCES categories(id),
-    location_geo GEOGRAPHY(POINT),
+    -- Plain columns are kept as a fallback when PostGIS is not installed.
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    -- PostGIS column is the source of truth for geospatial queries.
+    location_geo GEOGRAPHY(POINT, 4326),
     location_address JSONB,
     service_radius_km DECIMAL,
     trust_score DECIMAL NOT NULL DEFAULT 0,
@@ -835,6 +957,7 @@ CREATE TABLE trust_scores (
 ```sql
 CREATE INDEX idx_parties_email ON parties(email);
 CREATE INDEX idx_parties_type ON parties(party_type);
+-- Spatial GIST index enables fast radius and nearest-neighbour queries.
 CREATE INDEX idx_parties_geo ON parties USING GIST(location_geo);
 CREATE INDEX idx_parties_primary_domain ON parties(primary_domain_id);
 CREATE INDEX idx_user_party_memberships_user ON user_party_memberships(user_id);

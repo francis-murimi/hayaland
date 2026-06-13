@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE parties\n            SET party_type = $1,\n                display_name = $2,\n                email = $3,\n                phone = $4,\n                tax_id = $5,\n                verification_status = $6,\n                primary_domain_id = $7,\n                latitude = $8,\n                longitude = $9,\n                location_geo = CASE\n                    WHEN $8::float8 IS NOT NULL AND $9::float8 IS NOT NULL\n                    THEN ST_SetSRID(ST_MakePoint($9, $8), 4326)::geography\n                    ELSE NULL\n                END,\n                service_radius_km = $10,\n                trust_score = $11,\n                total_deals_completed = $12,\n                total_deals_initiated = $13,\n                is_active = $14,\n                created_at = $15,\n                updated_at = $16\n            WHERE id = $17\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "citext",
+            "kind": "Simple"
+          }
+        },
+        {
+          "Custom": {
+            "name": "citext",
+            "kind": "Simple"
+          }
+        },
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Int4",
+        "Int4",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "57a8948cf262413dce213be37033fcb9266b21d4e9e25123fad75f4e7d440de0"
+}

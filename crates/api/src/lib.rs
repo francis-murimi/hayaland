@@ -8,6 +8,10 @@ use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::parties::{
+    AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
+    SearchParties, SoftDeleteParty, UpdateParty,
+};
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
@@ -40,6 +44,15 @@ pub struct AppState {
     pub reset_password: ResetPassword,
     pub list_roles: ListRoles,
     pub update_role_scopes: UpdateRoleScopes,
+    pub create_party: CreateParty,
+    pub get_party: GetParty,
+    pub list_my_parties: ListMyParties,
+    pub search_parties: SearchParties,
+    pub update_party: UpdateParty,
+    pub delete_party: SoftDeleteParty,
+    pub add_party_role: AddPartyRole,
+    pub remove_party_role: RemovePartyRole,
+    pub list_party_roles: ListPartyRoles,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

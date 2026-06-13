@@ -2,6 +2,10 @@ use anyhow::Context;
 use api::{run, AppState};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::parties::{
+    AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
+    SearchParties, SoftDeleteParty, UpdateParty,
+};
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::roles::assign_user_roles::AssignUserRoles;
@@ -14,15 +18,16 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
 use domain::repositories::{
-    EmailVerificationRepository, PasswordResetRepository, RoleRepository, UserRepository,
+    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
+    UserRepository,
 };
 use infrastructure::{
     config, database,
     email::{run_worker, InMemoryEmailQueue, SmtpEmailSender},
     migrations,
     repositories::{
-        PostgresEmailVerificationRepository, PostgresPasswordResetRepository,
-        PostgresRoleRepository, PostgresUserRepository,
+        PostgresEmailVerificationRepository, PostgresPartyRepository,
+        PostgresPasswordResetRepository, PostgresRoleRepository, PostgresUserRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -54,7 +59,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PostgresEmailVerificationRepository::new(pool.clone()));
     let password_reset_repo: Arc<dyn PasswordResetRepository> =
         Arc::new(PostgresPasswordResetRepository::new(pool.clone()));
-    let role_repo: Arc<dyn RoleRepository> = Arc::new(PostgresRoleRepository::new(pool));
+    let role_repo: Arc<dyn RoleRepository> = Arc::new(PostgresRoleRepository::new(pool.clone()));
+    let party_repo: Arc<dyn PartyRepository> = Arc::new(PostgresPartyRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -111,6 +117,15 @@ async fn main() -> anyhow::Result<()> {
         reset_password: ResetPassword::new(repo.clone(), password_reset_repo, hasher),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
+        create_party: CreateParty::new(party_repo.clone()),
+        get_party: GetParty::new(party_repo.clone()),
+        list_my_parties: ListMyParties::new(party_repo.clone()),
+        search_parties: SearchParties::new(party_repo.clone()),
+        update_party: UpdateParty::new(party_repo.clone()),
+        delete_party: SoftDeleteParty::new(party_repo.clone()),
+        add_party_role: AddPartyRole::new(party_repo.clone()),
+        remove_party_role: RemovePartyRole::new(party_repo.clone()),
+        list_party_roles: ListPartyRoles::new(party_repo),
         token_validator: token_service,
     };
 

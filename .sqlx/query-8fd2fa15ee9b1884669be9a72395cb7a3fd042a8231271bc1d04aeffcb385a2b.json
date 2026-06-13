@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO party_roles (id, party_id, role_type, profile, is_active, assigned_at)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ON CONFLICT (party_id, role_type) DO UPDATE SET\n                profile = EXCLUDED.profile,\n                is_active = true,\n                assigned_at = EXCLUDED.assigned_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8fd2fa15ee9b1884669be9a72395cb7a3fd042a8231271bc1d04aeffcb385a2b"
+}

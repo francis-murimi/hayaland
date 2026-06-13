@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT role_type, profile\n            FROM party_roles\n            WHERE party_id = $1 AND is_active = true\n            ORDER BY assigned_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "party_roles",
+            "name": "role_type"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "profile",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "party_roles",
+            "name": "profile"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "09e5116909cb1142919d0e75149b1b77f5ab04122054fadf8483d50391217a26"
+}

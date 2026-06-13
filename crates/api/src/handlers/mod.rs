@@ -5,6 +5,7 @@ pub mod forgot_password;
 pub mod get_user;
 pub mod list_users;
 pub mod login;
+pub mod parties;
 pub mod resend_verification;
 pub mod reset_password;
 pub mod roles;

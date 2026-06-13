@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE party_roles\n            SET is_active = false\n            WHERE party_id = $1 AND role_type = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "344477b8ca432cd7024dca7cc3daae18e9c836ba9db8cdafff1d89591a7c8c1f"
+}

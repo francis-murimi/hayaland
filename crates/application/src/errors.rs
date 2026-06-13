@@ -9,11 +9,29 @@ pub enum ApplicationError {
     #[error("user not found")]
     NotFound,
 
+    #[error("party not found")]
+    PartyNotFound,
+
+    #[error("role not found")]
+    RoleNotFound,
+
     #[error("a user with this email already exists")]
     DuplicateEmail,
 
     #[error("a user with this username already exists")]
     DuplicateUsername,
+
+    #[error("a party with this email already exists")]
+    DuplicatePartyEmail,
+
+    #[error("this role is already assigned to the party")]
+    DuplicatePartyRole,
+
+    #[error("party role has active deals and cannot be removed")]
+    PartyRoleHasActiveDeals,
+
+    #[error("party has active deals and cannot be deleted")]
+    PartyHasActiveDeals,
 
     #[error("weak password: {message}")]
     WeakPassword { message: String },
@@ -57,11 +75,25 @@ impl From<DomainError> for ApplicationError {
         match err {
             DomainError::InvalidEmail { message }
             | DomainError::InvalidUsername { message }
-            | DomainError::InvalidPasswordHash { message } => {
+            | DomainError::InvalidPasswordHash { message }
+            | DomainError::InvalidDisplayName { message }
+            | DomainError::InvalidPhone { message }
+            | DomainError::InvalidLocation { message }
+            | DomainError::InvalidPartyType { message }
+            | DomainError::InvalidVerificationStatus { message }
+            | DomainError::InvalidDealRole { message }
+            | DomainError::InvalidPartyMembershipRole { message }
+            | DomainError::InvalidSearchParameters { message } => {
                 ApplicationError::Validation(vec![message])
             }
             DomainError::DuplicateEmail => ApplicationError::DuplicateEmail,
             DomainError::DuplicateUsername => ApplicationError::DuplicateUsername,
+            DomainError::DuplicatePartyEmail => ApplicationError::DuplicatePartyEmail,
+            DomainError::DuplicatePartyRole => ApplicationError::DuplicatePartyRole,
+            DomainError::PartyNotFound => ApplicationError::PartyNotFound,
+            DomainError::RoleNotFound => ApplicationError::RoleNotFound,
+            DomainError::PartyRoleHasActiveDeals => ApplicationError::PartyRoleHasActiveDeals,
+            DomainError::PartyHasActiveDeals => ApplicationError::PartyHasActiveDeals,
             DomainError::RepositoryError(msg) => ApplicationError::Infrastructure(msg),
         }
     }

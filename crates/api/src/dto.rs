@@ -1,3 +1,4 @@
+use application::parties::dto::{PartyResult, PartySummaryResult, RoleResult, SearchPartiesResult};
 use application::roles::dto::RoleDto;
 use application::users::dto::{AuthenticateUserResult, ListUsersResult, UserDto};
 use serde::{Deserialize, Serialize};
@@ -121,4 +122,111 @@ pub struct VerifyEmailResponse {
 pub struct ResetPasswordResponse {
     pub status: String,
     pub user_id: Uuid,
+}
+
+// ============================================================================
+// Party DTOs
+// ============================================================================
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreatePartyRequest {
+    #[validate(length(min = 3, max = 120, message = "display name must be 3-120 characters"))]
+    pub display_name: String,
+    #[validate(email(message = "invalid email"))]
+    pub email: String,
+    pub party_type: String,
+    pub phone: Option<String>,
+    pub tax_id: Option<String>,
+    pub primary_domain_id: Option<Uuid>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub service_radius_km: Option<f64>,
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdatePartyRequest {
+    #[validate(length(min = 3, max = 120, message = "display name must be 3-120 characters"))]
+    pub display_name: Option<String>,
+    #[validate(email(message = "invalid email"))]
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub tax_id: Option<String>,
+    pub primary_domain_id: Option<Uuid>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub service_radius_km: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct AddPartyRoleRequest {
+    pub role_type: String,
+    pub profile: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Validate, Default)]
+pub struct SearchPartiesQuery {
+    pub q: Option<String>,
+    pub roles: Option<Vec<String>>,
+    pub party_types: Option<Vec<String>>,
+    pub verification_statuses: Option<Vec<String>>,
+    pub min_trust_score: Option<f64>,
+    pub max_trust_score: Option<f64>,
+    pub primary_domain_id: Option<Uuid>,
+    pub active_only: Option<bool>,
+    #[serde(rename = "lat")]
+    pub latitude: Option<f64>,
+    #[serde(rename = "lng")]
+    pub longitude: Option<f64>,
+    #[serde(rename = "radiusKm")]
+    pub radius_km: Option<f64>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PartyResponse {
+    #[serde(flatten)]
+    pub party: PartyResult,
+}
+
+impl From<PartyResult> for PartyResponse {
+    fn from(party: PartyResult) -> Self {
+        Self { party }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PartiesResponse {
+    pub parties: Vec<PartySummaryResult>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+impl From<SearchPartiesResult> for PartiesResponse {
+    fn from(result: SearchPartiesResult) -> Self {
+        Self {
+            parties: result.parties,
+            total: result.total,
+            limit: result.limit,
+            offset: result.offset,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PartyRolesResponse {
+    pub roles: Vec<RoleResult>,
+}
+
+impl From<Vec<RoleResult>> for PartyRolesResponse {
+    fn from(roles: Vec<RoleResult>) -> Self {
+        Self { roles }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct MyPartiesResponse {
+    pub parties: Vec<PartySummaryResult>,
 }
