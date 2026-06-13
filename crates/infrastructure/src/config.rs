@@ -122,6 +122,110 @@ impl DatabaseSettings {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn defaults_are_reasonable() {
+        assert_eq!(default_smtp_port(), 587);
+        assert_eq!(default_max_connections(), 10);
+        assert_eq!(default_host(), "127.0.0.1");
+        assert_eq!(default_port(), 8080);
+        assert_eq!(default_log_level(), "info");
+        assert_eq!(default_token_expiry(), 86400);
+        assert_eq!(default_password_reset_token_expiry(), 3600);
+        assert_eq!(default_email_max_retries(), 3);
+        assert_eq!(default_email_retry_base_delay_ms(), 500);
+        assert_eq!(default_email_retry_max_delay_ms(), 5000);
+    }
+
+    #[test]
+    fn email_settings_exposes_verification_base_url() {
+        let settings = EmailSettings {
+            smtp_host: "smtp.example.com".to_string(),
+            verification_base_url: "https://app.example.com".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(settings.verification_base_url(), "https://app.example.com");
+    }
+
+    #[test]
+    fn database_settings_returns_connection_string() {
+        let settings = DatabaseSettings {
+            url: SecretString::from("postgres://u@host/db"),
+            max_connections: 5,
+        };
+        assert_eq!(
+            settings.connection_string().expose_secret(),
+            "postgres://u@host/db"
+        );
+    }
+
+    #[test]
+    fn with_database_url_fallback_uses_database_url_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("DATABASE_URL", "postgres://fallback@host/db");
+
+        let settings = DatabaseSettings {
+            url: SecretString::from(""),
+            max_connections: 5,
+        };
+        let mut settings = Settings {
+            database: settings,
+            server: ServerSettings {
+                host: default_host(),
+                port: default_port(),
+            },
+            log: Default::default(),
+            auth: AuthSettings {
+                secret: SecretString::from("secret"),
+                token_expiry_seconds: default_token_expiry(),
+            },
+            email: Default::default(),
+        };
+        settings.database.url = SecretString::from("");
+
+        let settings = settings.with_database_url_fallback().unwrap();
+        assert_eq!(
+            settings.database.url.expose_secret(),
+            "postgres://fallback@host/db"
+        );
+
+        std::env::remove_var("DATABASE_URL");
+    }
+
+    #[test]
+    fn with_database_url_fallback_keeps_existing_url() {
+        let settings = DatabaseSettings {
+            url: SecretString::from("postgres://existing@host/db"),
+            max_connections: 5,
+        };
+        let settings = Settings {
+            database: settings,
+            server: ServerSettings {
+                host: default_host(),
+                port: default_port(),
+            },
+            log: Default::default(),
+            auth: AuthSettings {
+                secret: SecretString::from("secret"),
+                token_expiry_seconds: default_token_expiry(),
+            },
+            email: Default::default(),
+        };
+
+        let settings = settings.with_database_url_fallback().unwrap();
+        assert_eq!(
+            settings.database.url.expose_secret(),
+            "postgres://existing@host/db"
+        );
+    }
+}
+
 pub fn configuration() -> Result<Settings, ConfigError> {
     let base_path = env::current_dir().expect("failed to determine current directory");
     let config_dir = base_path.join("config");

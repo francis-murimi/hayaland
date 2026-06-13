@@ -137,3 +137,148 @@ impl From<DomainError> for ApplicationError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domain::errors::DomainError;
+
+    #[test]
+    fn validation_domain_errors_map_to_validation_application_error() {
+        let cases = vec![
+            DomainError::InvalidEmail {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidUsername {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidPasswordHash {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidDisplayName {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidPhone {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidLocation {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidPartyType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidVerificationStatus {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidDealRole {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidPartyMembershipRole {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidSearchParameters {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidDealStatus {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidParticipationStatus {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidDealTitle {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidValueDistribution {
+                message: "bad".to_string(),
+            },
+        ];
+
+        for case in cases {
+            let app_err: ApplicationError = case.into();
+            assert!(
+                matches!(app_err, ApplicationError::Validation(_)),
+                "expected Validation variant for {app_err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn duplicate_domain_errors_map_to_duplicate_application_errors() {
+        assert!(matches!(
+            ApplicationError::from(DomainError::DuplicateEmail),
+            ApplicationError::DuplicateEmail
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::DuplicateUsername),
+            ApplicationError::DuplicateUsername
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::DuplicatePartyEmail),
+            ApplicationError::DuplicatePartyEmail
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::DuplicatePartyRole),
+            ApplicationError::DuplicatePartyRole
+        ));
+    }
+
+    #[test]
+    fn not_found_domain_errors_map_to_not_found_application_error() {
+        let cases = vec![
+            DomainError::TermNotFound,
+            DomainError::MilestoneNotFound,
+            DomainError::AgreementNotFound,
+            DomainError::TransactionNotFound,
+            DomainError::WalletNotFound,
+            DomainError::MatchNotFound,
+        ];
+
+        for case in cases {
+            assert!(matches!(
+                ApplicationError::from(case),
+                ApplicationError::NotFound
+            ));
+        }
+    }
+
+    #[test]
+    fn deal_specific_domain_errors_map_correctly() {
+        assert!(matches!(
+            ApplicationError::from(DomainError::DealNotFound),
+            ApplicationError::DealNotFound
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::DealParticipationNotFound),
+            ApplicationError::DealParticipationNotFound
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::InsufficientPermissions),
+            ApplicationError::DealAccessDenied
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::WinWinWinValidationFailed {
+                violations: vec!["x".to_string()]
+            }),
+            ApplicationError::WinWinWinValidationFailed { .. }
+        ));
+    }
+
+    #[test]
+    fn state_transition_and_repository_errors_map_correctly() {
+        assert_eq!(
+            ApplicationError::from(DomainError::InvalidStateTransition {
+                from: "DRAFT".to_string(),
+                to: "COMMITTED".to_string(),
+            }),
+            ApplicationError::InvalidStateTransition {
+                from: "DRAFT".to_string(),
+                to: "COMMITTED".to_string(),
+            }
+        );
+
+        assert_eq!(
+            ApplicationError::from(DomainError::RepositoryError("boom".to_string())),
+            ApplicationError::Infrastructure("boom".to_string())
+        );
+    }
+}
