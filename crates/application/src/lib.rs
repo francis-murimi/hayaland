@@ -1,3 +1,4 @@
+pub mod deals;
 pub mod email;
 pub mod errors;
 pub mod parties;

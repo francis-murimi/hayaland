@@ -584,6 +584,28 @@ impl PartyRepository for PostgresPartyRepository {
 
         Ok(())
     }
+
+    async fn is_user_member_of_party(
+        &self,
+        user_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        let exists = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM user_party_memberships
+                WHERE user_id = $1 AND party_id = $2 AND is_active = true
+            ) as "exists!"
+            "#,
+            user_id,
+            party_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(exists)
+    }
 }
 
 #[derive(sqlx::FromRow)]

@@ -252,6 +252,19 @@ impl PartyRepository for FakePartyRepo {
     ) -> Result<(), domain::errors::DomainError> {
         Ok(())
     }
+
+    async fn is_user_member_of_party(
+        &self,
+        user_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, domain::errors::DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m.user_id == user_id && m.party_id == party_id && m.is_active))
+    }
 }
 
 fn sample_party_cmd(display_name: &str, email: &str) -> CreatePartyCommand {

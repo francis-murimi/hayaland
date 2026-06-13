@@ -94,4 +94,11 @@ pub trait PartyRepository: Send + Sync {
 
     /// Update the `updated_at` timestamp of a party.
     async fn touch(&self, id: Uuid, updated_at: OffsetDateTime) -> Result<(), DomainError>;
+
+    /// Check whether a user is an active member of a party.
+    async fn is_user_member_of_party(
+        &self,
+        user_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, DomainError>;
 }

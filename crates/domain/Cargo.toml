@@ -14,6 +14,7 @@ uuid.workspace = true
 time.workspace = true
 async-trait.workspace = true
 validator.workspace = true
+rust_decimal.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

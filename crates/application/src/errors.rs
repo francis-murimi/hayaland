@@ -33,6 +33,24 @@ pub enum ApplicationError {
     #[error("party has active deals and cannot be deleted")]
     PartyHasActiveDeals,
 
+    #[error("deal not found")]
+    DealNotFound,
+
+    #[error("deal participation not found")]
+    DealParticipationNotFound,
+
+    #[error("invalid state transition from {from} to {to}")]
+    InvalidStateTransition { from: String, to: String },
+
+    #[error("invalid value distribution: {message}")]
+    InvalidValueDistribution { message: String },
+
+    #[error("win-win-win validation failed")]
+    WinWinWinValidationFailed { violations: Vec<String> },
+
+    #[error("deal access denied")]
+    DealAccessDenied,
+
     #[error("weak password: {message}")]
     WeakPassword { message: String },
 
@@ -94,6 +112,27 @@ impl From<DomainError> for ApplicationError {
             DomainError::RoleNotFound => ApplicationError::RoleNotFound,
             DomainError::PartyRoleHasActiveDeals => ApplicationError::PartyRoleHasActiveDeals,
             DomainError::PartyHasActiveDeals => ApplicationError::PartyHasActiveDeals,
+            DomainError::InvalidDealStatus { message }
+            | DomainError::InvalidParticipationStatus { message }
+            | DomainError::InvalidDealTitle { message }
+            | DomainError::InvalidValueDistribution { message } => {
+                ApplicationError::Validation(vec![message])
+            }
+            DomainError::InvalidStateTransition { from, to } => {
+                ApplicationError::InvalidStateTransition { from, to }
+            }
+            DomainError::DealNotFound => ApplicationError::DealNotFound,
+            DomainError::DealParticipationNotFound => ApplicationError::DealParticipationNotFound,
+            DomainError::TermNotFound
+            | DomainError::MilestoneNotFound
+            | DomainError::AgreementNotFound
+            | DomainError::TransactionNotFound
+            | DomainError::WalletNotFound
+            | DomainError::MatchNotFound => ApplicationError::NotFound,
+            DomainError::InsufficientPermissions => ApplicationError::DealAccessDenied,
+            DomainError::WinWinWinValidationFailed { violations } => {
+                ApplicationError::WinWinWinValidationFailed { violations }
+            }
             DomainError::RepositoryError(msg) => ApplicationError::Infrastructure(msg),
         }
     }

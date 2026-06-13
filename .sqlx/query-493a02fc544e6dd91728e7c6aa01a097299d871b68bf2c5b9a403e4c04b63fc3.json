@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE deals\n            SET total_deal_value = $1,\n                platform_fee_percentage = $2,\n                platform_fee_amount = $3,\n                updated_at = $4\n            WHERE id = $5\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Numeric",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "493a02fc544e6dd91728e7c6aa01a097299d871b68bf2c5b9a403e4c04b63fc3"
+}

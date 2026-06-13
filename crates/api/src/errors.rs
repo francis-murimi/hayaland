@@ -32,7 +32,11 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::DuplicatePartyRole) => StatusCode::CONFLICT,
             ApiError::Application(ApplicationError::NotFound)
             | ApiError::Application(ApplicationError::PartyNotFound)
-            | ApiError::Application(ApplicationError::RoleNotFound) => StatusCode::NOT_FOUND,
+            | ApiError::Application(ApplicationError::RoleNotFound)
+            | ApiError::Application(ApplicationError::DealNotFound)
+            | ApiError::Application(ApplicationError::DealParticipationNotFound) => {
+                StatusCode::NOT_FOUND
+            }
             ApiError::Application(ApplicationError::InvalidCredentials)
             | ApiError::Application(ApplicationError::AccountInactive)
             | ApiError::Application(ApplicationError::Unauthorized) => StatusCode::UNAUTHORIZED,
@@ -42,9 +46,13 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::AlreadyVerified)
             | ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::PartyHasActiveDeals)
-            | ApiError::Application(ApplicationError::PartyRoleHasActiveDeals) => {
+            | ApiError::Application(ApplicationError::PartyRoleHasActiveDeals)
+            | ApiError::Application(ApplicationError::InvalidStateTransition { .. })
+            | ApiError::Application(ApplicationError::InvalidValueDistribution { .. })
+            | ApiError::Application(ApplicationError::WinWinWinValidationFailed { .. }) => {
                 StatusCode::CONFLICT
             }
+            ApiError::Application(ApplicationError::DealAccessDenied) => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::EmailSendFailed)
             | ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -89,6 +97,20 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::PartyRoleHasActiveDeals) => {
                 "party_role_has_active_deals"
             }
+            ApiError::Application(ApplicationError::DealNotFound) => "deal_not_found",
+            ApiError::Application(ApplicationError::DealParticipationNotFound) => {
+                "deal_participation_not_found"
+            }
+            ApiError::Application(ApplicationError::InvalidStateTransition { .. }) => {
+                "invalid_state_transition"
+            }
+            ApiError::Application(ApplicationError::InvalidValueDistribution { .. }) => {
+                "invalid_value_distribution"
+            }
+            ApiError::Application(ApplicationError::WinWinWinValidationFailed { .. }) => {
+                "win_win_win_validation_failed"
+            }
+            ApiError::Application(ApplicationError::DealAccessDenied) => "deal_access_denied",
             ApiError::Application(ApplicationError::Infrastructure(_)) => "internal_error",
             ApiError::Validation(_) => "validation_error",
             ApiError::Forbidden => "forbidden",

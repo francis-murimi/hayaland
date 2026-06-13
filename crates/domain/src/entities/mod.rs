@@ -1,3 +1,4 @@
+pub mod deal;
 pub mod email_verification;
 pub mod party;
 pub mod party_role;
@@ -5,6 +6,7 @@ pub mod password_reset_token;
 pub mod role;
 pub mod user;
 
+pub use deal::*;
 pub use email_verification::*;
 pub use party::*;
 pub use party_role::*;

@@ -1,9 +1,11 @@
+pub mod postgres_deal_repository;
 pub mod postgres_email_verification_repository;
 pub mod postgres_party_repository;
 pub mod postgres_password_reset_repository;
 pub mod postgres_role_repository;
 pub mod postgres_user_repository;
 
+pub use postgres_deal_repository::PostgresDealRepository;
 pub use postgres_email_verification_repository::PostgresEmailVerificationRepository;
 pub use postgres_party_repository::PostgresPartyRepository;
 pub use postgres_password_reset_repository::PostgresPasswordResetRepository;

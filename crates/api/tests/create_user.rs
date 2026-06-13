@@ -2,6 +2,9 @@ use actix_web::http::StatusCode;
 use actix_web::{http::header, test, web::Data};
 use api::routes;
 use api::AppState;
+use application::deals::{
+    CreateDeal, ExecuteTransition, GetDeal, ListDeals, SubmitDeal, UpdateDeal,
+};
 use application::email::dto::VerifyEmailCommand;
 use application::email::queue::{EmailQueue, EmailQueueItem};
 use application::email::resend_verification::ResendVerificationEmail;
@@ -31,8 +34,8 @@ use domain::entities::{Party, PartyType, UserPartyMembership};
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
-    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
-    UserRepository,
+    DealAggregate, DealListResult, DealRepository, DealSearchCriteria, EmailVerificationRepository,
+    PartyRepository, PasswordResetRepository, RoleRepository, UserRepository,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
@@ -477,6 +480,170 @@ impl PartyRepository for FakePartyRepo {
     async fn touch(&self, _id: Uuid, _updated_at: time::OffsetDateTime) -> Result<(), DomainError> {
         Ok(())
     }
+
+    async fn is_user_member_of_party(
+        &self,
+        user_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m.user_id == user_id && m.party_id == party_id && m.is_active))
+    }
+}
+
+#[derive(Default)]
+struct FakeDealRepo {
+    deals: Mutex<HashMap<Uuid, domain::entities::Deal>>,
+    participations: Mutex<Vec<domain::entities::DealParticipation>>,
+    history: Mutex<Vec<(Uuid, String, Option<Uuid>, Option<serde_json::Value>)>>,
+    reference_counter: Mutex<i64>,
+}
+
+#[async_trait]
+impl DealRepository for FakeDealRepo {
+    async fn create(&self, aggregate: &DealAggregate) -> Result<(), DomainError> {
+        self.deals
+            .lock()
+            .unwrap()
+            .insert(aggregate.deal.id, aggregate.deal.clone());
+        for p in &aggregate.participations {
+            self.participations.lock().unwrap().push(p.clone());
+        }
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<domain::entities::Deal>, DomainError> {
+        Ok(self.deals.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn find_aggregate_by_id(&self, id: Uuid) -> Result<Option<DealAggregate>, DomainError> {
+        let deal = self.find_by_id(id).await?;
+        match deal {
+            Some(d) => {
+                let participations = self
+                    .participations
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|p| p.deal_id == id)
+                    .cloned()
+                    .collect();
+                Ok(Some(DealAggregate {
+                    deal: d,
+                    participations,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn find_participations_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Vec<domain::entities::DealParticipation>, DomainError> {
+        Ok(self
+            .participations
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|p| p.deal_id == deal_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn update(&self, deal: &domain::entities::Deal) -> Result<(), DomainError> {
+        self.deals.lock().unwrap().insert(deal.id, deal.clone());
+        Ok(())
+    }
+
+    async fn update_participation(
+        &self,
+        participation: &domain::entities::DealParticipation,
+    ) -> Result<(), DomainError> {
+        let mut participations = self.participations.lock().unwrap();
+        if let Some(p) = participations.iter_mut().find(|p| p.id == participation.id) {
+            *p = participation.clone();
+        }
+        Ok(())
+    }
+
+    async fn list(&self, _criteria: &DealSearchCriteria) -> Result<DealListResult, DomainError> {
+        let deals: Vec<domain::entities::Deal> =
+            self.deals.lock().unwrap().values().cloned().collect();
+        let total = deals.len() as i64;
+        Ok(DealListResult {
+            deals,
+            total,
+            limit: 20,
+            offset: 0,
+        })
+    }
+
+    async fn count_active_deals_for_party(&self, _party_id: Uuid) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn count_active_deals_for_party_role(
+        &self,
+        _party_id: Uuid,
+        _role: domain::entities::DealRole,
+    ) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn record_history(
+        &self,
+        deal_id: Uuid,
+        event_type: &str,
+        actor_party_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+    ) -> Result<(), DomainError> {
+        self.history.lock().unwrap().push((
+            deal_id,
+            event_type.to_string(),
+            actor_party_id,
+            details,
+        ));
+        Ok(())
+    }
+
+    async fn is_party_participant(
+        &self,
+        deal_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        Ok(self
+            .participations
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p.deal_id == deal_id && p.party_id == party_id))
+    }
+
+    async fn next_deal_reference(&self) -> Result<String, DomainError> {
+        let mut counter = self.reference_counter.lock().unwrap();
+        *counter += 1;
+        Ok(format!("DL-2026-{:04}", *counter))
+    }
+
+    async fn update_value_totals(
+        &self,
+        deal_id: Uuid,
+        total_value: rust_decimal::Decimal,
+        platform_fee_percentage: rust_decimal::Decimal,
+        platform_fee_amount: rust_decimal::Decimal,
+    ) -> Result<(), DomainError> {
+        if let Some(deal) = self.deals.lock().unwrap().get_mut(&deal_id) {
+            deal.total_deal_value = Some(total_value);
+            deal.platform_fee_percentage = platform_fee_percentage;
+            deal.platform_fee_amount = platform_fee_amount;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -537,6 +704,7 @@ fn test_fixtures() -> TestFixtures {
     let hasher: Arc<dyn PasswordHasher> = Arc::new(FakeHasher);
     let queue: Arc<FakeEmailQueue> = Arc::new(FakeEmailQueue::default());
     let party_repo: Arc<FakePartyRepo> = Arc::new(FakePartyRepo::default());
+    let deal_repo: Arc<FakeDealRepo> = Arc::new(FakeDealRepo::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -589,6 +757,12 @@ fn test_fixtures() -> TestFixtures {
         add_party_role: AddPartyRole::new(party_repo.clone()),
         remove_party_role: RemovePartyRole::new(party_repo.clone()),
         list_party_roles: ListPartyRoles::new(party_repo.clone()),
+        create_deal: CreateDeal::new(deal_repo.clone(), party_repo.clone()),
+        get_deal: GetDeal::new(deal_repo.clone(), party_repo.clone()),
+        list_deals: ListDeals::new(deal_repo.clone(), party_repo.clone()),
+        update_deal: UpdateDeal::new(deal_repo.clone(), party_repo.clone()),
+        submit_deal: SubmitDeal::new(deal_repo.clone(), party_repo.clone()),
+        execute_transition: ExecuteTransition::new(deal_repo, party_repo),
         token_validator: token,
     };
 

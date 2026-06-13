@@ -29,6 +29,51 @@ pub enum DomainError {
     #[error("invalid deal role: {message}")]
     InvalidDealRole { message: String },
 
+    #[error("invalid deal status: {message}")]
+    InvalidDealStatus { message: String },
+
+    #[error("invalid participation status: {message}")]
+    InvalidParticipationStatus { message: String },
+
+    #[error("invalid state transition from {from} to {to}")]
+    InvalidStateTransition { from: String, to: String },
+
+    #[error("invalid deal title: {message}")]
+    InvalidDealTitle { message: String },
+
+    #[error("deal not found")]
+    DealNotFound,
+
+    #[error("deal participation not found")]
+    DealParticipationNotFound,
+
+    #[error("term not found")]
+    TermNotFound,
+
+    #[error("milestone not found")]
+    MilestoneNotFound,
+
+    #[error("agreement not found")]
+    AgreementNotFound,
+
+    #[error("transaction not found")]
+    TransactionNotFound,
+
+    #[error("wallet not found")]
+    WalletNotFound,
+
+    #[error("match suggestion not found")]
+    MatchNotFound,
+
+    #[error("insufficient permissions")]
+    InsufficientPermissions,
+
+    #[error("invalid value distribution: {message}")]
+    InvalidValueDistribution { message: String },
+
+    #[error("win-win-win validation failed")]
+    WinWinWinValidationFailed { violations: Vec<String> },
+
     #[error("invalid party membership role: {message}")]
     InvalidPartyMembershipRole { message: String },
 

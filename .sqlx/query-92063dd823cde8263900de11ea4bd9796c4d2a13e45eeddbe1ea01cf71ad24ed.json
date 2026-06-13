@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO deal_history (id, deal_id, event_type, actor_party_id, details, created_at)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "92063dd823cde8263900de11ea4bd9796c4d2a13e45eeddbe1ea01cf71ad24ed"
+}

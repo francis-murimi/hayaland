@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO deal_participations (\n                    id, deal_id, party_id, role, participation_status, is_initiator,\n                    value_share_percentage, value_share_amount, invited_at, responded_at, created_at\n                )\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4d024bd50e5c79c817d467e8142925d2b12d753257f2e773ee9703d86f2c2245"
+}

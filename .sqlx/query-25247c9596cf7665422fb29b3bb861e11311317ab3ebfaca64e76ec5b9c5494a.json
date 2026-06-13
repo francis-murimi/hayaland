@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE deal_participations\n            SET party_id = $1,\n                role = $2,\n                participation_status = $3,\n                is_initiator = $4,\n                value_share_percentage = $5,\n                value_share_amount = $6,\n                invited_at = $7,\n                responded_at = $8\n            WHERE id = $9\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "25247c9596cf7665422fb29b3bb861e11311317ab3ebfaca64e76ec5b9c5494a"
+}

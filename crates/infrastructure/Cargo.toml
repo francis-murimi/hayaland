@@ -19,6 +19,7 @@ async-trait.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 sqlx.workspace = true
+rust_decimal.workspace = true
 config.workspace = true
 secrecy.workspace = true
 argon2.workspace = true

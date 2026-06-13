@@ -6,6 +6,9 @@ pub mod routes;
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use application::deals::{
+    CreateDeal, ExecuteTransition, GetDeal, ListDeals, SubmitDeal, UpdateDeal,
+};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
 use application::parties::{
@@ -53,6 +56,12 @@ pub struct AppState {
     pub add_party_role: AddPartyRole,
     pub remove_party_role: RemovePartyRole,
     pub list_party_roles: ListPartyRoles,
+    pub create_deal: CreateDeal,
+    pub get_deal: GetDeal,
+    pub list_deals: ListDeals,
+    pub update_deal: UpdateDeal,
+    pub submit_deal: SubmitDeal,
+    pub execute_transition: ExecuteTransition,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 
