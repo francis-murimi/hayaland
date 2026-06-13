@@ -7,7 +7,9 @@ pub mod routes;
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use application::deals::{
-    CreateDeal, ExecuteTransition, GetDeal, ListDeals, SubmitDeal, UpdateDeal,
+    AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
+    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
+    ValidateDeal, WithdrawTerm,
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
@@ -62,6 +64,15 @@ pub struct AppState {
     pub update_deal: UpdateDeal,
     pub submit_deal: SubmitDeal,
     pub execute_transition: ExecuteTransition,
+    pub propose_term: ProposeTerm,
+    pub counter_term: CounterTerm,
+    pub accept_term: AcceptTerm,
+    pub reject_term: RejectTerm,
+    pub withdraw_term: WithdrawTerm,
+    pub list_terms: ListTerms,
+    pub set_value_distribution: SetValueDistribution,
+    pub get_value_distribution: GetValueDistribution,
+    pub validate_deal: ValidateDeal,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

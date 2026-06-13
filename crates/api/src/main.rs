@@ -1,7 +1,9 @@
 use anyhow::Context;
 use api::{run, AppState};
 use application::deals::{
-    CreateDeal, ExecuteTransition, GetDeal, ListDeals, SubmitDeal, UpdateDeal,
+    AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
+    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
+    ValidateDeal, WithdrawTerm,
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
@@ -134,8 +136,25 @@ async fn main() -> anyhow::Result<()> {
         get_deal: GetDeal::new(deal_repo.clone(), party_repo.clone()),
         list_deals: ListDeals::new(deal_repo.clone(), party_repo.clone()),
         update_deal: UpdateDeal::new(deal_repo.clone(), party_repo.clone()),
-        submit_deal: SubmitDeal::new(deal_repo.clone(), party_repo.clone()),
-        execute_transition: ExecuteTransition::new(deal_repo, party_repo),
+        submit_deal: SubmitDeal::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            settings.validation.clone(),
+        ),
+        execute_transition: ExecuteTransition::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            settings.validation.clone(),
+        ),
+        propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
+        counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
+        accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),
+        reject_term: RejectTerm::new(deal_repo.clone(), party_repo.clone()),
+        withdraw_term: WithdrawTerm::new(deal_repo.clone(), party_repo.clone()),
+        list_terms: ListTerms::new(deal_repo.clone(), party_repo.clone()),
+        set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
+        get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
+        validate_deal: ValidateDeal::new(deal_repo.clone(), settings.validation.clone()),
         token_validator: token_service,
     };
 

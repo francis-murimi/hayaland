@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::entities::{Deal, DealParticipation, DealRole, DealStatus};
+use crate::entities::{Deal, DealParticipation, DealRole, DealStatus, Term, ValueDistribution};
 use crate::errors::DomainError;
 
 /// Input for creating or updating a deal aggregate.
@@ -98,4 +98,32 @@ pub trait DealRepository: Send + Sync {
         platform_fee_percentage: Decimal,
         platform_fee_amount: Decimal,
     ) -> Result<(), DomainError>;
+
+    // --- Terms ---
+
+    /// Save a new term.
+    async fn create_term(&self, term: &Term) -> Result<(), DomainError>;
+
+    /// Update an existing term (status, resolution, etc.).
+    async fn update_term(&self, term: &Term) -> Result<(), DomainError>;
+
+    /// Fetch a term by ID.
+    async fn find_term_by_id(&self, id: Uuid) -> Result<Option<Term>, DomainError>;
+
+    /// List all terms for a deal, ordered by term type and version.
+    async fn find_terms_by_deal(&self, deal_id: Uuid) -> Result<Vec<Term>, DomainError>;
+
+    // --- Value distribution ---
+
+    /// Save or replace the value distribution for a deal.
+    async fn set_value_distribution(
+        &self,
+        distribution: &ValueDistribution,
+    ) -> Result<(), DomainError>;
+
+    /// Fetch the value distribution for a deal.
+    async fn find_value_distribution_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Option<ValueDistribution>, DomainError>;
 }

@@ -31,6 +31,7 @@ sqlx.workspace = true
 config.workspace = true
 secrecy.workspace = true
 dotenvy.workspace = true
+rust_decimal.workspace = true
 
 [dev-dependencies]
 actix-web.workspace = true

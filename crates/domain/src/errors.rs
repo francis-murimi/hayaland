@@ -68,6 +68,9 @@ pub enum DomainError {
     #[error("insufficient permissions")]
     InsufficientPermissions,
 
+    #[error("validation failed: {0:?}")]
+    Validation(Vec<String>),
+
     #[error("invalid value distribution: {message}")]
     InvalidValueDistribution { message: String },
 

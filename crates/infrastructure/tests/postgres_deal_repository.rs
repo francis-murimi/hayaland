@@ -324,3 +324,106 @@ async fn updates_value_totals(pool: PgPool) {
     assert_eq!(found.platform_fee_percentage, Decimal::from(10));
     assert_eq!(found.platform_fee_amount, Decimal::from(3000));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn manages_terms(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let deal_repo = PostgresDealRepository::new(pool);
+    let (supplier, consumer, enhancer) = three_party_fixture(&party_repo).await;
+
+    let aggregate = sample_deal_aggregate(supplier, consumer, enhancer, "DL-2026-0009");
+    let deal_id = aggregate.deal.id;
+    deal_repo.create(&aggregate).await.unwrap();
+
+    let term = domain::entities::Term::new(
+        Uuid::now_v7(),
+        deal_id,
+        supplier,
+        domain::entities::TermType::Price,
+        "Unit price",
+        "100 points",
+        true,
+    );
+    deal_repo.create_term(&term).await.unwrap();
+
+    let found = deal_repo.find_term_by_id(term.id).await.unwrap().unwrap();
+    assert_eq!(found.term_name, "Unit price");
+    assert!(matches!(
+        found.negotiation_status,
+        domain::entities::TermStatus::Proposed
+    ));
+
+    let terms = deal_repo.find_terms_by_deal(deal_id).await.unwrap();
+    assert_eq!(terms.len(), 1);
+
+    let mut counter = term.counter(Uuid::now_v7(), consumer, "90 points").unwrap();
+    deal_repo.create_term(&counter).await.unwrap();
+    let mut original = deal_repo.find_term_by_id(term.id).await.unwrap().unwrap();
+    original.negotiation_status = domain::entities::TermStatus::Countered;
+    deal_repo.update_term(&original).await.unwrap();
+
+    let terms = deal_repo.find_terms_by_deal(deal_id).await.unwrap();
+    assert_eq!(terms.len(), 2);
+
+    counter.accept().unwrap();
+    deal_repo.update_term(&counter).await.unwrap();
+    let accepted = deal_repo
+        .find_term_by_id(counter.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        accepted.negotiation_status,
+        domain::entities::TermStatus::Accepted
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn manages_value_distribution(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let deal_repo = PostgresDealRepository::new(pool);
+    let (supplier, consumer, enhancer) = three_party_fixture(&party_repo).await;
+
+    let aggregate = sample_deal_aggregate(supplier, consumer, enhancer, "DL-2026-0010");
+    let deal_id = aggregate.deal.id;
+    deal_repo.create(&aggregate).await.unwrap();
+
+    let distribution = domain::entities::ValueDistribution {
+        id: Uuid::now_v7(),
+        deal_id,
+        total_value: Decimal::from(10000),
+        currency: "POINTS".to_string(),
+        distribution_model: domain::entities::DistributionModel::FixedPrice,
+        supplier_share_percentage: Decimal::from(60),
+        supplier_share_amount: Decimal::from(6000),
+        consumer_cost_percentage: Decimal::from(100),
+        consumer_cost_amount: Decimal::from(10000),
+        enhancer_share_percentage: Decimal::from(30),
+        enhancer_share_amount: Decimal::from(3000),
+        platform_fee_percentage: Decimal::from(10),
+        platform_fee_amount: Decimal::from(1000),
+        payment_schedule: vec![],
+        win_win_win_score: None,
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    };
+
+    deal_repo
+        .set_value_distribution(&distribution)
+        .await
+        .unwrap();
+
+    let found = deal_repo
+        .find_value_distribution_by_deal(deal_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.total_value, Decimal::from(10000));
+    assert_eq!(found.supplier_share_amount, Decimal::from(6000));
+
+    let missing = deal_repo
+        .find_value_distribution_by_deal(Uuid::now_v7())
+        .await
+        .unwrap();
+    assert!(missing.is_none());
+}

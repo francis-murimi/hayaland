@@ -1,14 +1,26 @@
 use crate::deals::dto::{
-    CreateDealCommand, ExecuteTransitionCommand, ListDealsQuery, SubmitDealCommand,
+    CounterTermCommand, CreateDealCommand, ExecuteTransitionCommand, ListDealsQuery,
+    ProposeTermCommand, SetValueDistributionCommand, SubmitDealCommand, TermActionCommand,
     UpdateDealCommand,
 };
-use crate::deals::{CreateDeal, ExecuteTransition, GetDeal, ListDeals, SubmitDeal, UpdateDeal};
+use crate::deals::{
+    AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
+    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
+    ValidateDeal, WithdrawTerm,
+};
+use crate::errors::ApplicationError;
 use crate::parties::dto::CreatePartyCommand;
 use crate::parties::CreateParty;
 use crate::test_helpers::{FakeDealRepo, FakePartyRepo};
-use domain::entities::{DealRole, DealStatus, ParticipationStatus, PartyType};
+use domain::entities::{
+    DealRole, DealStatus, DistributionModel, ParticipationStatus, PartyType, TermStatus, TermType,
+    ValueDistribution,
+};
 use domain::repositories::DealRepository;
+use domain::services::ValidationConfig;
+use rust_decimal::Decimal;
 use std::sync::Arc;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 fn actor_user_id() -> Uuid {
@@ -87,6 +99,32 @@ async fn three_party_fixture() -> (
         enhancer,
         category_id,
     )
+}
+
+async fn set_valid_value_distribution(deal_repo: &Arc<FakeDealRepo>, deal_id: Uuid) {
+    let distribution = ValueDistribution {
+        id: Uuid::now_v7(),
+        deal_id,
+        total_value: Decimal::from(10000),
+        currency: "POINTS".to_string(),
+        distribution_model: DistributionModel::FixedPrice,
+        supplier_share_percentage: Decimal::from(60),
+        supplier_share_amount: Decimal::from(6000),
+        consumer_cost_percentage: Decimal::from(100),
+        consumer_cost_amount: Decimal::from(10000),
+        enhancer_share_percentage: Decimal::from(30),
+        enhancer_share_amount: Decimal::from(3000),
+        platform_fee_percentage: Decimal::from(10),
+        platform_fee_amount: Decimal::from(1000),
+        payment_schedule: vec![],
+        win_win_win_score: None,
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    };
+    deal_repo
+        .set_value_distribution(&distribution)
+        .await
+        .unwrap();
 }
 
 async fn create_sample_deal() -> (
@@ -253,7 +291,13 @@ async fn submit_deal_moves_to_suggested() {
     let (party_repo, deal_repo, deal_id, supplier, _consumer, _enhancer, _result) =
         create_sample_deal().await;
 
-    let submit = SubmitDeal::new(deal_repo, party_repo);
+    set_valid_value_distribution(&deal_repo, deal_id).await;
+
+    let submit = SubmitDeal::new(
+        deal_repo,
+        party_repo,
+        domain::services::ValidationConfig::default(),
+    );
     let result = submit
         .execute(
             deal_id,
@@ -293,7 +337,13 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
         deal_repo.update_participation(&p).await.unwrap();
     }
 
-    let transition = ExecuteTransition::new(deal_repo.clone(), party_repo.clone());
+    set_valid_value_distribution(&deal_repo, deal_id).await;
+
+    let transition = ExecuteTransition::new(
+        deal_repo.clone(),
+        party_repo.clone(),
+        domain::services::ValidationConfig::default(),
+    );
 
     let result = transition
         .execute(
@@ -303,6 +353,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
                 actor_party_id: supplier,
                 new_status: DealStatus::Negotiating,
                 reason: None,
+                acknowledge_warnings: false,
             },
         )
         .await
@@ -317,6 +368,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
                 actor_party_id: supplier,
                 new_status: DealStatus::TermsLocked,
                 reason: None,
+                acknowledge_warnings: false,
             },
         )
         .await
@@ -331,6 +383,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
                 actor_party_id: supplier,
                 new_status: DealStatus::Committed,
                 reason: None,
+                acknowledge_warnings: false,
             },
         )
         .await
@@ -357,4 +410,279 @@ async fn list_deals_returns_deals_for_member_party() {
     assert_eq!(result.deals.len(), 1);
     assert_eq!(result.deals[0].id, deal_id);
     assert_eq!(result.total, 1);
+}
+
+#[tokio::test]
+async fn propose_term_adds_term_to_deal() {
+    let (_party_repo, deal_repo, deal_id, supplier, _consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let propose = ProposeTerm::new(deal_repo.clone(), _party_repo.clone());
+    let term = propose
+        .execute(ProposeTermCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            term_type: TermType::Price,
+            term_name: "Unit price".to_string(),
+            description: "100 points per unit".to_string(),
+            is_mandatory: true,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(term.deal_id, deal_id);
+    assert_eq!(term.proposed_by_party_id, supplier);
+    assert!(matches!(term.negotiation_status, TermStatus::Proposed));
+    assert_eq!(term.version, 1);
+
+    let list = ListTerms::new(deal_repo, _party_repo);
+    let terms = list
+        .execute(deal_id, actor_user_id(), Some(supplier), false)
+        .await
+        .unwrap();
+    assert_eq!(terms.len(), 1);
+}
+
+#[tokio::test]
+async fn accept_term_marks_term_accepted() {
+    let (_party_repo, deal_repo, deal_id, supplier, consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let propose = ProposeTerm::new(deal_repo.clone(), _party_repo.clone());
+    let term = propose
+        .execute(crate::deals::dto::ProposeTermCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            term_type: TermType::Price,
+            term_name: "Unit price".to_string(),
+            description: "100 points per unit".to_string(),
+            is_mandatory: true,
+        })
+        .await
+        .unwrap();
+
+    let accept = AcceptTerm::new(deal_repo.clone(), _party_repo.clone());
+    let accepted = accept
+        .execute(TermActionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: consumer,
+            deal_id,
+            term_id: term.id,
+        })
+        .await
+        .unwrap();
+
+    assert!(matches!(accepted.negotiation_status, TermStatus::Accepted));
+}
+
+#[tokio::test]
+async fn counter_term_creates_new_version() {
+    let (_party_repo, deal_repo, deal_id, supplier, consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let propose = ProposeTerm::new(deal_repo.clone(), _party_repo.clone());
+    let term = propose
+        .execute(crate::deals::dto::ProposeTermCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            term_type: TermType::Price,
+            term_name: "Unit price".to_string(),
+            description: "100 points per unit".to_string(),
+            is_mandatory: false,
+        })
+        .await
+        .unwrap();
+
+    let counter = CounterTerm::new(deal_repo.clone(), _party_repo.clone());
+    let counter_term = counter
+        .execute(CounterTermCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: consumer,
+            deal_id,
+            term_id: term.id,
+            description: "90 points per unit".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(counter_term.version, 2);
+    assert_eq!(counter_term.parent_term_id, Some(term.id));
+    assert_eq!(counter_term.proposed_by_party_id, consumer);
+}
+
+#[tokio::test]
+async fn reject_and_withdraw_term_are_terminal() {
+    let (_party_repo, deal_repo, deal_id, supplier, consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let propose = ProposeTerm::new(deal_repo.clone(), _party_repo.clone());
+    let term = propose
+        .execute(crate::deals::dto::ProposeTermCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            term_type: TermType::Price,
+            term_name: "Unit price".to_string(),
+            description: "100 points per unit".to_string(),
+            is_mandatory: false,
+        })
+        .await
+        .unwrap();
+
+    let reject = RejectTerm::new(deal_repo.clone(), _party_repo.clone());
+    let rejected = reject
+        .execute(TermActionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: consumer,
+            deal_id,
+            term_id: term.id,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(rejected.negotiation_status, TermStatus::Rejected));
+
+    let term2 = propose
+        .execute(ProposeTermCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            term_type: TermType::PaymentTerms,
+            term_name: "Payment".to_string(),
+            description: "net 30".to_string(),
+            is_mandatory: false,
+        })
+        .await
+        .unwrap();
+
+    let withdraw = WithdrawTerm::new(deal_repo, _party_repo);
+    let withdrawn = withdraw
+        .execute(TermActionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            term_id: term2.id,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        withdrawn.negotiation_status,
+        TermStatus::Withdrawn
+    ));
+}
+
+#[tokio::test]
+async fn set_and_get_value_distribution_updates_deal_totals() {
+    let (_party_repo, deal_repo, deal_id, supplier, _consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let set = SetValueDistribution::new(deal_repo.clone(), _party_repo.clone());
+    let vd = set
+        .execute(SetValueDistributionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            deal_id,
+            total_value: Decimal::from(5000),
+            distribution_model: domain::entities::DistributionModel::FixedPrice,
+            supplier_share_percentage: Decimal::from(70),
+            enhancer_share_percentage: Decimal::from(20),
+            platform_fee_percentage: Decimal::from(10),
+            consumer_cost_percentage: Decimal::from(100),
+            payment_schedule: vec![],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(vd.total_value, Decimal::from(5000));
+    assert_eq!(vd.supplier_share_amount, Decimal::from(3500));
+    assert_eq!(vd.enhancer_share_amount, Decimal::from(1000));
+    assert_eq!(vd.platform_fee_amount, Decimal::from(500));
+
+    let deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
+    assert_eq!(deal.total_deal_value, Some(Decimal::from(5000)));
+    assert_eq!(deal.platform_fee_percentage, Decimal::from(10));
+
+    let get = GetValueDistribution::new(deal_repo, _party_repo);
+    let fetched = get
+        .execute(deal_id, actor_user_id(), Some(supplier), false)
+        .await
+        .unwrap();
+    assert_eq!(fetched.id, vd.id);
+}
+
+#[tokio::test]
+async fn validate_deal_returns_good_score() {
+    let (_party_repo, deal_repo, deal_id, _supplier, _consumer, _enhancer, _result) =
+        create_sample_deal().await;
+    set_valid_value_distribution(&deal_repo, deal_id).await;
+
+    let validate = ValidateDeal::new(deal_repo.clone(), ValidationConfig::default());
+    let result = validate.execute(deal_id).await.unwrap();
+
+    assert!(!result.blocked);
+    assert!(result.score >= Decimal::from(70));
+    assert_eq!(result.status, "GOOD");
+
+    let deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
+    assert!(deal.win_win_win_validated);
+    assert!(deal.validation_score.is_some());
+}
+
+#[tokio::test]
+async fn submit_deal_requires_value_distribution() {
+    let (_party_repo, deal_repo, deal_id, supplier, _consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let submit = SubmitDeal::new(deal_repo, _party_repo, ValidationConfig::default());
+    let err = submit
+        .execute(
+            deal_id,
+            SubmitDealCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        err,
+        ApplicationError::WinWinWinValidationFailed { .. }
+    ));
+}
+
+#[tokio::test]
+async fn locking_terms_requires_value_distribution() {
+    let (_party_repo, deal_repo, deal_id, supplier, _consumer, _enhancer, _result) =
+        create_sample_deal().await;
+
+    let mut aggregate = deal_repo
+        .find_aggregate_by_id(deal_id)
+        .await
+        .unwrap()
+        .unwrap();
+    aggregate.deal.deal_status = DealStatus::Negotiating;
+    deal_repo.update(&aggregate.deal).await.unwrap();
+
+    let transition = ExecuteTransition::new(deal_repo, _party_repo, ValidationConfig::default());
+    let err = transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                new_status: DealStatus::TermsLocked,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        err,
+        ApplicationError::WinWinWinValidationFailed { .. }
+    ));
 }

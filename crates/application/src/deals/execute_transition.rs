@@ -1,8 +1,10 @@
 use crate::deals::create_deal::map_aggregate_to_result;
 use crate::deals::dto::{DealResult, ExecuteTransitionCommand};
+use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
-use domain::entities::{DealStatus, ParticipationStatus};
+use domain::entities::{DealStatus, ParticipationStatus, TermStatus};
 use domain::repositories::{DealRepository, PartyRepository};
+use domain::services::ValidationConfig;
 use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
@@ -12,13 +14,19 @@ use uuid::Uuid;
 pub struct ExecuteTransition {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    validation_config: ValidationConfig,
 }
 
 impl ExecuteTransition {
-    pub fn new(deal_repo: Arc<dyn DealRepository>, party_repo: Arc<dyn PartyRepository>) -> Self {
+    pub fn new(
+        deal_repo: Arc<dyn DealRepository>,
+        party_repo: Arc<dyn PartyRepository>,
+        validation_config: ValidationConfig,
+    ) -> Self {
         Self {
             deal_repo,
             party_repo,
+            validation_config,
         }
     }
 
@@ -98,7 +106,7 @@ impl ExecuteTransition {
                         to: cmd.new_status.as_str().to_string(),
                     });
                 }
-                // In a real implementation, check all terms accepted.
+                self.validate_terms_locked(deal_id).await?;
             }
             DealStatus::Committed => {
                 if deal.deal_status != DealStatus::TermsLocked {
@@ -107,7 +115,8 @@ impl ExecuteTransition {
                         to: cmd.new_status.as_str().to_string(),
                     });
                 }
-                // In a real implementation, check agreement signed and escrow funded.
+                self.validate_commit(deal_id, cmd.acknowledge_warnings)
+                    .await?;
             }
             DealStatus::Cancelled => {
                 // Allow cancellation from most active states by any participant.
@@ -150,5 +159,75 @@ impl ExecuteTransition {
                 participations,
             },
         ))
+    }
+
+    async fn validate_terms_locked(&self, deal_id: Uuid) -> Result<(), ApplicationError> {
+        self.deal_repo
+            .find_value_distribution_by_deal(deal_id)
+            .await?
+            .ok_or_else(|| ApplicationError::WinWinWinValidationFailed {
+                violations: vec!["value distribution is required before locking terms".to_string()],
+            })?;
+
+        let terms = self.deal_repo.find_terms_by_deal(deal_id).await?;
+        let mandatory_unaccepted = terms
+            .iter()
+            .any(|t| t.is_mandatory && t.negotiation_status != TermStatus::Accepted);
+        if mandatory_unaccepted {
+            return Err(ApplicationError::WinWinWinValidationFailed {
+                violations: vec!["all mandatory terms must be accepted".to_string()],
+            });
+        }
+
+        let result = run_validation(&*self.deal_repo, deal_id, &self.validation_config).await?;
+        if !status_is_good_or_better(&result.status) {
+            return Err(ApplicationError::WinWinWinValidationFailed {
+                violations: result
+                    .violations
+                    .into_iter()
+                    .map(|v| v.message)
+                    .chain(result.warnings.into_iter().map(|w| w.message))
+                    .collect(),
+            });
+        }
+        persist_validation(&*self.deal_repo, deal_id, &result).await?;
+        Ok(())
+    }
+
+    async fn validate_commit(
+        &self,
+        deal_id: Uuid,
+        acknowledge_warnings: bool,
+    ) -> Result<(), ApplicationError> {
+        self.deal_repo
+            .find_value_distribution_by_deal(deal_id)
+            .await?
+            .ok_or_else(|| ApplicationError::WinWinWinValidationFailed {
+                violations: vec!["value distribution is required before committing".to_string()],
+            })?;
+
+        let result = run_validation(&*self.deal_repo, deal_id, &self.validation_config).await?;
+        if result.blocked {
+            return Err(ApplicationError::WinWinWinValidationFailed {
+                violations: result.violations.into_iter().map(|v| v.message).collect(),
+            });
+        }
+        if !status_is_good_or_better(&result.status) {
+            return Err(ApplicationError::WinWinWinValidationFailed {
+                violations: result
+                    .violations
+                    .into_iter()
+                    .map(|v| v.message)
+                    .chain(result.warnings.into_iter().map(|w| w.message))
+                    .collect(),
+            });
+        }
+        if !result.warnings.is_empty() && !acknowledge_warnings {
+            return Err(ApplicationError::WinWinWinValidationFailed {
+                violations: result.warnings.into_iter().map(|w| w.message).collect(),
+            });
+        }
+        persist_validation(&*self.deal_repo, deal_id, &result).await?;
+        Ok(())
     }
 }

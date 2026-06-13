@@ -12,6 +12,8 @@ use crate::AppState;
 pub struct ExecuteTransitionRequest {
     pub new_status: DealStatus,
     pub reason: Option<String>,
+    #[serde(default)]
+    pub acknowledge_warnings: bool,
 }
 
 pub async fn execute_transition(
@@ -35,6 +37,7 @@ pub async fn execute_transition(
         actor_party_id,
         new_status: body.new_status,
         reason: body.reason.clone(),
+        acknowledge_warnings: body.acknowledge_warnings,
     };
 
     let result = state

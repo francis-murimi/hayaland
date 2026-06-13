@@ -558,6 +558,8 @@ impl PartyRepository for FakePartyRepo {
 pub struct FakeDealRepo {
     pub deals: std::sync::Mutex<HashMap<Uuid, domain::entities::Deal>>,
     pub participations: std::sync::Mutex<Vec<domain::entities::DealParticipation>>,
+    pub terms: std::sync::Mutex<Vec<domain::entities::Term>>,
+    pub value_distributions: std::sync::Mutex<HashMap<Uuid, domain::entities::ValueDistribution>>,
     pub history: std::sync::Mutex<Vec<(Uuid, String, Option<Uuid>, Option<serde_json::Value>)>>,
     reference_counter: std::sync::Mutex<i64>,
 }
@@ -703,5 +705,68 @@ impl DealRepository for FakeDealRepo {
             deal.platform_fee_amount = platform_fee_amount;
         }
         Ok(())
+    }
+
+    async fn create_term(&self, term: &domain::entities::Term) -> Result<(), DomainError> {
+        self.terms.lock().unwrap().push(term.clone());
+        Ok(())
+    }
+
+    async fn update_term(&self, term: &domain::entities::Term) -> Result<(), DomainError> {
+        let mut terms = self.terms.lock().unwrap();
+        if let Some(t) = terms.iter_mut().find(|t| t.id == term.id) {
+            *t = term.clone();
+        }
+        Ok(())
+    }
+
+    async fn find_term_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<domain::entities::Term>, DomainError> {
+        Ok(self
+            .terms
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.id == id)
+            .cloned())
+    }
+
+    async fn find_terms_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Vec<domain::entities::Term>, DomainError> {
+        Ok(self
+            .terms
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.deal_id == deal_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn set_value_distribution(
+        &self,
+        distribution: &domain::entities::ValueDistribution,
+    ) -> Result<(), DomainError> {
+        self.value_distributions
+            .lock()
+            .unwrap()
+            .insert(distribution.deal_id, distribution.clone());
+        Ok(())
+    }
+
+    async fn find_value_distribution_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Option<domain::entities::ValueDistribution>, DomainError> {
+        Ok(self
+            .value_distributions
+            .lock()
+            .unwrap()
+            .get(&deal_id)
+            .cloned())
     }
 }

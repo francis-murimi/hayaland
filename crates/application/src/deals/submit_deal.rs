@@ -1,8 +1,10 @@
 use crate::deals::create_deal::map_aggregate_to_result;
 use crate::deals::dto::{DealResult, SubmitDealCommand};
+use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
 use domain::entities::DealStatus;
 use domain::repositories::{DealRepository, PartyRepository};
+use domain::services::ValidationConfig;
 use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
@@ -12,13 +14,19 @@ use uuid::Uuid;
 pub struct SubmitDeal {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    validation_config: ValidationConfig,
 }
 
 impl SubmitDeal {
-    pub fn new(deal_repo: Arc<dyn DealRepository>, party_repo: Arc<dyn PartyRepository>) -> Self {
+    pub fn new(
+        deal_repo: Arc<dyn DealRepository>,
+        party_repo: Arc<dyn PartyRepository>,
+        validation_config: ValidationConfig,
+    ) -> Self {
         Self {
             deal_repo,
             party_repo,
+            validation_config,
         }
     }
 
@@ -57,6 +65,20 @@ impl SubmitDeal {
                 "deal must have three participations before submission".to_string(),
             ]));
         }
+
+        // Run win-win-win validation as a soft gate.
+        let validation = run_validation(&*self.deal_repo, deal_id, &self.validation_config).await?;
+        if !status_is_good_or_better(&validation.status) {
+            return Err(ApplicationError::WinWinWinValidationFailed {
+                violations: validation
+                    .violations
+                    .into_iter()
+                    .map(|v| v.message)
+                    .chain(validation.warnings.into_iter().map(|w| w.message))
+                    .collect(),
+            });
+        }
+        persist_validation(&*self.deal_repo, deal_id, &validation).await?;
 
         deal.transition(DealStatus::Suggested)
             .map_err(ApplicationError::from)?;

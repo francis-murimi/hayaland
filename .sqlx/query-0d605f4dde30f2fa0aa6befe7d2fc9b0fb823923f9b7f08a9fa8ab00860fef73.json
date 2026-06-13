@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, deal_id, proposed_by_party_id, term_type, term_name, description,\n                negotiation_status, parent_term_id, version, proposed_at, resolved_at,\n                is_mandatory, resolution, created_at\n            FROM terms\n            WHERE deal_id = $1\n            ORDER BY term_type, version\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "proposed_by_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "proposed_by_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "term_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "term_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "term_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "term_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "negotiation_status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "negotiation_status"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "parent_term_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "parent_term_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "proposed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "proposed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "resolved_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "resolved_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "is_mandatory",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "is_mandatory"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "resolution",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "resolution"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "terms",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "0d605f4dde30f2fa0aa6befe7d2fc9b0fb823923f9b7f08a9fa8ab00860fef73"
+}

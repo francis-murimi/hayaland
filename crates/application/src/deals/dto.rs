@@ -1,4 +1,5 @@
-use domain::entities::{DealRole, DealStatus};
+use domain::entities::{DealRole, DealStatus, PaymentScheduleEntry, TermStatus, TermType};
+use domain::services::{PartyFeedback, ValidationIssue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -50,6 +51,8 @@ pub struct ExecuteTransitionCommand {
     pub actor_party_id: Uuid,
     pub new_status: DealStatus,
     pub reason: Option<String>,
+    #[serde(default)]
+    pub acknowledge_warnings: bool,
 }
 
 /// Full deal representation returned by use cases.
@@ -126,4 +129,99 @@ pub struct ListDealsQuery {
     pub status: Option<DealStatus>,
     pub limit: i64,
     pub offset: i64,
+}
+
+/// Command to propose a new term.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProposeTermCommand {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Uuid,
+    pub deal_id: Uuid,
+    pub term_type: TermType,
+    pub term_name: String,
+    pub description: String,
+    pub is_mandatory: bool,
+}
+
+/// Command to counter an existing term.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CounterTermCommand {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Uuid,
+    pub deal_id: Uuid,
+    pub term_id: Uuid,
+    pub description: String,
+}
+
+/// Command to accept, reject, or withdraw a term.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermActionCommand {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Uuid,
+    pub deal_id: Uuid,
+    pub term_id: Uuid,
+}
+
+/// Full term representation returned by use cases.
+#[derive(Debug, Clone, Serialize)]
+pub struct TermResult {
+    pub id: Uuid,
+    pub deal_id: Uuid,
+    pub proposed_by_party_id: Uuid,
+    pub term_type: TermType,
+    pub term_name: String,
+    pub description: String,
+    pub negotiation_status: TermStatus,
+    pub parent_term_id: Option<Uuid>,
+    pub version: i32,
+    pub proposed_at: OffsetDateTime,
+    pub resolved_at: Option<OffsetDateTime>,
+    pub is_mandatory: bool,
+    pub resolution: Option<String>,
+}
+
+/// Command to set or replace the value distribution for a deal.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetValueDistributionCommand {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Uuid,
+    pub deal_id: Uuid,
+    pub total_value: Decimal,
+    pub distribution_model: domain::entities::DistributionModel,
+    pub supplier_share_percentage: Decimal,
+    pub enhancer_share_percentage: Decimal,
+    pub platform_fee_percentage: Decimal,
+    pub consumer_cost_percentage: Decimal,
+    pub payment_schedule: Vec<PaymentScheduleEntry>,
+}
+
+/// Value distribution representation returned by use cases.
+#[derive(Debug, Clone, Serialize)]
+pub struct ValueDistributionResult {
+    pub id: Uuid,
+    pub deal_id: Uuid,
+    pub total_value: Decimal,
+    pub currency: String,
+    pub distribution_model: domain::entities::DistributionModel,
+    pub supplier_share_percentage: Decimal,
+    pub supplier_share_amount: Decimal,
+    pub consumer_cost_percentage: Decimal,
+    pub consumer_cost_amount: Decimal,
+    pub enhancer_share_percentage: Decimal,
+    pub enhancer_share_amount: Decimal,
+    pub platform_fee_percentage: Decimal,
+    pub platform_fee_amount: Decimal,
+    pub payment_schedule: Vec<PaymentScheduleEntry>,
+    pub win_win_win_score: Option<Decimal>,
+}
+
+/// Result of running Win-Win-Win validation on a deal.
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidateDealResult {
+    pub score: Decimal,
+    pub status: String,
+    pub blocked: bool,
+    pub violations: Vec<ValidationIssue>,
+    pub warnings: Vec<ValidationIssue>,
+    pub party_feedback: std::collections::BTreeMap<DealRole, PartyFeedback>,
 }

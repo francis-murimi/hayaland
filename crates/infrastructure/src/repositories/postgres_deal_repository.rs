@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use domain::entities::{
-    Deal, DealParticipation, DealRole, DealStatus, GeoPoint, ParticipationStatus,
+    Deal, DealParticipation, DealRole, DealStatus, DistributionModel, GeoPoint,
+    ParticipationStatus, Term, TermStatus, TermType, ValueDistribution,
 };
 use domain::errors::DomainError;
 use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
@@ -519,6 +520,201 @@ impl DealRepository for PostgresDealRepository {
 
         Ok(())
     }
+
+    async fn create_term(&self, term: &Term) -> Result<(), DomainError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO terms (
+                id, deal_id, proposed_by_party_id, term_type, term_name, description,
+                negotiation_status, parent_term_id, version, proposed_at, resolved_at,
+                is_mandatory, resolution, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            "#,
+            term.id,
+            term.deal_id,
+            term.proposed_by_party_id,
+            term.term_type.as_str(),
+            term.term_name,
+            term.description,
+            term.negotiation_status.as_str(),
+            term.parent_term_id,
+            term.version,
+            term.proposed_at,
+            term.resolved_at,
+            term.is_mandatory,
+            term.resolution,
+            term.created_at
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(())
+    }
+
+    async fn update_term(&self, term: &Term) -> Result<(), DomainError> {
+        sqlx::query!(
+            r#"
+            UPDATE terms
+            SET term_type = $1,
+                term_name = $2,
+                description = $3,
+                negotiation_status = $4,
+                parent_term_id = $5,
+                version = $6,
+                proposed_at = $7,
+                resolved_at = $8,
+                is_mandatory = $9,
+                resolution = $10
+            WHERE id = $11
+            "#,
+            term.term_type.as_str(),
+            term.term_name,
+            term.description,
+            term.negotiation_status.as_str(),
+            term.parent_term_id,
+            term.version,
+            term.proposed_at,
+            term.resolved_at,
+            term.is_mandatory,
+            term.resolution,
+            term.id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(())
+    }
+
+    async fn find_term_by_id(&self, id: Uuid) -> Result<Option<Term>, DomainError> {
+        let row = sqlx::query_as!(
+            TermRow,
+            r#"
+            SELECT id, deal_id, proposed_by_party_id, term_type, term_name, description,
+                negotiation_status, parent_term_id, version, proposed_at, resolved_at,
+                is_mandatory, resolution, created_at
+            FROM terms
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(row.map(build_term_from_row))
+    }
+
+    async fn find_terms_by_deal(&self, deal_id: Uuid) -> Result<Vec<Term>, DomainError> {
+        let rows = sqlx::query_as!(
+            TermRow,
+            r#"
+            SELECT id, deal_id, proposed_by_party_id, term_type, term_name, description,
+                negotiation_status, parent_term_id, version, proposed_at, resolved_at,
+                is_mandatory, resolution, created_at
+            FROM terms
+            WHERE deal_id = $1
+            ORDER BY term_type, version
+            "#,
+            deal_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(rows.into_iter().map(build_term_from_row).collect())
+    }
+
+    async fn set_value_distribution(
+        &self,
+        distribution: &ValueDistribution,
+    ) -> Result<(), DomainError> {
+        let payment_schedule =
+            serde_json::to_value(&distribution.payment_schedule).map_err(|e| {
+                DomainError::InvalidValueDistribution {
+                    message: e.to_string(),
+                }
+            })?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO value_distributions (
+                id, deal_id, total_value, currency, distribution_model,
+                supplier_share_percentage, supplier_share_amount,
+                consumer_cost_percentage, consumer_cost_amount,
+                enhancer_share_percentage, enhancer_share_amount,
+                platform_fee_percentage, platform_fee_amount,
+                payment_schedule, win_win_win_score, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            ON CONFLICT (deal_id) DO UPDATE SET
+                total_value = EXCLUDED.total_value,
+                currency = EXCLUDED.currency,
+                distribution_model = EXCLUDED.distribution_model,
+                supplier_share_percentage = EXCLUDED.supplier_share_percentage,
+                supplier_share_amount = EXCLUDED.supplier_share_amount,
+                consumer_cost_percentage = EXCLUDED.consumer_cost_percentage,
+                consumer_cost_amount = EXCLUDED.consumer_cost_amount,
+                enhancer_share_percentage = EXCLUDED.enhancer_share_percentage,
+                enhancer_share_amount = EXCLUDED.enhancer_share_amount,
+                platform_fee_percentage = EXCLUDED.platform_fee_percentage,
+                platform_fee_amount = EXCLUDED.platform_fee_amount,
+                payment_schedule = EXCLUDED.payment_schedule,
+                win_win_win_score = EXCLUDED.win_win_win_score,
+                updated_at = EXCLUDED.updated_at
+            "#,
+            distribution.id,
+            distribution.deal_id,
+            distribution.total_value,
+            distribution.currency,
+            distribution.distribution_model.as_str(),
+            distribution.supplier_share_percentage,
+            distribution.supplier_share_amount,
+            distribution.consumer_cost_percentage,
+            distribution.consumer_cost_amount,
+            distribution.enhancer_share_percentage,
+            distribution.enhancer_share_amount,
+            distribution.platform_fee_percentage,
+            distribution.platform_fee_amount,
+            payment_schedule,
+            distribution.win_win_win_score,
+            distribution.created_at,
+            distribution.updated_at
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(())
+    }
+
+    async fn find_value_distribution_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Option<ValueDistribution>, DomainError> {
+        let row = sqlx::query_as!(
+            ValueDistributionRow,
+            r#"
+            SELECT id, deal_id, total_value, currency, distribution_model,
+                supplier_share_percentage, supplier_share_amount,
+                consumer_cost_percentage, consumer_cost_amount,
+                enhancer_share_percentage, enhancer_share_amount,
+                platform_fee_percentage, platform_fee_amount,
+                payment_schedule as "payment_schedule!: serde_json::Value",
+                win_win_win_score, created_at, updated_at
+            FROM value_distributions
+            WHERE deal_id = $1
+            "#,
+            deal_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(row.map(build_value_distribution_from_row))
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -566,6 +762,45 @@ struct ParticipationRow {
     invited_at: Option<OffsetDateTime>,
     responded_at: Option<OffsetDateTime>,
     created_at: OffsetDateTime,
+}
+
+#[derive(sqlx::FromRow)]
+struct TermRow {
+    id: Uuid,
+    deal_id: Uuid,
+    proposed_by_party_id: Uuid,
+    term_type: String,
+    term_name: String,
+    description: String,
+    negotiation_status: String,
+    parent_term_id: Option<Uuid>,
+    version: i32,
+    proposed_at: OffsetDateTime,
+    resolved_at: Option<OffsetDateTime>,
+    is_mandatory: bool,
+    resolution: Option<String>,
+    created_at: OffsetDateTime,
+}
+
+#[derive(sqlx::FromRow)]
+struct ValueDistributionRow {
+    id: Uuid,
+    deal_id: Uuid,
+    total_value: Decimal,
+    currency: String,
+    distribution_model: String,
+    supplier_share_percentage: Decimal,
+    supplier_share_amount: Decimal,
+    consumer_cost_percentage: Decimal,
+    consumer_cost_amount: Decimal,
+    enhancer_share_percentage: Decimal,
+    enhancer_share_amount: Decimal,
+    platform_fee_percentage: Decimal,
+    platform_fee_amount: Decimal,
+    payment_schedule: serde_json::Value,
+    win_win_win_score: Option<Decimal>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 fn build_deal_from_row(row: DealRow) -> Deal {
@@ -621,6 +856,54 @@ fn build_participation_from_row(row: ParticipationRow) -> DealParticipation {
         invited_at: row.invited_at,
         responded_at: row.responded_at,
         created_at: row.created_at,
+    }
+}
+
+fn build_term_from_row(row: TermRow) -> Term {
+    Term {
+        id: row.id,
+        deal_id: row.deal_id,
+        proposed_by_party_id: row.proposed_by_party_id,
+        term_type: TermType::try_from(row.term_type.as_str())
+            .expect("database should contain valid term types"),
+        term_name: row.term_name,
+        description: row.description,
+        negotiation_status: TermStatus::try_from(row.negotiation_status.as_str())
+            .expect("database should contain valid term statuses"),
+        parent_term_id: row.parent_term_id,
+        version: row.version,
+        proposed_at: row.proposed_at,
+        resolved_at: row.resolved_at,
+        is_mandatory: row.is_mandatory,
+        resolution: row.resolution,
+        created_at: row.created_at,
+    }
+}
+
+fn build_value_distribution_from_row(row: ValueDistributionRow) -> ValueDistribution {
+    let payment_schedule: Vec<domain::entities::PaymentScheduleEntry> =
+        serde_json::from_value(row.payment_schedule)
+            .expect("database should contain valid payment schedule JSON");
+
+    ValueDistribution {
+        id: row.id,
+        deal_id: row.deal_id,
+        total_value: row.total_value,
+        currency: row.currency,
+        distribution_model: DistributionModel::try_from(row.distribution_model.as_str())
+            .expect("database should contain valid distribution models"),
+        supplier_share_percentage: row.supplier_share_percentage,
+        supplier_share_amount: row.supplier_share_amount,
+        consumer_cost_percentage: row.consumer_cost_percentage,
+        consumer_cost_amount: row.consumer_cost_amount,
+        enhancer_share_percentage: row.enhancer_share_percentage,
+        enhancer_share_amount: row.enhancer_share_amount,
+        platform_fee_percentage: row.platform_fee_percentage,
+        platform_fee_amount: row.platform_fee_amount,
+        payment_schedule,
+        win_win_win_score: row.win_win_win_score,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     }
 }
 

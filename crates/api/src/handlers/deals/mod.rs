@@ -3,4 +3,7 @@ pub mod execute_transition;
 pub mod get_deal;
 pub mod list_deals;
 pub mod submit_deal;
+pub mod terms;
 pub mod update_deal;
+pub mod validate_deal;
+pub mod value_distribution;

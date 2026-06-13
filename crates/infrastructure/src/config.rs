@@ -12,6 +12,8 @@ pub struct Settings {
     pub auth: AuthSettings,
     #[serde(default)]
     pub email: EmailSettings,
+    #[serde(default)]
+    pub validation: domain::services::ValidationConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -174,7 +176,7 @@ mod tests {
             url: SecretString::from(""),
             max_connections: 5,
         };
-        let mut settings = Settings {
+        let settings = Settings {
             database: settings,
             server: ServerSettings {
                 host: default_host(),
@@ -186,8 +188,8 @@ mod tests {
                 token_expiry_seconds: default_token_expiry(),
             },
             email: Default::default(),
+            validation: Default::default(),
         };
-        settings.database.url = SecretString::from("");
 
         let settings = settings.with_database_url_fallback().unwrap();
         assert_eq!(
@@ -216,6 +218,7 @@ mod tests {
                 token_expiry_seconds: default_token_expiry(),
             },
             email: Default::default(),
+            validation: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();

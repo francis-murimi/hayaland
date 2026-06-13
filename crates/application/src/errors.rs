@@ -133,6 +133,7 @@ impl From<DomainError> for ApplicationError {
             DomainError::WinWinWinValidationFailed { violations } => {
                 ApplicationError::WinWinWinValidationFailed { violations }
             }
+            DomainError::Validation(messages) => ApplicationError::Validation(messages),
             DomainError::RepositoryError(msg) => ApplicationError::Infrastructure(msg),
         }
     }

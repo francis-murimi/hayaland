@@ -3,7 +3,9 @@ use actix_web::{http::header, test, web::Data};
 use api::routes;
 use api::AppState;
 use application::deals::{
-    CreateDeal, ExecuteTransition, GetDeal, ListDeals, SubmitDeal, UpdateDeal,
+    AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
+    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
+    ValidateDeal, WithdrawTerm,
 };
 use application::email::dto::VerifyEmailCommand;
 use application::email::queue::{EmailQueue, EmailQueueItem};
@@ -37,6 +39,7 @@ use domain::repositories::{
     DealAggregate, DealListResult, DealRepository, DealSearchCriteria, EmailVerificationRepository,
     PartyRepository, PasswordResetRepository, RoleRepository, UserRepository,
 };
+use domain::services::ValidationConfig;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use uuid::Uuid;
@@ -499,6 +502,8 @@ impl PartyRepository for FakePartyRepo {
 struct FakeDealRepo {
     deals: Mutex<HashMap<Uuid, domain::entities::Deal>>,
     participations: Mutex<Vec<domain::entities::DealParticipation>>,
+    terms: Mutex<Vec<domain::entities::Term>>,
+    value_distributions: Mutex<HashMap<Uuid, domain::entities::ValueDistribution>>,
     history: Mutex<Vec<(Uuid, String, Option<Uuid>, Option<serde_json::Value>)>>,
     reference_counter: Mutex<i64>,
 }
@@ -644,6 +649,69 @@ impl DealRepository for FakeDealRepo {
         }
         Ok(())
     }
+
+    async fn create_term(&self, term: &domain::entities::Term) -> Result<(), DomainError> {
+        self.terms.lock().unwrap().push(term.clone());
+        Ok(())
+    }
+
+    async fn update_term(&self, term: &domain::entities::Term) -> Result<(), DomainError> {
+        let mut terms = self.terms.lock().unwrap();
+        if let Some(t) = terms.iter_mut().find(|t| t.id == term.id) {
+            *t = term.clone();
+        }
+        Ok(())
+    }
+
+    async fn find_term_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<domain::entities::Term>, DomainError> {
+        Ok(self
+            .terms
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.id == id)
+            .cloned())
+    }
+
+    async fn find_terms_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Vec<domain::entities::Term>, DomainError> {
+        Ok(self
+            .terms
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.deal_id == deal_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn set_value_distribution(
+        &self,
+        distribution: &domain::entities::ValueDistribution,
+    ) -> Result<(), DomainError> {
+        self.value_distributions
+            .lock()
+            .unwrap()
+            .insert(distribution.deal_id, distribution.clone());
+        Ok(())
+    }
+
+    async fn find_value_distribution_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Option<domain::entities::ValueDistribution>, DomainError> {
+        Ok(self
+            .value_distributions
+            .lock()
+            .unwrap()
+            .get(&deal_id)
+            .cloned())
+    }
 }
 
 #[async_trait]
@@ -761,8 +829,25 @@ fn test_fixtures() -> TestFixtures {
         get_deal: GetDeal::new(deal_repo.clone(), party_repo.clone()),
         list_deals: ListDeals::new(deal_repo.clone(), party_repo.clone()),
         update_deal: UpdateDeal::new(deal_repo.clone(), party_repo.clone()),
-        submit_deal: SubmitDeal::new(deal_repo.clone(), party_repo.clone()),
-        execute_transition: ExecuteTransition::new(deal_repo, party_repo),
+        submit_deal: SubmitDeal::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            ValidationConfig::default(),
+        ),
+        execute_transition: ExecuteTransition::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            ValidationConfig::default(),
+        ),
+        propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
+        counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
+        accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),
+        reject_term: RejectTerm::new(deal_repo.clone(), party_repo.clone()),
+        withdraw_term: WithdrawTerm::new(deal_repo.clone(), party_repo.clone()),
+        list_terms: ListTerms::new(deal_repo.clone(), party_repo.clone()),
+        set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
+        get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
+        validate_deal: ValidateDeal::new(deal_repo.clone(), ValidationConfig::default()),
         token_validator: token,
     };
 
@@ -2099,4 +2184,241 @@ async fn nearby_parties_requires_radius_and_coordinates() {
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+fn role_profile(role: &str) -> serde_json::Value {
+    match role {
+        "SUPPLIER" => serde_json::json!({
+            "type": "SUPPLIER",
+            "resource_type_ids": [],
+            "preferred_compensation": [],
+            "insurance_verified": false
+        }),
+        "CONSUMER" => serde_json::json!({
+            "type": "CONSUMER",
+            "need_category_ids": [],
+            "preferred_payment_terms": []
+        }),
+        "ENHANCER" => serde_json::json!({
+            "type": "ENHANCER",
+            "enhancement_type_ids": [],
+            "skills": [],
+            "equipment_owned": []
+        }),
+        _ => panic!("unsupported test role: {role}"),
+    }
+}
+
+macro_rules! create_party_with_role {
+    ($app:expr, $owner_id:expr, $email:expr, $role:expr) => {{
+        let party_id = create_party!($app, &bearer($owner_id), $email);
+
+        let add = test::TestRequest::post()
+            .uri(&format!("/api/v1/parties/{party_id}/roles"))
+            .insert_header((header::AUTHORIZATION, bearer($owner_id)))
+            .set_json(serde_json::json!({
+                "role_type": $role,
+                "profile": role_profile($role)
+            }))
+            .to_request();
+        let resp = test::call_service($app, add).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        party_id
+    }};
+}
+
+macro_rules! create_three_party_deal {
+    ($app:expr, $owner_id:expr, $supplier:expr, $consumer:expr, $enhancer:expr) => {{
+        let category_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        let req = test::TestRequest::post()
+            .uri("/api/v1/deals")
+            .insert_header((header::AUTHORIZATION, bearer($owner_id)))
+            .insert_header(("X-Party-ID", $supplier.to_string()))
+            .set_json(serde_json::json!({
+                "title": "API Negotiation Deal",
+                "domain_category_id": category_id,
+                "consumer_party_id": $consumer,
+                "enhancer_party_id": $enhancer
+            }))
+            .to_request();
+        let resp = test::call_service($app, req).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
+    }};
+}
+
+#[actix_rt::test]
+async fn propose_and_list_terms_via_api() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "termowner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier = create_party_with_role!(&app, owner_id, "supplier-term@example.com", "SUPPLIER");
+    let consumer = create_party_with_role!(&app, owner_id, "consumer-term@example.com", "CONSUMER");
+    let enhancer = create_party_with_role!(&app, owner_id, "enhancer-term@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+
+    let propose = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/terms"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "term_type": "PRICE",
+            "term_name": "Unit price",
+            "description": "100 points",
+            "is_mandatory": true
+        }))
+        .to_request();
+    let resp = test::call_service(&app, propose).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["term_name"], "Unit price");
+
+    let list = test::TestRequest::get()
+        .uri(&format!("/api/v1/deals/{deal_id}/terms"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, list).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body.as_array().unwrap().len(), 1);
+}
+
+#[actix_rt::test]
+async fn set_and_get_value_distribution_via_api() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "valueowner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier =
+        create_party_with_role!(&app, owner_id, "supplier-value@example.com", "SUPPLIER");
+    let consumer =
+        create_party_with_role!(&app, owner_id, "consumer-value@example.com", "CONSUMER");
+    let enhancer =
+        create_party_with_role!(&app, owner_id, "enhancer-value@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+
+    let set = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/value-distribution"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "total_value": "10000",
+            "distribution_model": "FIXED_PRICE",
+            "supplier_share_percentage": "60",
+            "enhancer_share_percentage": "30",
+            "platform_fee_percentage": "10",
+            "consumer_cost_percentage": "100",
+            "payment_schedule": []
+        }))
+        .to_request();
+    let resp = test::call_service(&app, set).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["total_value"], "10000");
+
+    let get = test::TestRequest::get()
+        .uri(&format!("/api/v1/deals/{deal_id}/value-distribution"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, get).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["supplier_share_amount"], "6000");
+}
+
+#[actix_rt::test]
+async fn validate_deal_via_api_returns_good() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "validateowner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier =
+        create_party_with_role!(&app, owner_id, "supplier-validate@example.com", "SUPPLIER");
+    let consumer =
+        create_party_with_role!(&app, owner_id, "consumer-validate@example.com", "CONSUMER");
+    let enhancer =
+        create_party_with_role!(&app, owner_id, "enhancer-validate@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+
+    let set = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/value-distribution"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "total_value": "10000",
+            "distribution_model": "FIXED_PRICE",
+            "supplier_share_percentage": "60",
+            "enhancer_share_percentage": "30",
+            "platform_fee_percentage": "10",
+            "consumer_cost_percentage": "100",
+            "payment_schedule": []
+        }))
+        .to_request();
+    let resp = test::call_service(&app, set).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let validate = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/validate"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, validate).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "GOOD");
+    assert_eq!(body["blocked"], false);
+}
+
+#[actix_rt::test]
+async fn submit_deal_without_value_distribution_returns_conflict() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "submitowner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier =
+        create_party_with_role!(&app, owner_id, "supplier-submit@example.com", "SUPPLIER");
+    let consumer =
+        create_party_with_role!(&app, owner_id, "consumer-submit@example.com", "CONSUMER");
+    let enhancer =
+        create_party_with_role!(&app, owner_id, "enhancer-submit@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+
+    let submit = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/submit"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, submit).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
 }

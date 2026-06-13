@@ -1,0 +1,220 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, deal_id, total_value, currency, distribution_model,\n                supplier_share_percentage, supplier_share_amount,\n                consumer_cost_percentage, consumer_cost_amount,\n                enhancer_share_percentage, enhancer_share_amount,\n                platform_fee_percentage, platform_fee_amount,\n                payment_schedule as \"payment_schedule!: serde_json::Value\",\n                win_win_win_score, created_at, updated_at\n            FROM value_distributions\n            WHERE deal_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "total_value",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "total_value"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "currency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "distribution_model",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "distribution_model"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "supplier_share_percentage",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "supplier_share_percentage"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "supplier_share_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "supplier_share_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "consumer_cost_percentage",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "consumer_cost_percentage"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "consumer_cost_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "consumer_cost_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "enhancer_share_percentage",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "enhancer_share_percentage"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "enhancer_share_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "enhancer_share_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "platform_fee_percentage",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "platform_fee_percentage"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "platform_fee_amount",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "platform_fee_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "payment_schedule!: serde_json::Value",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "payment_schedule"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "win_win_win_score",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "win_win_win_score"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "value_distributions",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "ce6f284a3b10de2150c4075baa2cd61160c415edad44baf3df8c885f209abb09"
+}

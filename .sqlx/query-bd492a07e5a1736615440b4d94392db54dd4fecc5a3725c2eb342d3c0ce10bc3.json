@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE terms\n            SET term_type = $1,\n                term_name = $2,\n                description = $3,\n                negotiation_status = $4,\n                parent_term_id = $5,\n                version = $6,\n                proposed_at = $7,\n                resolved_at = $8,\n                is_mandatory = $9,\n                resolution = $10\n            WHERE id = $11\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Bool",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bd492a07e5a1736615440b4d94392db54dd4fecc5a3725c2eb342d3c0ce10bc3"
+}
