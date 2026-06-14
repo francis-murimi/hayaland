@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id as \"id!\",\n                deal_id as \"deal_id!\",\n                agreement_id,\n                milestone_id,\n                transaction_type as \"transaction_type!\",\n                from_party_id,\n                to_party_id,\n                amount as \"amount!\",\n                currency as \"currency!\",\n                description,\n                status as \"status!\",\n                payment_method,\n                external_reference,\n                requires_approval as \"requires_approval!\",\n                approvals_required as \"approvals_required!\",\n                approvals_received as \"approvals_received!\",\n                executed_at,\n                created_at as \"created_at!\"\n            FROM transactions\n            WHERE deal_id = $1\n              AND (from_party_id = $2 OR to_party_id = $2)\n            ORDER BY created_at ASC\n            ",
+  "query": "\n            SELECT\n                id as \"id!\",\n                deal_id as \"deal_id!\",\n                agreement_id,\n                milestone_id,\n                transaction_type as \"transaction_type!\",\n                from_party_id,\n                to_party_id,\n                amount as \"amount!\",\n                currency as \"currency!\",\n                description,\n                status as \"status!\",\n                payment_method,\n                external_reference,\n                requires_approval as \"requires_approval!\",\n                approvals_required as \"approvals_required!\",\n                approvals_received as \"approvals_received!\",\n                involved_party_ids as \"involved_party_ids!\",\n                executed_at,\n                created_at as \"created_at!\"\n            FROM transactions\n            WHERE status = 'PENDING'\n              AND requires_approval = true\n              AND $1 = ANY(involved_party_ids)\n              AND NOT EXISTS (\n                  SELECT 1 FROM transaction_approvals\n                  WHERE transaction_id = transactions.id AND party_id = $1\n              )\n            ORDER BY created_at ASC\n            LIMIT $2\n            OFFSET $3\n            ",
   "describe": {
     "columns": [
       {
@@ -181,6 +181,17 @@
       },
       {
         "ordinal": 16,
+        "name": "involved_party_ids!",
+        "type_info": "UuidArray",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "involved_party_ids"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
         "name": "executed_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -191,7 +202,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "created_at!",
         "type_info": "Timestamptz",
         "origin": {
@@ -205,7 +216,8 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -225,9 +237,10 @@
       false,
       false,
       false,
+      false,
       true,
       false
     ]
   },
-  "hash": "241d08bfb1457ed41f2e5b91ff26ede0b80b438e0b2ff4b2f3d9aec5659e3287"
+  "hash": "4f5220f2ddee0f147d7cbacfd719bad4825c0123a318319b780eaf65b2904495"
 }

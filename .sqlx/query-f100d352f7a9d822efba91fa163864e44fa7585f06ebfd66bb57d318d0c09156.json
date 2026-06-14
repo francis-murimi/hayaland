@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO transactions (\n                id, deal_id, agreement_id, milestone_id, transaction_type,\n                from_party_id, to_party_id, amount, currency, description,\n                status, payment_method, external_reference, requires_approval,\n                approvals_required, approvals_received, involved_party_ids, executed_at, created_at\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,\n                $11, $12, $13, $14, $15, $16, $17::uuid[], $18, $19\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Int4",
+        "Int4",
+        "UuidArray",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f100d352f7a9d822efba91fa163864e44fa7585f06ebfd66bb57d318d0c09156"
+}

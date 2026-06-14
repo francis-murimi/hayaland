@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE milestones\n            SET milestone_name = $1,\n                description = $2,\n                assigned_to_party_id = $3,\n                due_date = $4,\n                completion_criteria = $5,\n                milestone_status = $6,\n                completion_percentage = $7,\n                payment_trigger_amount = $8,\n                completed_at = $9,\n                verified_by_party_id = $10,\n                display_order = $11,\n                updated_at = $12\n            WHERE id = $13\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid",
+        "Date",
+        "Text",
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Uuid",
+        "Int4",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3fe36691de4c5f452266173ea3d3e10681c952ceedd1db6b8a600117bbea2a97"
+}

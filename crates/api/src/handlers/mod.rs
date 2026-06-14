@@ -7,6 +7,7 @@ pub mod forgot_password;
 pub mod get_user;
 pub mod list_users;
 pub mod login;
+pub mod milestones;
 pub mod parties;
 pub mod payments;
 pub mod resend_verification;

@@ -1,4 +1,4 @@
-use crate::entities::{DealWallet, PlatformWallet, Transaction};
+use crate::entities::{DealWallet, PlatformWallet, Transaction, TransactionApproval};
 use crate::errors::DomainError;
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -65,4 +65,44 @@ pub trait WalletRepository: Send + Sync {
         party_id: Uuid,
         deal_id: Uuid,
     ) -> Result<Option<DealWallet>, DomainError>;
+
+    /// Persist a pending transaction without mutating wallet balances.
+    async fn record_pending_transaction(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<(), DomainError>;
+
+    /// Find a transaction by ID.
+    async fn find_transaction_by_id(&self, id: Uuid) -> Result<Option<Transaction>, DomainError>;
+
+    /// Find all approvals recorded for a transaction.
+    async fn find_approvals_for_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Vec<TransactionApproval>, DomainError>;
+
+    /// Record one approval and, if it finalises the transaction, apply the
+    /// ledger mutation atomically.
+    async fn record_approval_and_finalise(
+        &self,
+        transaction: &Transaction,
+        approval: &TransactionApproval,
+        wallet_mutations: &[(Uuid, PlatformWallet)],
+    ) -> Result<(), DomainError>;
+
+    /// List pending transactions where the given party is a required approver
+    /// and has not yet voted.
+    async fn find_pending_transactions_for_party(
+        &self,
+        party_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Transaction>, DomainError>;
+
+    /// Count pending transactions where the given party is a required approver
+    /// and has not yet voted.
+    async fn count_pending_transactions_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<i64, DomainError>;
 }

@@ -184,6 +184,89 @@ impl PlatformWallet {
         self.is_active = true;
         self.updated_at = OffsetDateTime::now_utc();
     }
+
+    /// Move available balance into pending while awaiting approval.
+    pub fn hold_pending(&mut self, amount: Decimal) -> Result<(), DomainError> {
+        Self::validate_amount(amount)?;
+        self.ensure_active()?;
+        if amount > self.balance {
+            return Err(DomainError::Validation(vec![
+                "insufficient balance".to_string()
+            ]));
+        }
+        self.balance -= amount;
+        self.pending_balance += amount;
+        self.updated_at = OffsetDateTime::now_utc();
+        Ok(())
+    }
+
+    /// Release pending balance back to available balance (on rejection).
+    pub fn release_pending(&mut self, amount: Decimal) -> Result<(), DomainError> {
+        Self::validate_amount(amount)?;
+        self.ensure_active()?;
+        if amount > self.pending_balance {
+            return Err(DomainError::Validation(vec![
+                "insufficient pending balance".to_string(),
+            ]));
+        }
+        self.pending_balance -= amount;
+        self.balance += amount;
+        self.updated_at = OffsetDateTime::now_utc();
+        Ok(())
+    }
+
+    /// Commit pending balance to escrow (e.g. approved escrow hold).
+    pub fn commit_pending_to_escrow(&mut self, amount: Decimal) -> Result<(), DomainError> {
+        Self::validate_amount(amount)?;
+        self.ensure_active()?;
+        if amount > self.pending_balance {
+            return Err(DomainError::Validation(vec![
+                "insufficient pending balance".to_string(),
+            ]));
+        }
+        self.pending_balance -= amount;
+        self.escrow_balance += amount;
+        self.updated_at = OffsetDateTime::now_utc();
+        Ok(())
+    }
+
+    /// Commit pending balance back to available balance (e.g. approved deposit/release).
+    pub fn commit_pending_to_balance(&mut self, amount: Decimal) -> Result<(), DomainError> {
+        Self::validate_amount(amount)?;
+        self.ensure_active()?;
+        if amount > self.pending_balance {
+            return Err(DomainError::Validation(vec![
+                "insufficient pending balance".to_string(),
+            ]));
+        }
+        self.pending_balance -= amount;
+        self.balance += amount;
+        self.updated_at = OffsetDateTime::now_utc();
+        Ok(())
+    }
+
+    /// Debit escrow for a cross-party release.
+    pub fn debit_escrow(&mut self, amount: Decimal) -> Result<(), DomainError> {
+        Self::validate_amount(amount)?;
+        self.ensure_active()?;
+        if amount > self.escrow_balance {
+            return Err(DomainError::Validation(vec![
+                "insufficient escrow balance".to_string()
+            ]));
+        }
+        self.escrow_balance -= amount;
+        self.updated_at = OffsetDateTime::now_utc();
+        Ok(())
+    }
+
+    /// Credit available balance for a cross-party release.
+    pub fn credit_balance(&mut self, amount: Decimal) -> Result<(), DomainError> {
+        Self::validate_amount(amount)?;
+        self.ensure_active()?;
+        self.balance += amount;
+        self.updated_at = OffsetDateTime::now_utc();
+        Ok(())
+    }
 }
 
 /// A read-only, per-deal view of a party's wallet.
@@ -319,5 +402,48 @@ mod tests {
 
         assert!(wallet.deduct_fee_from_balance(Decimal::from(100)).is_err());
         assert!(wallet.deduct_fee_from_escrow(Decimal::from(100)).is_err());
+    }
+
+    #[test]
+    fn pending_balance_hold_release_and_commit() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.deposit(Decimal::from(100)).unwrap();
+
+        wallet.hold_pending(Decimal::from(40)).unwrap();
+        assert_eq!(wallet.balance, Decimal::from(60));
+        assert_eq!(wallet.pending_balance, Decimal::from(40));
+
+        wallet.commit_pending_to_escrow(Decimal::from(25)).unwrap();
+        assert_eq!(wallet.pending_balance, Decimal::from(15));
+        assert_eq!(wallet.escrow_balance, Decimal::from(25));
+
+        wallet.release_pending(Decimal::from(15)).unwrap();
+        assert_eq!(wallet.balance, Decimal::from(75));
+        assert_eq!(wallet.pending_balance, Decimal::ZERO);
+    }
+
+    #[test]
+    fn pending_hold_rejects_overdraft_and_inactive_wallet() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.deposit(Decimal::from(10)).unwrap();
+        assert!(wallet.hold_pending(Decimal::from(20)).is_err());
+
+        wallet.mark_inactive();
+        assert!(wallet.hold_pending(Decimal::from(5)).is_err());
+    }
+
+    #[test]
+    fn debit_and_credit_for_cross_party_release() {
+        let mut source = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        let mut recipient = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        source.deposit(Decimal::from(100)).unwrap();
+        source.hold_escrow(Decimal::from(60)).unwrap();
+
+        source.debit_escrow(Decimal::from(40)).unwrap();
+        recipient.credit_balance(Decimal::from(40)).unwrap();
+
+        assert_eq!(source.escrow_balance, Decimal::from(20));
+        assert_eq!(recipient.balance, Decimal::from(40));
+        assert!(source.debit_escrow(Decimal::from(100)).is_err());
     }
 }

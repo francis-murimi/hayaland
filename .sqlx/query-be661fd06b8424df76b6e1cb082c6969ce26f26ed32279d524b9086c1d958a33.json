@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id as \"id!\",\n                transaction_id as \"transaction_id!\",\n                party_id as \"party_id!\",\n                approved_by_user_id as \"approved_by_user_id!\",\n                decision as \"decision!\",\n                comment,\n                created_at as \"created_at!\"\n            FROM transaction_approvals\n            WHERE transaction_id = $1\n            ORDER BY created_at ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "transaction_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "transaction_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "approved_by_user_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "approved_by_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "decision!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "decision"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "comment",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "comment"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "transaction_approvals",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "be661fd06b8424df76b6e1cb082c6969ce26f26ed32279d524b9086c1d958a33"
+}

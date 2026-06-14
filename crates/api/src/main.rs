@@ -10,6 +10,10 @@ use application::deals::{
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::milestones::{
+    CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
+    StartMilestone, UpdateMilestone, VerifyMilestone,
+};
 use application::parties::{
     AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
     SearchParties, SoftDeleteParty, UpdateParty,
@@ -17,8 +21,9 @@ use application::parties::{
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::payments::{
-    CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetWallet, HoldEscrow,
-    ListDealTransactions, ListWalletTransactions, RecordAdjustment, ReleaseEscrow, WithdrawPoints,
+    ApproveTransaction, CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetTransaction,
+    GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
+    RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
@@ -30,8 +35,8 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
 use domain::repositories::{
-    AgreementRepository, DealRepository, EmailVerificationRepository, PartyRepository,
-    PasswordResetRepository, RoleRepository, UserRepository, WalletRepository,
+    AgreementRepository, DealRepository, EmailVerificationRepository, MilestoneRepository,
+    PartyRepository, PasswordResetRepository, RoleRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
@@ -39,8 +44,8 @@ use infrastructure::{
     migrations,
     repositories::{
         PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
-        PostgresPartyRepository, PostgresPasswordResetRepository, PostgresRoleRepository,
-        PostgresUserRepository, PostgresWalletRepository,
+        PostgresMilestoneRepository, PostgresPartyRepository, PostgresPasswordResetRepository,
+        PostgresRoleRepository, PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -77,7 +82,10 @@ async fn main() -> anyhow::Result<()> {
     let deal_repo: Arc<dyn DealRepository> = Arc::new(PostgresDealRepository::new(pool.clone()));
     let agreement_repo: Arc<dyn AgreementRepository> =
         Arc::new(PostgresAgreementRepository::new(pool.clone()));
-    let wallet_repo: Arc<dyn WalletRepository> = Arc::new(PostgresWalletRepository::new(pool));
+    let wallet_repo: Arc<dyn WalletRepository> =
+        Arc::new(PostgresWalletRepository::new(pool.clone()));
+    let milestone_repo: Arc<dyn MilestoneRepository> =
+        Arc::new(PostgresMilestoneRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -152,10 +160,11 @@ async fn main() -> anyhow::Result<()> {
             party_repo.clone(),
             settings.validation.clone(),
         ),
-        execute_transition: ExecuteTransition::new(
+        execute_transition: ExecuteTransition::new_with_milestones(
             deal_repo.clone(),
             party_repo.clone(),
             agreement_repo.clone(),
+            milestone_repo.clone(),
             settings.validation.clone(),
         ),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -219,6 +228,50 @@ async fn main() -> anyhow::Result<()> {
         list_deal_transactions: ListDealTransactions::new(
             party_repo.clone(),
             deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        approve_transaction: ApproveTransaction::new(party_repo.clone(), wallet_repo.clone()),
+        list_pending_approvals: ListPendingApprovals::new(party_repo.clone(), wallet_repo.clone()),
+        get_transaction: GetTransaction::new(party_repo.clone(), wallet_repo.clone()),
+        create_milestone: CreateMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        list_milestones: ListMilestones::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        get_deal_progress: GetDealProgress::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        update_milestone: UpdateMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        delete_milestone: DeleteMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        start_milestone: StartMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        complete_milestone: CompleteMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        verify_milestone: VerifyMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
             wallet_repo.clone(),
         ),
         token_validator: token_service,

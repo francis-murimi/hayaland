@@ -4,7 +4,9 @@ use crate::deals::dto::{DealResult, ExecuteTransitionCommand};
 use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
 use domain::entities::{AgreementStatus, DealStatus, ParticipationStatus, TermStatus};
-use domain::repositories::{AgreementRepository, DealRepository, PartyRepository};
+use domain::repositories::{
+    AgreementRepository, DealRepository, MilestoneRepository, PartyRepository,
+};
 use domain::services::ValidationConfig;
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -16,6 +18,7 @@ pub struct ExecuteTransition {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
     agreement_repo: Arc<dyn AgreementRepository>,
+    milestone_repo: Option<Arc<dyn MilestoneRepository>>,
     validation_config: ValidationConfig,
 }
 
@@ -30,6 +33,23 @@ impl ExecuteTransition {
             deal_repo,
             party_repo,
             agreement_repo,
+            milestone_repo: None,
+            validation_config,
+        }
+    }
+
+    pub fn new_with_milestones(
+        deal_repo: Arc<dyn DealRepository>,
+        party_repo: Arc<dyn PartyRepository>,
+        agreement_repo: Arc<dyn AgreementRepository>,
+        milestone_repo: Arc<dyn MilestoneRepository>,
+        validation_config: ValidationConfig,
+    ) -> Self {
+        Self {
+            deal_repo,
+            party_repo,
+            agreement_repo,
+            milestone_repo: Some(milestone_repo),
             validation_config,
         }
     }
@@ -123,6 +143,24 @@ impl ExecuteTransition {
                     .await?;
                 self.require_signed_agreement(deal_id).await?;
             }
+            DealStatus::Executing => {
+                if deal.deal_status != DealStatus::Committed {
+                    return Err(ApplicationError::InvalidStateTransition {
+                        from: deal.deal_status.as_str().to_string(),
+                        to: cmd.new_status.as_str().to_string(),
+                    });
+                }
+                self.ensure_milestones_present(deal_id).await?;
+            }
+            DealStatus::Completed => {
+                if deal.deal_status != DealStatus::Executing {
+                    return Err(ApplicationError::InvalidStateTransition {
+                        from: deal.deal_status.as_str().to_string(),
+                        to: cmd.new_status.as_str().to_string(),
+                    });
+                }
+                self.ensure_all_milestones_verified(deal_id).await?;
+            }
             DealStatus::Cancelled => {
                 // Allow cancellation from most active states by any participant.
                 if deal.deal_status.is_terminal() {
@@ -143,6 +181,13 @@ impl ExecuteTransition {
 
         deal.transition(cmd.new_status)
             .map_err(ApplicationError::from)?;
+
+        if cmd.new_status == DealStatus::Executing {
+            deal.actual_start_date = Some(time::OffsetDateTime::now_utc().date());
+        }
+        if cmd.new_status == DealStatus::Completed {
+            deal.actual_end_date = Some(time::OffsetDateTime::now_utc().date());
+        }
 
         for participation in &participations {
             self.deal_repo.update_participation(participation).await?;
@@ -170,6 +215,42 @@ impl ExecuteTransition {
                 participations,
             },
         ))
+    }
+
+    async fn ensure_milestones_present(&self, deal_id: Uuid) -> Result<(), ApplicationError> {
+        let repo = self.milestone_repo.as_ref().ok_or_else(|| {
+            ApplicationError::Validation(vec![
+                "milestone repository is required to start execution".to_string(),
+            ])
+        })?;
+        let count = repo.count_by_deal(deal_id).await?;
+        if count == 0 {
+            return Err(ApplicationError::Validation(vec![
+                "at least one milestone is required before executing".to_string(),
+            ]));
+        }
+        Ok(())
+    }
+
+    async fn ensure_all_milestones_verified(&self, deal_id: Uuid) -> Result<(), ApplicationError> {
+        let repo = self.milestone_repo.as_ref().ok_or_else(|| {
+            ApplicationError::Validation(vec![
+                "milestone repository is required to complete the deal".to_string(),
+            ])
+        })?;
+        let total = repo.count_by_deal(deal_id).await?;
+        if total == 0 {
+            return Err(ApplicationError::Validation(vec![
+                "deal has no milestones to complete".to_string(),
+            ]));
+        }
+        let verified = repo.count_verified_by_deal(deal_id).await?;
+        if verified != total {
+            return Err(ApplicationError::Validation(vec![
+                "all milestones must be verified before completing the deal".to_string(),
+            ]));
+        }
+        Ok(())
     }
 
     async fn validate_terms_locked(&self, deal_id: Uuid) -> Result<(), ApplicationError> {

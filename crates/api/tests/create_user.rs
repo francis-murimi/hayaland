@@ -15,6 +15,10 @@ use application::email::dto::VerifyEmailCommand;
 use application::email::queue::{EmailQueue, EmailQueueItem};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::milestones::{
+    CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
+    StartMilestone, UpdateMilestone, VerifyMilestone,
+};
 use application::parties::{
     AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
     SearchParties, SoftDeleteParty, UpdateParty,
@@ -22,8 +26,9 @@ use application::parties::{
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::payments::{
-    CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetWallet, HoldEscrow,
-    ListDealTransactions, ListWalletTransactions, RecordAdjustment, ReleaseEscrow, WithdrawPoints,
+    ApproveTransaction, CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetTransaction,
+    GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
+    RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
@@ -37,17 +42,18 @@ use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::entities::{
-    Agreement, Currency, DealRole, DealStatus, DealWallet, DistributionModel, Email,
-    EmailVerification, PasswordHash, PasswordResetToken, PlatformWallet, Role, RoleProfile,
-    Signature, TransactionType, User, Username,
+    Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, DistributionModel,
+    Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Role,
+    RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
+    Username,
 };
 use domain::entities::{Party, PartyType, UserPartyMembership};
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
     AgreementRepository, DealAggregate, DealListResult, DealRepository, DealSearchCriteria,
-    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
-    TransactionFilters, UserRepository, WalletRepository,
+    EmailVerificationRepository, MilestoneRepository, PartyRepository, PasswordResetRepository,
+    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
@@ -835,6 +841,7 @@ impl EmailQueue for FakeEmailQueue {
 struct FakeWalletRepo {
     wallets: Mutex<HashMap<Uuid, PlatformWallet>>,
     transactions: Mutex<Vec<domain::entities::Transaction>>,
+    approvals: Mutex<Vec<TransactionApproval>>,
 }
 
 #[async_trait]
@@ -988,6 +995,232 @@ impl WalletRepository for FakeWalletRepo {
         dw.net_position = dw.released + dw.withdrawn - dw.fees_paid - dw.contributed;
         Ok(Some(dw))
     }
+
+    async fn record_pending_transaction(
+        &self,
+        transaction: &domain::entities::Transaction,
+    ) -> Result<(), DomainError> {
+        self.transactions.lock().unwrap().push(transaction.clone());
+        Ok(())
+    }
+
+    async fn find_transaction_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<domain::entities::Transaction>, DomainError> {
+        Ok(self
+            .transactions
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.id == id)
+            .cloned())
+    }
+
+    async fn find_approvals_for_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Vec<TransactionApproval>, DomainError> {
+        Ok(self
+            .approvals
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|a| a.transaction_id == transaction_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn record_approval_and_finalise(
+        &self,
+        transaction: &domain::entities::Transaction,
+        approval: &TransactionApproval,
+        wallet_mutations: &[(Uuid, PlatformWallet)],
+    ) -> Result<(), DomainError> {
+        self.approvals.lock().unwrap().push(approval.clone());
+
+        let mut txns = self.transactions.lock().unwrap();
+        let stored = txns.iter_mut().find(|t| t.id == transaction.id);
+        if let Some(t) = stored {
+            t.approvals_received = transaction.approvals_received + 1;
+            match approval.decision {
+                ApprovalDecision::Rejected => {
+                    t.status = TransactionStatus::Rejected;
+                }
+                ApprovalDecision::Approved
+                    if t.approvals_received >= transaction.approvals_required =>
+                {
+                    t.status = TransactionStatus::Verified;
+                    t.executed_at = Some(time::OffsetDateTime::now_utc());
+                }
+                ApprovalDecision::Approved => {}
+            }
+        }
+        drop(txns);
+
+        let mut wallets = self.wallets.lock().unwrap();
+        for (party_id, wallet) in wallet_mutations {
+            wallets.insert(*party_id, wallet.clone());
+        }
+        Ok(())
+    }
+
+    async fn find_pending_transactions_for_party(
+        &self,
+        party_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<domain::entities::Transaction>, DomainError> {
+        let approvals = self.approvals.lock().unwrap();
+        let voted: Vec<Uuid> = approvals
+            .iter()
+            .filter(|a| a.party_id == party_id)
+            .map(|a| a.transaction_id)
+            .collect();
+        drop(approvals);
+
+        let txns = self.transactions.lock().unwrap();
+        let mut results: Vec<domain::entities::Transaction> = txns
+            .iter()
+            .filter(|t| t.status == TransactionStatus::Pending && t.requires_approval)
+            .filter(|t| t.involved_party_ids.contains(&party_id))
+            .filter(|t| !voted.contains(&t.id))
+            .cloned()
+            .collect();
+        results.sort_by_key(|a| a.created_at);
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        Ok(results
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect())
+    }
+
+    async fn count_pending_transactions_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<i64, DomainError> {
+        let approvals = self.approvals.lock().unwrap();
+        let voted: Vec<Uuid> = approvals
+            .iter()
+            .filter(|a| a.party_id == party_id)
+            .map(|a| a.transaction_id)
+            .collect();
+        drop(approvals);
+
+        let count = self
+            .transactions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.status == TransactionStatus::Pending && t.requires_approval)
+            .filter(|t| t.involved_party_ids.contains(&party_id))
+            .filter(|t| !voted.contains(&t.id))
+            .count() as i64;
+        Ok(count)
+    }
+}
+
+#[derive(Default)]
+struct FakeMilestoneRepo {
+    milestones: Mutex<Vec<Milestone>>,
+}
+
+#[async_trait]
+impl MilestoneRepository for FakeMilestoneRepo {
+    async fn create(&self, milestone: &Milestone) -> Result<(), DomainError> {
+        self.milestones.lock().unwrap().push(milestone.clone());
+        Ok(())
+    }
+
+    async fn update(&self, milestone: &Milestone) -> Result<(), DomainError> {
+        let mut milestones = self.milestones.lock().unwrap();
+        let idx = milestones
+            .iter()
+            .position(|m| m.id == milestone.id)
+            .ok_or(DomainError::MilestoneNotFound)?;
+        milestones[idx] = milestone.clone();
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut milestones = self.milestones.lock().unwrap();
+        let idx = milestones
+            .iter()
+            .position(|m| m.id == id)
+            .ok_or(DomainError::MilestoneNotFound)?;
+        milestones.remove(idx);
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Milestone>, DomainError> {
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.id == id)
+            .cloned())
+    }
+
+    async fn find_by_deal(
+        &self,
+        deal_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Milestone>, DomainError> {
+        let milestones = self.milestones.lock().unwrap();
+        let mut matched: Vec<Milestone> = milestones
+            .iter()
+            .filter(|m| m.deal_id == deal_id)
+            .cloned()
+            .collect();
+        matched.sort_by(|a, b| {
+            a.display_order
+                .cmp(&b.display_order)
+                .then_with(|| a.created_at.cmp(&b.created_at))
+        });
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        Ok(matched
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect())
+    }
+
+    async fn count_by_deal(&self, deal_id: Uuid) -> Result<i64, DomainError> {
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id)
+            .count() as i64)
+    }
+
+    async fn count_verified_by_deal(&self, deal_id: Uuid) -> Result<i64, DomainError> {
+        use domain::entities::MilestoneStatus;
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id && m.milestone_status == MilestoneStatus::Verified)
+            .count() as i64)
+    }
+
+    async fn count_by_status(&self, deal_id: Uuid, status: &str) -> Result<i64, DomainError> {
+        let target = domain::entities::MilestoneStatus::try_from(status)?;
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id && m.milestone_status == target)
+            .count() as i64)
+    }
 }
 
 struct TestFixtures {
@@ -1042,6 +1275,7 @@ fn test_fixtures() -> TestFixtures {
         signatures: Mutex::new(Vec::new()),
     });
     let wallet_repo: Arc<dyn WalletRepository> = Arc::new(FakeWalletRepo::default());
+    let milestone_repo: Arc<dyn MilestoneRepository> = Arc::new(FakeMilestoneRepo::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -1103,10 +1337,11 @@ fn test_fixtures() -> TestFixtures {
             party_repo.clone(),
             ValidationConfig::default(),
         ),
-        execute_transition: ExecuteTransition::new(
+        execute_transition: ExecuteTransition::new_with_milestones(
             deal_repo.clone(),
             party_repo.clone(),
             agreement_repo.clone(),
+            milestone_repo.clone(),
             ValidationConfig::default(),
         ),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -1170,6 +1405,50 @@ fn test_fixtures() -> TestFixtures {
         list_deal_transactions: ListDealTransactions::new(
             party_repo.clone(),
             deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        approve_transaction: ApproveTransaction::new(party_repo.clone(), wallet_repo.clone()),
+        list_pending_approvals: ListPendingApprovals::new(party_repo.clone(), wallet_repo.clone()),
+        get_transaction: GetTransaction::new(party_repo.clone(), wallet_repo.clone()),
+        create_milestone: CreateMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        list_milestones: ListMilestones::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        get_deal_progress: GetDealProgress::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        update_milestone: UpdateMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        delete_milestone: DeleteMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        start_milestone: StartMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        complete_milestone: CompleteMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
+        ),
+        verify_milestone: VerifyMilestone::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            milestone_repo.clone(),
             wallet_repo.clone(),
         ),
         token_validator: token,

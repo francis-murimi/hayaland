@@ -12,9 +12,9 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
-    Agreement, Currency, DealRole, DealWallet, Email, EmailVerification, PasswordHash,
-    PasswordResetToken, PlatformWallet, Role, RoleProfile, Signature, Transaction, TransactionType,
-    User, Username,
+    Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Email, EmailVerification,
+    PasswordHash, PasswordResetToken, PlatformWallet, Role, RoleProfile, Signature, Transaction,
+    TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
@@ -784,6 +784,7 @@ pub struct FakeAgreementRepo {
 pub struct FakeWalletRepo {
     pub wallets: Mutex<HashMap<Uuid, PlatformWallet>>,
     pub transactions: Mutex<Vec<Transaction>>,
+    pub approvals: Mutex<Vec<TransactionApproval>>,
 }
 
 #[cfg(test)]
@@ -937,6 +938,128 @@ impl WalletRepository for FakeWalletRepo {
         }
         dw.net_position = dw.released + dw.withdrawn - dw.fees_paid - dw.contributed;
         Ok(Some(dw))
+    }
+
+    async fn record_pending_transaction(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<(), DomainError> {
+        self.transactions.lock().unwrap().push(transaction.clone());
+        Ok(())
+    }
+
+    async fn find_transaction_by_id(&self, id: Uuid) -> Result<Option<Transaction>, DomainError> {
+        Ok(self
+            .transactions
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.id == id)
+            .cloned())
+    }
+
+    async fn find_approvals_for_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Vec<TransactionApproval>, DomainError> {
+        Ok(self
+            .approvals
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|a| a.transaction_id == transaction_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn record_approval_and_finalise(
+        &self,
+        transaction: &Transaction,
+        approval: &TransactionApproval,
+        wallet_mutations: &[(Uuid, PlatformWallet)],
+    ) -> Result<(), DomainError> {
+        self.approvals.lock().unwrap().push(approval.clone());
+
+        let mut txns = self.transactions.lock().unwrap();
+        let stored = txns.iter_mut().find(|t| t.id == transaction.id);
+        if let Some(t) = stored {
+            t.approvals_received = transaction.approvals_received + 1;
+            match approval.decision {
+                ApprovalDecision::Rejected => {
+                    t.status = TransactionStatus::Rejected;
+                }
+                ApprovalDecision::Approved
+                    if t.approvals_received >= transaction.approvals_required =>
+                {
+                    t.status = TransactionStatus::Verified;
+                    t.executed_at = Some(time::OffsetDateTime::now_utc());
+                }
+                ApprovalDecision::Approved => {}
+            }
+        }
+        drop(txns);
+
+        let mut wallets = self.wallets.lock().unwrap();
+        for (party_id, wallet) in wallet_mutations {
+            wallets.insert(*party_id, wallet.clone());
+        }
+        Ok(())
+    }
+
+    async fn find_pending_transactions_for_party(
+        &self,
+        party_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Transaction>, DomainError> {
+        let approvals = self.approvals.lock().unwrap();
+        let voted: Vec<Uuid> = approvals
+            .iter()
+            .filter(|a| a.party_id == party_id)
+            .map(|a| a.transaction_id)
+            .collect();
+        drop(approvals);
+
+        let txns = self.transactions.lock().unwrap();
+        let mut results: Vec<Transaction> = txns
+            .iter()
+            .filter(|t| t.status == TransactionStatus::Pending && t.requires_approval)
+            .filter(|t| t.involved_party_ids.contains(&party_id))
+            .filter(|t| !voted.contains(&t.id))
+            .cloned()
+            .collect();
+        results.sort_by_key(|a| a.created_at);
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        Ok(results
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect())
+    }
+
+    async fn count_pending_transactions_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<i64, DomainError> {
+        let approvals = self.approvals.lock().unwrap();
+        let voted: Vec<Uuid> = approvals
+            .iter()
+            .filter(|a| a.party_id == party_id)
+            .map(|a| a.transaction_id)
+            .collect();
+        drop(approvals);
+
+        let count = self
+            .transactions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.status == TransactionStatus::Pending && t.requires_approval)
+            .filter(|t| t.involved_party_ids.contains(&party_id))
+            .filter(|t| !voted.contains(&t.id))
+            .count() as i64;
+        Ok(count)
     }
 }
 

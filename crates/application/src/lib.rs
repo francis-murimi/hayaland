@@ -2,6 +2,7 @@ pub mod agreements;
 pub mod deals;
 pub mod email;
 pub mod errors;
+pub mod milestones;
 pub mod parties;
 pub mod password_reset;
 pub mod payments;

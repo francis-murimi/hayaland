@@ -1,4 +1,4 @@
-use domain::entities::{Currency, PlatformWallet, Transaction};
+use domain::entities::{ApprovalDecision, Currency, PlatformWallet, Transaction};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -185,6 +185,68 @@ impl From<Transaction> for TransactionResult {
 /// Paginated list of transactions.
 #[derive(Debug, Clone, Serialize)]
 pub struct ListTransactionsResult {
+    pub transactions: Vec<TransactionResult>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// Command to approve or reject a pending transaction.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApproveTransactionCommand {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Uuid,
+    pub transaction_id: Uuid,
+    pub decision: ApprovalDecision,
+    pub comment: Option<String>,
+}
+
+/// Query for pending transactions awaiting the actor's party approval.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ListPendingApprovalsQuery {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Uuid,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Approval recorded against a transaction.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransactionApprovalResult {
+    pub id: Uuid,
+    pub party_id: Uuid,
+    pub approved_by_user_id: Uuid,
+    pub decision: String,
+    pub comment: Option<String>,
+    pub created_at: OffsetDateTime,
+}
+
+impl From<domain::entities::TransactionApproval> for TransactionApprovalResult {
+    fn from(a: domain::entities::TransactionApproval) -> Self {
+        Self {
+            id: a.id,
+            party_id: a.party_id,
+            approved_by_user_id: a.approved_by_user_id,
+            decision: a.decision.as_str().to_string(),
+            comment: a.comment,
+            created_at: a.created_at,
+        }
+    }
+}
+
+/// Transaction with its current approvals.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransactionWithApprovalsResult {
+    #[serde(flatten)]
+    pub transaction: TransactionResult,
+    pub approvals: Vec<TransactionApprovalResult>,
+    pub approvals_required: i32,
+    pub approvals_received: i32,
+}
+
+/// Paginated list of pending transactions awaiting approval.
+#[derive(Debug, Clone, Serialize)]
+pub struct ListPendingApprovalsResult {
     pub transactions: Vec<TransactionResult>,
     pub total: i64,
     pub limit: i64,

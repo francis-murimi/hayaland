@@ -16,6 +16,10 @@ use application::deals::{
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::milestones::{
+    CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
+    StartMilestone, UpdateMilestone, VerifyMilestone,
+};
 use application::parties::{
     AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
     SearchParties, SoftDeleteParty, UpdateParty,
@@ -23,8 +27,9 @@ use application::parties::{
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
 use application::payments::{
-    CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetWallet, HoldEscrow,
-    ListDealTransactions, ListWalletTransactions, RecordAdjustment, ReleaseEscrow, WithdrawPoints,
+    ApproveTransaction, CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetTransaction,
+    GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
+    RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
@@ -95,6 +100,17 @@ pub struct AppState {
     pub record_adjustment: RecordAdjustment,
     pub list_wallet_transactions: ListWalletTransactions,
     pub list_deal_transactions: ListDealTransactions,
+    pub approve_transaction: ApproveTransaction,
+    pub list_pending_approvals: ListPendingApprovals,
+    pub get_transaction: GetTransaction,
+    pub create_milestone: CreateMilestone,
+    pub list_milestones: ListMilestones,
+    pub get_deal_progress: GetDealProgress,
+    pub update_milestone: UpdateMilestone,
+    pub delete_milestone: DeleteMilestone,
+    pub start_milestone: StartMilestone,
+    pub complete_milestone: CompleteMilestone,
+    pub verify_milestone: VerifyMilestone,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

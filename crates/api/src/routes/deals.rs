@@ -3,6 +3,7 @@ use crate::handlers::deals::{
     create_deal, execute_transition, get_deal, list_deals, submit_deal, terms, update_deal,
     validate_deal, value_distribution,
 };
+use crate::handlers::milestones;
 use actix_web::web;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -58,5 +59,32 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/deals/{id}/agreement/sign")
             .route(web::post().to(agreements::sign_agreement::sign_agreement)),
+    )
+    .service(
+        web::resource("/deals/{id}/milestones")
+            .route(web::post().to(milestones::create_milestone))
+            .route(web::get().to(milestones::list_milestones)),
+    )
+    .service(
+        web::resource("/deals/{id}/milestones/progress")
+            .route(web::get().to(milestones::get_deal_progress)),
+    )
+    .service(
+        web::resource("/deals/{id}/milestones/{milestone_id}")
+            .route(web::put().to(milestones::update_milestone))
+            .route(web::patch().to(milestones::update_milestone))
+            .route(web::delete().to(milestones::delete_milestone)),
+    )
+    .service(
+        web::resource("/deals/{id}/milestones/{milestone_id}/start")
+            .route(web::post().to(milestones::start_milestone)),
+    )
+    .service(
+        web::resource("/deals/{id}/milestones/{milestone_id}/complete")
+            .route(web::post().to(milestones::complete_milestone)),
+    )
+    .service(
+        web::resource("/deals/{id}/milestones/{milestone_id}/verify")
+            .route(web::post().to(milestones::verify_milestone)),
     );
 }

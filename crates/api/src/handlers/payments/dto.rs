@@ -1,5 +1,6 @@
 use application::payments::dto::{
-    DealWalletResult, ListTransactionsResult, TransactionResult, WalletResult,
+    DealWalletResult, ListPendingApprovalsResult, ListTransactionsResult, TransactionResult,
+    TransactionWithApprovalsResult, WalletResult,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -165,6 +166,71 @@ pub struct TransactionsResponse {
 
 impl From<ListTransactionsResult> for TransactionsResponse {
     fn from(result: ListTransactionsResult) -> Self {
+        Self {
+            transactions: result.transactions.into_iter().map(Into::into).collect(),
+            total: result.total,
+            page: (result.offset / result.limit) + 1,
+            per_page: result.limit,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionApprovalResponse {
+    pub id: Uuid,
+    pub party_id: Uuid,
+    pub approved_by_user_id: Uuid,
+    pub decision: String,
+    pub comment: Option<String>,
+    pub created_at: time::OffsetDateTime,
+}
+
+impl From<application::payments::dto::TransactionApprovalResult> for TransactionApprovalResponse {
+    fn from(result: application::payments::dto::TransactionApprovalResult) -> Self {
+        Self {
+            id: result.id,
+            party_id: result.party_id,
+            approved_by_user_id: result.approved_by_user_id,
+            decision: result.decision,
+            comment: result.comment,
+            created_at: result.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionWithApprovalsResponse {
+    #[serde(flatten)]
+    pub transaction: TransactionResponse,
+    pub approvals: Vec<TransactionApprovalResponse>,
+    pub approvals_required: i32,
+    pub approvals_received: i32,
+}
+
+impl From<TransactionWithApprovalsResult> for TransactionWithApprovalsResponse {
+    fn from(result: TransactionWithApprovalsResult) -> Self {
+        Self {
+            transaction: result.transaction.into(),
+            approvals: result.approvals.into_iter().map(Into::into).collect(),
+            approvals_required: result.approvals_required,
+            approvals_received: result.approvals_received,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingApprovalsResponse {
+    pub transactions: Vec<TransactionResponse>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+impl From<ListPendingApprovalsResult> for PendingApprovalsResponse {
+    fn from(result: ListPendingApprovalsResult) -> Self {
         Self {
             transactions: result.transactions.into_iter().map(Into::into).collect(),
             total: result.total,

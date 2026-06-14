@@ -106,6 +106,7 @@ pub struct Transaction {
     pub requires_approval: bool,
     pub approvals_required: i32,
     pub approvals_received: i32,
+    pub involved_party_ids: Vec<Uuid>,
     pub executed_at: Option<OffsetDateTime>,
     pub created_at: OffsetDateTime,
 }
@@ -142,7 +143,47 @@ impl Transaction {
             requires_approval: false,
             approvals_required: 0,
             approvals_received: 0,
+            involved_party_ids: Vec::new(),
             executed_at: Some(now),
+            created_at: now,
+        }
+    }
+
+    /// Create a transaction that is pending approval and does not mutate balances yet.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_pending(
+        id: Uuid,
+        deal_id: Uuid,
+        transaction_type: TransactionType,
+        from_party_id: Option<Uuid>,
+        to_party_id: Option<Uuid>,
+        amount: Decimal,
+        approvals_required: i32,
+        involved_party_ids: Vec<Uuid>,
+        description: Option<String>,
+        payment_method: Option<String>,
+        external_reference: Option<String>,
+    ) -> Self {
+        let now = OffsetDateTime::now_utc();
+        Self {
+            id,
+            deal_id,
+            agreement_id: None,
+            milestone_id: None,
+            transaction_type,
+            from_party_id,
+            to_party_id,
+            amount,
+            currency: super::Currency::Points,
+            description,
+            status: TransactionStatus::Pending,
+            payment_method,
+            external_reference,
+            requires_approval: true,
+            approvals_required,
+            approvals_received: 0,
+            involved_party_ids,
+            executed_at: None,
             created_at: now,
         }
     }
@@ -241,5 +282,34 @@ mod tests {
 
         assert_eq!(txn.from_party_id, Some(party_id));
         assert_eq!(txn.to_party_id, None);
+    }
+
+    #[test]
+    fn new_pending_creates_unexecuted_approval_transaction() {
+        let deal_id = Uuid::now_v7();
+        let from = Uuid::now_v7();
+        let to = Uuid::now_v7();
+        let involved = vec![from, to];
+
+        let txn = Transaction::new_pending(
+            Uuid::now_v7(),
+            deal_id,
+            TransactionType::EscrowRelease,
+            Some(from),
+            Some(to),
+            Decimal::from(100),
+            2,
+            involved.clone(),
+            Some("release".to_string()),
+            None,
+            None,
+        );
+
+        assert_eq!(txn.status, TransactionStatus::Pending);
+        assert!(txn.requires_approval);
+        assert_eq!(txn.approvals_required, 2);
+        assert_eq!(txn.approvals_received, 0);
+        assert!(txn.executed_at.is_none());
+        assert_eq!(txn.involved_party_ids, involved);
     }
 }

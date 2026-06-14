@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO milestones (\n                id, deal_id, milestone_name, description, assigned_to_party_id,\n                due_date, completion_criteria, milestone_status, completion_percentage,\n                payment_trigger_amount, completed_at, verified_by_party_id,\n                display_order, created_at, updated_at\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Date",
+        "Text",
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Uuid",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f23c4b850264ab26847b02f44eb98e740911548729abf067846e1320c52951b"
+}
