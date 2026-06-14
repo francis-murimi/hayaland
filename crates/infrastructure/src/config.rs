@@ -14,6 +14,10 @@ pub struct Settings {
     pub email: EmailSettings,
     #[serde(default)]
     pub validation: domain::services::ValidationConfig,
+    #[serde(default)]
+    pub deal_timeouts: DealTimeoutSettings,
+    #[serde(default)]
+    pub deal_timeout_worker: DealTimeoutWorkerSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -112,9 +116,137 @@ fn default_email_retry_max_delay_ms() -> u64 {
     5000
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct DealTimeoutSettings {
+    #[serde(default = "default_draft_timeout_seconds")]
+    pub draft_seconds: i64,
+    #[serde(default = "default_suggested_timeout_seconds")]
+    pub suggested_seconds: i64,
+    #[serde(default = "default_pending_review_timeout_seconds")]
+    pub pending_review_seconds: i64,
+    #[serde(default = "default_negotiating_timeout_seconds")]
+    pub negotiating_seconds: i64,
+    #[serde(default = "default_awaiting_party_timeout_seconds")]
+    pub awaiting_party_seconds: i64,
+    #[serde(default = "default_terms_locked_timeout_seconds")]
+    pub terms_locked_seconds: i64,
+    #[serde(default = "default_committed_timeout_seconds")]
+    pub committed_seconds: i64,
+    #[serde(default = "default_on_hold_timeout_seconds")]
+    pub on_hold_seconds: i64,
+    #[serde(default = "default_disputed_timeout_seconds")]
+    pub disputed_seconds: i64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DealTimeoutWorkerSettings {
+    #[serde(default = "default_timeout_worker_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_timeout_worker_interval_seconds")]
+    pub interval_seconds: u64,
+    #[serde(default = "default_timeout_worker_batch_size")]
+    pub batch_size: usize,
+}
+
+fn default_draft_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().draft_seconds
+}
+
+fn default_suggested_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().suggested_seconds
+}
+
+fn default_pending_review_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().pending_review_seconds
+}
+
+fn default_negotiating_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().negotiating_seconds
+}
+
+fn default_awaiting_party_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().awaiting_party_seconds
+}
+
+fn default_terms_locked_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().terms_locked_seconds
+}
+
+fn default_committed_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().committed_seconds
+}
+
+fn default_on_hold_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().on_hold_seconds
+}
+
+fn default_disputed_timeout_seconds() -> i64 {
+    application::deals::DealTimeoutConfig::default().disputed_seconds
+}
+
+fn default_timeout_worker_enabled() -> bool {
+    true
+}
+
+fn default_timeout_worker_interval_seconds() -> u64 {
+    300
+}
+
+fn default_timeout_worker_batch_size() -> usize {
+    100
+}
+
 impl EmailSettings {
     pub fn verification_base_url(&self) -> &str {
         &self.verification_base_url
+    }
+}
+
+impl Default for DealTimeoutSettings {
+    fn default() -> Self {
+        Self::from(application::deals::DealTimeoutConfig::default())
+    }
+}
+
+impl Default for DealTimeoutWorkerSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_timeout_worker_enabled(),
+            interval_seconds: default_timeout_worker_interval_seconds(),
+            batch_size: default_timeout_worker_batch_size(),
+        }
+    }
+}
+
+impl From<application::deals::DealTimeoutConfig> for DealTimeoutSettings {
+    fn from(config: application::deals::DealTimeoutConfig) -> Self {
+        Self {
+            draft_seconds: config.draft_seconds,
+            suggested_seconds: config.suggested_seconds,
+            pending_review_seconds: config.pending_review_seconds,
+            negotiating_seconds: config.negotiating_seconds,
+            awaiting_party_seconds: config.awaiting_party_seconds,
+            terms_locked_seconds: config.terms_locked_seconds,
+            committed_seconds: config.committed_seconds,
+            on_hold_seconds: config.on_hold_seconds,
+            disputed_seconds: config.disputed_seconds,
+        }
+    }
+}
+
+impl From<DealTimeoutSettings> for application::deals::DealTimeoutConfig {
+    fn from(settings: DealTimeoutSettings) -> Self {
+        Self::new(
+            settings.draft_seconds,
+            settings.suggested_seconds,
+            settings.pending_review_seconds,
+            settings.negotiating_seconds,
+            settings.awaiting_party_seconds,
+            settings.terms_locked_seconds,
+            settings.committed_seconds,
+            settings.on_hold_seconds,
+            settings.disputed_seconds,
+        )
     }
 }
 
@@ -189,6 +321,8 @@ mod tests {
             },
             email: Default::default(),
             validation: Default::default(),
+            deal_timeouts: Default::default(),
+            deal_timeout_worker: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();
@@ -219,6 +353,8 @@ mod tests {
             },
             email: Default::default(),
             validation: Default::default(),
+            deal_timeouts: Default::default(),
+            deal_timeout_worker: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();

@@ -157,6 +157,7 @@ async fn create_sample_deal() -> (
             timeline: None,
             latitude: None,
             longitude: None,
+            timeout_overrides: None,
         })
         .await
         .unwrap();
@@ -232,6 +233,7 @@ async fn create_deal_rejects_actor_who_is_not_party_member() {
             timeline: None,
             latitude: None,
             longitude: None,
+            timeout_overrides: None,
         })
         .await
         .unwrap_err();
@@ -283,6 +285,7 @@ async fn update_deal_by_initiator_changes_title() {
                 timeline: None,
                 latitude: None,
                 longitude: None,
+                timeout_overrides: None,
             },
         )
         .await

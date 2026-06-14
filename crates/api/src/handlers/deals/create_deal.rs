@@ -19,6 +19,7 @@ pub struct CreateDealRequest {
     pub timeline: Option<serde_json::Value>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    pub timeout_overrides: Option<serde_json::Value>,
 }
 
 pub(crate) fn resolve_actor_party_id(
@@ -58,6 +59,8 @@ pub async fn create_deal(
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
     let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
 
+    validate_timeout_overrides(&body.timeout_overrides)?;
+
     let cmd = CreateDealCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
@@ -72,8 +75,43 @@ pub async fn create_deal(
         timeline: body.timeline.clone(),
         latitude: body.latitude,
         longitude: body.longitude,
+        timeout_overrides: body.timeout_overrides.clone(),
     };
 
     let result = state.create_deal.execute(cmd).await?;
     Ok(HttpResponse::Created().json(result))
+}
+
+pub(crate) fn validate_timeout_overrides(
+    value: &Option<serde_json::Value>,
+) -> Result<(), ApiError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let object = value
+        .as_object()
+        .ok_or_else(|| ApiError::Validation("timeout_overrides must be an object".to_string()))?;
+    for (key, val) in object {
+        if domain::entities::DealStatus::try_from(key.as_str()).is_err() {
+            return Err(ApiError::Validation(format!(
+                "timeout_overrides contains invalid status key: {key}"
+            )));
+        }
+        match val {
+            serde_json::Value::Null => {}
+            serde_json::Value::Number(n) => {
+                if n.as_i64().is_none_or(|s| s <= 0) {
+                    return Err(ApiError::Validation(format!(
+                        "timeout_overrides value for {key} must be a positive integer or null"
+                    )));
+                }
+            }
+            _ => {
+                return Err(ApiError::Validation(format!(
+                    "timeout_overrides value for {key} must be a positive integer or null"
+                )));
+            }
+        }
+    }
+    Ok(())
 }

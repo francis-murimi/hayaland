@@ -5,8 +5,8 @@ use application::agreements::{
 };
 use application::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
-    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
-    ValidateDeal, WithdrawTerm,
+    ListDeals, ListTerms, ProcessDealTimeouts, ProposeTerm, RejectTerm, SetValueDistribution,
+    SubmitDeal, UpdateDeal, ValidateDeal, WithdrawTerm,
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
@@ -49,6 +49,7 @@ use infrastructure::{
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
+    workers::run_deal_timeout_worker,
 };
 use secrecy::ExposeSecret;
 use std::net::TcpListener;
@@ -103,6 +104,19 @@ async fn main() -> anyhow::Result<()> {
         settings.email.email_retry_base_delay_ms,
         settings.email.email_retry_max_delay_ms,
     ));
+
+    if settings.deal_timeout_worker.enabled {
+        let timeout_worker = Arc::new(ProcessDealTimeouts::new(
+            deal_repo.clone(),
+            milestone_repo.clone(),
+            settings.deal_timeouts.clone().into(),
+        ));
+        tokio::spawn(run_deal_timeout_worker(
+            timeout_worker,
+            std::time::Duration::from_secs(settings.deal_timeout_worker.interval_seconds),
+            settings.deal_timeout_worker.batch_size,
+        ));
+    }
 
     let state = AppState {
         create_user: CreateUser::new(

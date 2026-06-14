@@ -115,6 +115,7 @@ impl CreateDeal {
             deal.location =
                 Some(domain::entities::GeoPoint::new(lat, lng).map_err(ApplicationError::from)?);
         }
+        deal.timeout_overrides = cmd.timeout_overrides;
 
         let participations = vec![
             DealParticipation::new(
@@ -218,6 +219,7 @@ pub(crate) fn map_deal_to_result(
         validation_score: deal.validation_score,
         is_public: deal.is_public,
         current_state_entered_at: deal.current_state_entered_at,
+        timeout_overrides: deal.timeout_overrides,
         created_at: deal.created_at,
         updated_at: deal.updated_at,
         participations,

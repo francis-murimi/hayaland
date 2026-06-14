@@ -564,6 +564,25 @@ impl DealRepository for FakeDealRepo {
         }
     }
 
+    async fn find_deals_by_status(
+        &self,
+        status: domain::entities::DealStatus,
+        entered_before: time::OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<domain::entities::Deal>, DomainError> {
+        let deals: Vec<_> = self
+            .deals
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|d| d.deal_status == status && d.current_state_entered_at < entered_before)
+            .cloned()
+            .collect();
+        let mut deals: Vec<_> = deals.into_iter().take(limit as usize).collect();
+        deals.sort_by(|a, b| a.current_state_entered_at.cmp(&b.current_state_entered_at));
+        Ok(deals)
+    }
+
     async fn find_participations_by_deal(
         &self,
         deal_id: Uuid,
@@ -3323,6 +3342,7 @@ async fn seed_deal(
             timeline: None,
             latitude: None,
             longitude: None,
+            timeout_overrides: None,
         })
         .await
         .unwrap()

@@ -13,8 +13,8 @@ use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Email, EmailVerification,
-    PasswordHash, PasswordResetToken, PlatformWallet, Role, RoleProfile, Signature, Transaction,
-    TransactionApproval, TransactionStatus, TransactionType, User, Username,
+    Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Role, RoleProfile, Signature,
+    Transaction, TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
@@ -24,8 +24,8 @@ use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 #[cfg(test)]
 use domain::repositories::{
-    AgreementRepository, EmailVerificationRepository, PartyRepository, PasswordResetRepository,
-    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    AgreementRepository, EmailVerificationRepository, MilestoneRepository, PartyRepository,
+    PasswordResetRepository, RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 #[cfg(test)]
 use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
@@ -607,6 +607,25 @@ impl DealRepository for FakeDealRepo {
         }
     }
 
+    async fn find_deals_by_status(
+        &self,
+        status: domain::entities::DealStatus,
+        entered_before: time::OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<domain::entities::Deal>, DomainError> {
+        let deals: Vec<_> = self
+            .deals
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|d| d.deal_status == status && d.current_state_entered_at < entered_before)
+            .cloned()
+            .collect();
+        let mut deals: Vec<_> = deals.into_iter().take(limit as usize).collect();
+        deals.sort_by(|a, b| a.current_state_entered_at.cmp(&b.current_state_entered_at));
+        Ok(deals)
+    }
+
     async fn find_participations_by_deal(
         &self,
         deal_id: Uuid,
@@ -1147,6 +1166,93 @@ impl AgreementRepository for FakeAgreementRepo {
             .unwrap()
             .iter()
             .filter(|s| s.agreement_id == agreement_id && s.version == version)
+            .count() as i64)
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeMilestoneRepo {
+    pub milestones: Mutex<Vec<Milestone>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl MilestoneRepository for FakeMilestoneRepo {
+    async fn create(&self, milestone: &Milestone) -> Result<(), DomainError> {
+        self.milestones.lock().unwrap().push(milestone.clone());
+        Ok(())
+    }
+
+    async fn update(&self, milestone: &Milestone) -> Result<(), DomainError> {
+        let mut milestones = self.milestones.lock().unwrap();
+        if let Some(m) = milestones.iter_mut().find(|m| m.id == milestone.id) {
+            *m = milestone.clone();
+        }
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        self.milestones.lock().unwrap().retain(|m| m.id != id);
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Milestone>, DomainError> {
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.id == id)
+            .cloned())
+    }
+
+    async fn find_by_deal(
+        &self,
+        deal_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Milestone>, DomainError> {
+        let milestones: Vec<_> = self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id)
+            .skip(offset as usize)
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok(milestones)
+    }
+
+    async fn count_by_deal(&self, deal_id: Uuid) -> Result<i64, DomainError> {
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id)
+            .count() as i64)
+    }
+
+    async fn count_verified_by_deal(&self, deal_id: Uuid) -> Result<i64, DomainError> {
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id && m.milestone_status.as_str() == "VERIFIED")
+            .count() as i64)
+    }
+
+    async fn count_by_status(&self, deal_id: Uuid, status: &str) -> Result<i64, DomainError> {
+        Ok(self
+            .milestones
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.deal_id == deal_id && m.milestone_status.as_str() == status)
             .count() as i64)
     }
 }

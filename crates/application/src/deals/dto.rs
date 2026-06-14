@@ -21,6 +21,7 @@ pub struct CreateDealCommand {
     pub timeline: Option<serde_json::Value>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    pub timeout_overrides: Option<serde_json::Value>,
 }
 
 /// Command to update a draft deal.
@@ -37,6 +38,7 @@ pub struct UpdateDealCommand {
     pub timeline: Option<serde_json::Value>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    pub timeout_overrides: Option<serde_json::Value>,
 }
 
 /// Command to submit a draft deal to the suggested state.
@@ -85,6 +87,7 @@ pub struct DealResult {
     pub validation_score: Option<Decimal>,
     pub is_public: bool,
     pub current_state_entered_at: OffsetDateTime,
+    pub timeout_overrides: Option<serde_json::Value>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
     pub participations: Vec<DealParticipationResult>,

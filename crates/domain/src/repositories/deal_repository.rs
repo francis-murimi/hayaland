@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::entities::{Deal, DealParticipation, DealRole, DealStatus, Term, ValueDistribution};
@@ -89,6 +90,14 @@ pub trait DealRepository: Send + Sync {
 
     /// Generate the next human-readable deal reference.
     async fn next_deal_reference(&self) -> Result<String, DomainError>;
+
+    /// Find active deals in a given status that entered the state before the horizon.
+    async fn find_deals_by_status(
+        &self,
+        status: DealStatus,
+        entered_before: OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<Deal>, DomainError>;
 
     /// Update the aggregate value distribution totals (platform fee, total value).
     async fn update_value_totals(

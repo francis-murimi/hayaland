@@ -38,7 +38,7 @@ impl DealRepository for PostgresDealRepository {
                 location_geo, location_address, total_deal_value, currency,
                 platform_fee_percentage, platform_fee_amount, win_win_win_validated,
                 validation_checked_at, validation_score, validation_result, is_public,
-                current_state_entered_at, created_at, updated_at
+                current_state_entered_at, timeout_overrides, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
@@ -47,7 +47,7 @@ impl DealRepository for PostgresDealRepository {
                     THEN ST_SetSRID(ST_MakePoint($15, $14), 4326)::geography
                     ELSE NULL
                 END,
-                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
+                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
             )
             "#,
             deal.id,
@@ -76,6 +76,7 @@ impl DealRepository for PostgresDealRepository {
             deal.validation_result,
             deal.is_public,
             deal.current_state_entered_at,
+            deal.timeout_overrides,
             deal.created_at,
             deal.updated_at
         )
@@ -143,6 +144,7 @@ impl DealRepository for PostgresDealRepository {
                 validation_result,
                 is_public as "is_public!",
                 current_state_entered_at as "current_state_entered_at!",
+                timeout_overrides,
                 created_at as "created_at!",
                 updated_at as "updated_at!"
             FROM deals
@@ -167,6 +169,63 @@ impl DealRepository for PostgresDealRepository {
             deal,
             participations,
         }))
+    }
+
+    async fn find_deals_by_status(
+        &self,
+        status: DealStatus,
+        entered_before: OffsetDateTime,
+        limit: i64,
+    ) -> Result<Vec<Deal>, DomainError> {
+        let rows = sqlx::query_as!(
+            DealRow,
+            r#"
+            SELECT
+                id as "id!",
+                deal_reference as "deal_reference!",
+                deal_title as "deal_title!",
+                deal_description,
+                domain_category_id as "domain_category_id!",
+                initiator_party_id as "initiator_party_id!",
+                initiator_role as "initiator_role!",
+                deal_status as "deal_status!",
+                expected_start_date,
+                expected_end_date,
+                actual_start_date,
+                actual_end_date,
+                timeline,
+                ST_Y(location_geo::geometry) as latitude,
+                ST_X(location_geo::geometry) as longitude,
+                location_address,
+                total_deal_value,
+                currency as "currency!",
+                platform_fee_percentage as "platform_fee_percentage!",
+                platform_fee_amount as "platform_fee_amount!",
+                win_win_win_validated as "win_win_win_validated!",
+                validation_checked_at,
+                validation_score,
+                validation_result,
+                is_public as "is_public!",
+                current_state_entered_at as "current_state_entered_at!",
+                timeout_overrides,
+                created_at as "created_at!",
+                updated_at as "updated_at!"
+            FROM deals
+            WHERE deal_status = $1
+              AND current_state_entered_at < $2
+            ORDER BY current_state_entered_at
+            LIMIT $3
+            FOR UPDATE SKIP LOCKED
+            "#,
+            status.as_str(),
+            entered_before,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        Ok(rows.into_iter().map(build_deal_from_row).collect())
     }
 
     async fn find_participations_by_deal(
@@ -229,8 +288,9 @@ impl DealRepository for PostgresDealRepository {
                 validation_result = $22,
                 is_public = $23,
                 current_state_entered_at = $24,
-                updated_at = $25
-            WHERE id = $26
+                timeout_overrides = $25,
+                updated_at = $26
+            WHERE id = $27
             "#,
             deal.deal_title.as_str(),
             deal.deal_description,
@@ -256,6 +316,7 @@ impl DealRepository for PostgresDealRepository {
             deal.validation_result,
             deal.is_public,
             deal.current_state_entered_at,
+            deal.timeout_overrides,
             deal.updated_at,
             deal.id
         )
@@ -333,6 +394,7 @@ impl DealRepository for PostgresDealRepository {
                 validation_result,
                 is_public as "is_public!",
                 current_state_entered_at as "current_state_entered_at!",
+                timeout_overrides,
                 created_at as "created_at!",
                 updated_at as "updated_at!"
             FROM deals
@@ -745,6 +807,7 @@ struct DealRow {
     validation_result: Option<serde_json::Value>,
     is_public: bool,
     current_state_entered_at: OffsetDateTime,
+    timeout_overrides: Option<serde_json::Value>,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
 }
@@ -836,6 +899,7 @@ fn build_deal_from_row(row: DealRow) -> Deal {
         validation_result: row.validation_result,
         is_public: row.is_public,
         current_state_entered_at: row.current_state_entered_at,
+        timeout_overrides: row.timeout_overrides,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

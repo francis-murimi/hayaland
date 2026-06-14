@@ -219,6 +219,7 @@ pub struct Deal {
     pub validation_result: Option<serde_json::Value>,
     pub is_public: bool,
     pub current_state_entered_at: OffsetDateTime,
+    pub timeout_overrides: Option<serde_json::Value>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -259,6 +260,7 @@ impl Deal {
             validation_result: None,
             is_public: false,
             current_state_entered_at: now,
+            timeout_overrides: None,
             created_at: now,
             updated_at: now,
         }

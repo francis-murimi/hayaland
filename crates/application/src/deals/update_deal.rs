@@ -70,6 +70,9 @@ impl UpdateDeal {
             deal.location =
                 Some(domain::entities::GeoPoint::new(lat, lng).map_err(ApplicationError::from)?);
         }
+        if cmd.timeout_overrides.is_some() {
+            deal.timeout_overrides = cmd.timeout_overrides;
+        }
 
         self.deal_repo.update(&deal).await?;
         self.deal_repo

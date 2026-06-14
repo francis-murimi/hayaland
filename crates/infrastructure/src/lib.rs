@@ -5,3 +5,4 @@ pub mod migrations;
 pub mod repositories;
 pub mod security;
 pub mod telemetry;
+pub mod workers;

@@ -1,0 +1,354 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id as \"id!\",\n                deal_reference as \"deal_reference!\",\n                deal_title as \"deal_title!\",\n                deal_description,\n                domain_category_id as \"domain_category_id!\",\n                initiator_party_id as \"initiator_party_id!\",\n                initiator_role as \"initiator_role!\",\n                deal_status as \"deal_status!\",\n                expected_start_date,\n                expected_end_date,\n                actual_start_date,\n                actual_end_date,\n                timeline,\n                ST_Y(location_geo::geometry) as latitude,\n                ST_X(location_geo::geometry) as longitude,\n                location_address,\n                total_deal_value,\n                currency as \"currency!\",\n                platform_fee_percentage as \"platform_fee_percentage!\",\n                platform_fee_amount as \"platform_fee_amount!\",\n                win_win_win_validated as \"win_win_win_validated!\",\n                validation_checked_at,\n                validation_score,\n                validation_result,\n                is_public as \"is_public!\",\n                current_state_entered_at as \"current_state_entered_at!\",\n                timeout_overrides,\n                created_at as \"created_at!\",\n                updated_at as \"updated_at!\"\n            FROM deals\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_reference!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_reference"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "deal_title!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "deal_description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_description"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "domain_category_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "domain_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "initiator_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "initiator_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "initiator_role!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "initiator_role"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "deal_status!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_status"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "expected_start_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "expected_start_date"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "expected_end_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "expected_end_date"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "actual_start_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "actual_start_date"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "actual_end_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "actual_end_date"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "timeline",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "timeline"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "latitude",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 14,
+        "name": "longitude",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 15,
+        "name": "location_address",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "location_address"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "total_deal_value",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "total_deal_value"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "currency!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "platform_fee_percentage!",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "platform_fee_percentage"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "platform_fee_amount!",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "platform_fee_amount"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "win_win_win_validated!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "win_win_win_validated"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "validation_checked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "validation_checked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "validation_score",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "validation_score"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "validation_result",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "validation_result"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "is_public!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "is_public"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "current_state_entered_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "current_state_entered_at"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "timeout_overrides",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "timeout_overrides"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "name": "updated_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null,
+      null,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "eb5bac2eb5a0a1979c085268fd1a16e2df6f4c0cfa8f6f9ac1fd396a3d805ff2"
+}

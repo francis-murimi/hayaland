@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id as \"id!\",\n                deal_reference as \"deal_reference!\",\n                deal_title as \"deal_title!\",\n                deal_description,\n                domain_category_id as \"domain_category_id!\",\n                initiator_party_id as \"initiator_party_id!\",\n                initiator_role as \"initiator_role!\",\n                deal_status as \"deal_status!\",\n                expected_start_date,\n                expected_end_date,\n                actual_start_date,\n                actual_end_date,\n                timeline,\n                ST_Y(location_geo::geometry) as latitude,\n                ST_X(location_geo::geometry) as longitude,\n                location_address,\n                total_deal_value,\n                currency as \"currency!\",\n                platform_fee_percentage as \"platform_fee_percentage!\",\n                platform_fee_amount as \"platform_fee_amount!\",\n                win_win_win_validated as \"win_win_win_validated!\",\n                validation_checked_at,\n                validation_score,\n                validation_result,\n                is_public as \"is_public!\",\n                current_state_entered_at as \"current_state_entered_at!\",\n                created_at as \"created_at!\",\n                updated_at as \"updated_at!\"\n            FROM deals\n            WHERE id = $1\n            ",
+  "query": "\n            SELECT\n                id as \"id!\",\n                deal_reference as \"deal_reference!\",\n                deal_title as \"deal_title!\",\n                deal_description,\n                domain_category_id as \"domain_category_id!\",\n                initiator_party_id as \"initiator_party_id!\",\n                initiator_role as \"initiator_role!\",\n                deal_status as \"deal_status!\",\n                expected_start_date,\n                expected_end_date,\n                actual_start_date,\n                actual_end_date,\n                timeline,\n                ST_Y(location_geo::geometry) as latitude,\n                ST_X(location_geo::geometry) as longitude,\n                location_address,\n                total_deal_value,\n                currency as \"currency!\",\n                platform_fee_percentage as \"platform_fee_percentage!\",\n                platform_fee_amount as \"platform_fee_amount!\",\n                win_win_win_validated as \"win_win_win_validated!\",\n                validation_checked_at,\n                validation_score,\n                validation_result,\n                is_public as \"is_public!\",\n                current_state_entered_at as \"current_state_entered_at!\",\n                timeout_overrides,\n                created_at as \"created_at!\",\n                updated_at as \"updated_at!\"\n            FROM deals\n            WHERE ($1::uuid IS NULL OR EXISTS (\n                SELECT 1 FROM deal_participations dp\n                WHERE dp.deal_id = deals.id AND dp.party_id = $1\n            ))\n            AND ($2::text[] IS NULL OR deal_status = ANY($2))\n            AND ($3::uuid IS NULL OR initiator_party_id = $3)\n            AND ($4::uuid IS NULL OR domain_category_id = $4)\n            ORDER BY updated_at DESC\n            LIMIT $5 OFFSET $6\n            ",
   "describe": {
     "columns": [
       {
@@ -281,6 +281,17 @@
       },
       {
         "ordinal": 26,
+        "name": "timeout_overrides",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "timeout_overrides"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
         "name": "created_at!",
         "type_info": "Timestamptz",
         "origin": {
@@ -291,7 +302,7 @@
         }
       },
       {
-        "ordinal": 27,
+        "ordinal": 28,
         "name": "updated_at!",
         "type_info": "Timestamptz",
         "origin": {
@@ -304,7 +315,12 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "TextArray",
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -334,9 +350,10 @@
       true,
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "022b39e9a7a706636a2422882c783cffb01295298dcd19afdc814517ae5d3486"
+  "hash": "0953b0448090203c5f21ced7ece179f48011f6f21e4498baf2b343f2a307e449"
 }
