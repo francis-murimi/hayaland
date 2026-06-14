@@ -2,6 +2,10 @@ use actix_web::http::StatusCode;
 use actix_web::{http::header, test, web::Data};
 use api::routes;
 use api::AppState;
+use application::agreements::{
+    AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
+};
+use application::deals::dto::SetValueDistributionCommand;
 use application::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
@@ -29,17 +33,19 @@ use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::entities::{
-    DealRole, Email, EmailVerification, PasswordHash, PasswordResetToken, Role, RoleProfile, User,
-    Username,
+    Agreement, DealRole, DealStatus, DistributionModel, Email, EmailVerification, PasswordHash,
+    PasswordResetToken, Role, RoleProfile, Signature, User, Username,
 };
 use domain::entities::{Party, PartyType, UserPartyMembership};
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
-    DealAggregate, DealListResult, DealRepository, DealSearchCriteria, EmailVerificationRepository,
-    PartyRepository, PasswordResetRepository, RoleRepository, UserRepository,
+    AgreementRepository, DealAggregate, DealListResult, DealRepository, DealSearchCriteria,
+    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
+    UserRepository,
 };
 use domain::services::ValidationConfig;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use uuid::Uuid;
@@ -714,6 +720,97 @@ impl DealRepository for FakeDealRepo {
     }
 }
 
+struct FakeAgreementRepo {
+    agreements: Mutex<HashMap<Uuid, Agreement>>,
+    signatures: Mutex<Vec<Signature>>,
+}
+
+#[async_trait]
+impl AgreementRepository for FakeAgreementRepo {
+    async fn create(&self, agreement: &Agreement) -> Result<(), DomainError> {
+        self.agreements
+            .lock()
+            .unwrap()
+            .insert(agreement.id, agreement.clone());
+        Ok(())
+    }
+
+    async fn find_by_deal_id(&self, deal_id: Uuid) -> Result<Option<Agreement>, DomainError> {
+        Ok(self
+            .agreements
+            .lock()
+            .unwrap()
+            .values()
+            .find(|a| a.deal_id == deal_id)
+            .cloned())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Agreement>, DomainError> {
+        Ok(self.agreements.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn update(&self, agreement: &Agreement) -> Result<(), DomainError> {
+        self.agreements
+            .lock()
+            .unwrap()
+            .insert(agreement.id, agreement.clone());
+        Ok(())
+    }
+
+    async fn create_signature(&self, signature: &Signature) -> Result<(), DomainError> {
+        self.signatures.lock().unwrap().push(signature.clone());
+        Ok(())
+    }
+
+    async fn find_signatures_by_agreement(
+        &self,
+        agreement_id: Uuid,
+    ) -> Result<Vec<Signature>, DomainError> {
+        Ok(self
+            .signatures
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.agreement_id == agreement_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn has_party_signed(
+        &self,
+        agreement_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        let version = self
+            .agreements
+            .lock()
+            .unwrap()
+            .get(&agreement_id)
+            .map(|a| a.version)
+            .unwrap_or(0);
+        Ok(self.signatures.lock().unwrap().iter().any(|s| {
+            s.agreement_id == agreement_id && s.party_id == party_id && s.version == version
+        }))
+    }
+
+    async fn count_signatures(&self, agreement_id: Uuid) -> Result<i64, DomainError> {
+        let version = self
+            .agreements
+            .lock()
+            .unwrap()
+            .get(&agreement_id)
+            .map(|a| a.version)
+            .unwrap_or(0);
+        Ok(self
+            .signatures
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.agreement_id == agreement_id && s.version == version)
+            .count() as i64)
+    }
+}
+
 #[async_trait]
 impl EmailQueue for FakeEmailQueue {
     async fn enqueue(
@@ -732,6 +829,7 @@ struct TestFixtures {
     state: AppState,
     repo: Arc<FakeRepo>,
     queue: Arc<FakeEmailQueue>,
+    deal_repo: Arc<FakeDealRepo>,
 }
 
 fn seeded_role_repo() -> Arc<FakeRoleRepo> {
@@ -753,6 +851,7 @@ fn seeded_role_repo() -> Arc<FakeRoleRepo> {
                         "users:write".to_string(),
                         "users:admin".to_string(),
                         "users:delete".to_string(),
+                        "admin:deals".to_string(),
                     ],
                 ),
             ),
@@ -773,6 +872,10 @@ fn test_fixtures() -> TestFixtures {
     let queue: Arc<FakeEmailQueue> = Arc::new(FakeEmailQueue::default());
     let party_repo: Arc<FakePartyRepo> = Arc::new(FakePartyRepo::default());
     let deal_repo: Arc<FakeDealRepo> = Arc::new(FakeDealRepo::default());
+    let agreement_repo: Arc<FakeAgreementRepo> = Arc::new(FakeAgreementRepo {
+        agreements: Mutex::new(HashMap::new()),
+        signatures: Mutex::new(Vec::new()),
+    });
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -837,6 +940,7 @@ fn test_fixtures() -> TestFixtures {
         execute_transition: ExecuteTransition::new(
             deal_repo.clone(),
             party_repo.clone(),
+            agreement_repo.clone(),
             ValidationConfig::default(),
         ),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -848,10 +952,31 @@ fn test_fixtures() -> TestFixtures {
         set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         validate_deal: ValidateDeal::new(deal_repo.clone(), ValidationConfig::default()),
+        generate_agreement: GenerateAgreement::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            agreement_repo.clone(),
+        ),
+        get_agreement: GetAgreement::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            agreement_repo.clone(),
+        ),
+        sign_agreement: SignAgreement::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            agreement_repo.clone(),
+        ),
+        admin_update_agreement: AdminUpdateAgreement::new(deal_repo.clone(), agreement_repo),
         token_validator: token,
     };
 
-    TestFixtures { state, repo, queue }
+    TestFixtures {
+        state,
+        repo,
+        queue,
+        deal_repo,
+    }
 }
 
 fn extract_token_for_email(queue: &FakeEmailQueue, email: &str) -> String {
@@ -2421,4 +2546,234 @@ async fn submit_deal_without_value_distribution_returns_conflict() {
         .to_request();
     let resp = test::call_service(&app, submit).await;
     assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+// ============================================================================
+// Agreement handler tests
+// ============================================================================
+
+async fn prepare_deal_for_agreement(
+    fixtures: &TestFixtures,
+    deal_id: Uuid,
+    actor_user_id: Uuid,
+    actor_party_id: Uuid,
+) {
+    fixtures
+        .state
+        .set_value_distribution
+        .execute(SetValueDistributionCommand {
+            actor_user_id,
+            actor_party_id,
+            deal_id,
+            total_value: Decimal::from(10000),
+            distribution_model: DistributionModel::FixedPrice,
+            supplier_share_percentage: Decimal::from(60),
+            enhancer_share_percentage: Decimal::from(30),
+            platform_fee_percentage: Decimal::from(10),
+            consumer_cost_percentage: Decimal::from(100),
+            payment_schedule: vec![],
+        })
+        .await
+        .unwrap();
+
+    let mut deals = fixtures.deal_repo.deals.lock().unwrap();
+    let deal = deals.get_mut(&deal_id).expect("deal exists");
+    deal.deal_status = DealStatus::TermsLocked;
+}
+
+#[actix_rt::test]
+async fn get_agreement_visible_to_participant() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "agreementowner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier =
+        create_party_with_role!(&app, owner_id, "supplier-agree@example.com", "SUPPLIER");
+    let consumer =
+        create_party_with_role!(&app, owner_id, "consumer-agree@example.com", "CONSUMER");
+    let enhancer =
+        create_party_with_role!(&app, owner_id, "enhancer-agree@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+    prepare_deal_for_agreement(&fixtures, deal_id, owner_id, supplier).await;
+
+    fixtures
+        .state
+        .generate_agreement
+        .execute(application::agreements::dto::GenerateAgreementCommand {
+            actor_user_id: owner_id,
+            actor_party_id: supplier,
+            deal_id,
+        })
+        .await
+        .unwrap();
+
+    let get = test::TestRequest::get()
+        .uri(&format!("/api/v1/deals/{deal_id}/agreement"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, get).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["deal_id"].as_str().unwrap(), deal_id.to_string());
+    assert!(body["agreement_text"]
+        .as_str()
+        .unwrap()
+        .contains("API Negotiation Deal"));
+}
+
+#[actix_rt::test]
+async fn get_agreement_hidden_from_outsider() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "agreementowner2@example.com", "user");
+    let outsider_id = seed_user(&fixtures, "outsider@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier =
+        create_party_with_role!(&app, owner_id, "supplier-agree2@example.com", "SUPPLIER");
+    let consumer =
+        create_party_with_role!(&app, owner_id, "consumer-agree2@example.com", "CONSUMER");
+    let enhancer =
+        create_party_with_role!(&app, owner_id, "enhancer-agree2@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+    prepare_deal_for_agreement(&fixtures, deal_id, owner_id, supplier).await;
+
+    fixtures
+        .state
+        .generate_agreement
+        .execute(application::agreements::dto::GenerateAgreementCommand {
+            actor_user_id: owner_id,
+            actor_party_id: supplier,
+            deal_id,
+        })
+        .await
+        .unwrap();
+
+    let get = test::TestRequest::get()
+        .uri(&format!("/api/v1/deals/{deal_id}/agreement"))
+        .insert_header((header::AUTHORIZATION, bearer(outsider_id)))
+        .to_request();
+    let resp = test::call_service(&app, get).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[actix_rt::test]
+async fn sign_agreement_records_signature_via_api() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "signowner@example.com", "user");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier = create_party_with_role!(&app, owner_id, "supplier-sign@example.com", "SUPPLIER");
+    let consumer = create_party_with_role!(&app, owner_id, "consumer-sign@example.com", "CONSUMER");
+    let enhancer = create_party_with_role!(&app, owner_id, "enhancer-sign@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+    prepare_deal_for_agreement(&fixtures, deal_id, owner_id, supplier).await;
+
+    fixtures
+        .state
+        .generate_agreement
+        .execute(application::agreements::dto::GenerateAgreementCommand {
+            actor_user_id: owner_id,
+            actor_party_id: supplier,
+            deal_id,
+        })
+        .await
+        .unwrap();
+
+    let sign = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/agreement/sign"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    let resp = test::call_service(&app, sign).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["signatures"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        body["signatures"][0]["party_id"].as_str().unwrap(),
+        supplier.to_string()
+    );
+}
+
+#[actix_rt::test]
+async fn admin_can_get_and_update_agreement() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "admindealowner@example.com", "user");
+    let admin_id = seed_user(&fixtures, "platformadmin@example.com", "admin");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier =
+        create_party_with_role!(&app, owner_id, "supplier-admin@example.com", "SUPPLIER");
+    let consumer =
+        create_party_with_role!(&app, owner_id, "consumer-admin@example.com", "CONSUMER");
+    let enhancer =
+        create_party_with_role!(&app, owner_id, "enhancer-admin@example.com", "ENHANCER");
+    let deal_id = create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+    prepare_deal_for_agreement(&fixtures, deal_id, owner_id, supplier).await;
+
+    fixtures
+        .state
+        .generate_agreement
+        .execute(application::agreements::dto::GenerateAgreementCommand {
+            actor_user_id: owner_id,
+            actor_party_id: supplier,
+            deal_id,
+        })
+        .await
+        .unwrap();
+
+    let get = test::TestRequest::get()
+        .uri(&format!("/api/v1/admin/deals/{deal_id}/agreement"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .to_request();
+    let resp = test::call_service(&app, get).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let patch = test::TestRequest::patch()
+        .uri(&format!("/api/v1/admin/deals/{deal_id}/agreement"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .set_json(serde_json::json!({
+            "governing_law": "California",
+            "dispute_resolution": "Arbitration",
+            "auto_renew": true
+        }))
+        .to_request();
+    let resp = test::call_service(&app, patch).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["governing_law"].as_str().unwrap(), "California");
+    assert_eq!(body["dispute_resolution"].as_str().unwrap(), "Arbitration");
+    assert_eq!(body["auto_renew"].as_bool().unwrap(), true);
 }

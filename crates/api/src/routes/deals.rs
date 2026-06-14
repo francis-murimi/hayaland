@@ -1,3 +1,4 @@
+use crate::handlers::agreements;
 use crate::handlers::deals::{
     create_deal, execute_transition, get_deal, list_deals, submit_deal, terms, update_deal,
     validate_deal, value_distribution,
@@ -49,5 +50,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     )
     .service(
         web::resource("/deals/{id}/validate").route(web::post().to(validate_deal::validate_deal)),
+    )
+    .service(
+        web::resource("/deals/{id}/agreement")
+            .route(web::get().to(agreements::get_agreement::get_agreement)),
+    )
+    .service(
+        web::resource("/deals/{id}/agreement/sign")
+            .route(web::post().to(agreements::sign_agreement::sign_agreement)),
     );
 }

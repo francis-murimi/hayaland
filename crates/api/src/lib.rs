@@ -6,6 +6,9 @@ pub mod routes;
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use application::agreements::{
+    AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
+};
 use application::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
@@ -73,6 +76,10 @@ pub struct AppState {
     pub set_value_distribution: SetValueDistribution,
     pub get_value_distribution: GetValueDistribution,
     pub validate_deal: ValidateDeal,
+    pub generate_agreement: GenerateAgreement,
+    pub get_agreement: GetAgreement,
+    pub sign_agreement: SignAgreement,
+    pub admin_update_agreement: AdminUpdateAgreement,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

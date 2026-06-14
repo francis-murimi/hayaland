@@ -1,3 +1,4 @@
+use crate::agreements::{SignAgreement, SignAgreementCommand};
 use crate::deals::dto::{
     CounterTermCommand, CreateDealCommand, ExecuteTransitionCommand, ListDealsQuery,
     ProposeTermCommand, SetValueDistributionCommand, SubmitDealCommand, TermActionCommand,
@@ -11,7 +12,7 @@ use crate::deals::{
 use crate::errors::ApplicationError;
 use crate::parties::dto::CreatePartyCommand;
 use crate::parties::CreateParty;
-use crate::test_helpers::{FakeDealRepo, FakePartyRepo};
+use crate::test_helpers::{FakeAgreementRepo, FakeDealRepo, FakePartyRepo};
 use domain::entities::{
     DealRole, DealStatus, DistributionModel, ParticipationStatus, PartyType, TermStatus, TermType,
     ValueDistribution,
@@ -314,7 +315,7 @@ async fn submit_deal_moves_to_suggested() {
 
 #[tokio::test]
 async fn execute_transition_moves_through_negotiating_to_committed() {
-    let (party_repo, deal_repo, deal_id, supplier, _consumer, _enhancer, _result) =
+    let (party_repo, deal_repo, deal_id, supplier, consumer, enhancer, _result) =
         create_sample_deal().await;
 
     // Move the deal directly to PENDING_REVIEW so we can exercise Negotiating.
@@ -339,9 +340,11 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
 
     set_valid_value_distribution(&deal_repo, deal_id).await;
 
+    let agreement_repo = Arc::new(FakeAgreementRepo::default());
     let transition = ExecuteTransition::new(
         deal_repo.clone(),
         party_repo.clone(),
+        agreement_repo.clone(),
         domain::services::ValidationConfig::default(),
     );
 
@@ -374,6 +377,20 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
         .await
         .unwrap();
     assert_eq!(result.deal_status, DealStatus::TermsLocked);
+
+    // All three parties must sign before the deal can be committed.
+    let sign = SignAgreement::new(deal_repo.clone(), party_repo.clone(), agreement_repo);
+    for party_id in [supplier, consumer, enhancer] {
+        sign.execute(SignAgreementCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: party_id,
+            deal_id,
+            signature_type: domain::entities::SignatureType::DigitalAttestation,
+            ip_address: None,
+        })
+        .await
+        .unwrap();
+    }
 
     let result = transition
         .execute(
@@ -666,7 +683,12 @@ async fn locking_terms_requires_value_distribution() {
     aggregate.deal.deal_status = DealStatus::Negotiating;
     deal_repo.update(&aggregate.deal).await.unwrap();
 
-    let transition = ExecuteTransition::new(deal_repo, _party_repo, ValidationConfig::default());
+    let transition = ExecuteTransition::new(
+        deal_repo,
+        _party_repo,
+        Arc::new(FakeAgreementRepo::default()),
+        ValidationConfig::default(),
+    );
     let err = transition
         .execute(
             deal_id,

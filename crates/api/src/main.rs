@@ -1,5 +1,8 @@
 use anyhow::Context;
 use api::{run, AppState};
+use application::agreements::{
+    AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
+};
 use application::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
@@ -23,16 +26,17 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
 use domain::repositories::{
-    DealRepository, EmailVerificationRepository, PartyRepository, PasswordResetRepository,
-    RoleRepository, UserRepository,
+    AgreementRepository, DealRepository, EmailVerificationRepository, PartyRepository,
+    PasswordResetRepository, RoleRepository, UserRepository,
 };
 use infrastructure::{
     config, database,
     email::{run_worker, InMemoryEmailQueue, SmtpEmailSender},
     migrations,
     repositories::{
-        PostgresDealRepository, PostgresEmailVerificationRepository, PostgresPartyRepository,
-        PostgresPasswordResetRepository, PostgresRoleRepository, PostgresUserRepository,
+        PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
+        PostgresPartyRepository, PostgresPasswordResetRepository, PostgresRoleRepository,
+        PostgresUserRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -66,7 +70,9 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PostgresPasswordResetRepository::new(pool.clone()));
     let role_repo: Arc<dyn RoleRepository> = Arc::new(PostgresRoleRepository::new(pool.clone()));
     let party_repo: Arc<dyn PartyRepository> = Arc::new(PostgresPartyRepository::new(pool.clone()));
-    let deal_repo: Arc<dyn DealRepository> = Arc::new(PostgresDealRepository::new(pool));
+    let deal_repo: Arc<dyn DealRepository> = Arc::new(PostgresDealRepository::new(pool.clone()));
+    let agreement_repo: Arc<dyn AgreementRepository> =
+        Arc::new(PostgresAgreementRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -144,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
         execute_transition: ExecuteTransition::new(
             deal_repo.clone(),
             party_repo.clone(),
+            agreement_repo.clone(),
             settings.validation.clone(),
         ),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -155,6 +162,22 @@ async fn main() -> anyhow::Result<()> {
         set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         validate_deal: ValidateDeal::new(deal_repo.clone(), settings.validation.clone()),
+        generate_agreement: GenerateAgreement::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            agreement_repo.clone(),
+        ),
+        get_agreement: GetAgreement::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            agreement_repo.clone(),
+        ),
+        sign_agreement: SignAgreement::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            agreement_repo.clone(),
+        ),
+        admin_update_agreement: AdminUpdateAgreement::new(deal_repo.clone(), agreement_repo),
         token_validator: token_service,
     };
 

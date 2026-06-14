@@ -4,6 +4,8 @@ pub mod deals;
 pub mod parties;
 pub mod users;
 
+pub mod admin;
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/v1")
@@ -11,6 +13,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(users::configure)
             .configure(parties::configure)
             .configure(deals::configure)
+            .configure(admin::configure)
             .route("/health", web::get().to(health))
             .route("/auth/login", web::post().to(crate::handlers::login::login))
             .route(

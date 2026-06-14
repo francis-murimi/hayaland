@@ -1,3 +1,4 @@
+pub mod agreements;
 pub mod assign_user_roles;
 pub mod create_user;
 pub mod deactivate_user;

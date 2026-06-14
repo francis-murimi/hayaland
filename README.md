@@ -37,9 +37,9 @@ Or run a local cluster in the project directory (no Docker/sudo needed):
 ```bash
 export PATH="/usr/lib/postgresql/18/bin:$PATH"
 initdb -D .pgdata -U hayaland -A trust --locale=C --encoding=UTF8
-pg_ctl -D .pgdata -l .pgdata/server.log -o "-p 5433 -c unix_socket_directories=/tmp" start
-psql -U hayaland -h 127.0.0.1 -p 5433 -d postgres -c "CREATE DATABASE hayaland;"
-psql -U hayaland -h 127.0.0.1 -p 5433 -d postgres -c "CREATE DATABASE hayaland_test;"
+pg_ctl -D .pgdata -l .pgdata/server.log -o "-p 5432 -c unix_socket_directories=/tmp" start
+psql -U hayaland -h 127.0.0.1 -p 5432 -d postgres -c "CREATE DATABASE hayaland;"
+psql -U hayaland -h 127.0.0.1 -p 5432 -d postgres -c "CREATE DATABASE hayaland_test;"
 ```
 
 ### 2. Environment
@@ -52,7 +52,7 @@ cp .env.example .env
 ### 3. Migrations
 
 ```bash
-sqlx migrate run --database-url "postgres://hayaland@127.0.0.1:5433/hayaland"
+sqlx migrate run --database-url "postgres://hayaland@127.0.0.1:5432/hayaland"
 ```
 
 ### 4. Run
@@ -113,7 +113,7 @@ cargo fmt
 cargo clippy -- -D warnings
 
 # Tests (requires DATABASE_URL to point at a Postgres server)
-export DATABASE_URL="postgres://hayaland@127.0.0.1:5433/hayaland_test"
+export DATABASE_URL="postgres://hayaland@127.0.0.1:5432/hayaland_test"
 cargo test
 
 # Prepare offline query metadata (commit the generated .sqlx/ directory)

@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: hayaland
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: hayaland
       POSTGRES_DB: hayaland
     ports:
       - "5432:5432"

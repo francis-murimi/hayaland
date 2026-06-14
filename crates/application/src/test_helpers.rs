@@ -12,8 +12,8 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
-    DealRole, Email, EmailVerification, PasswordHash, PasswordResetToken, Role, RoleProfile, User,
-    Username,
+    Agreement, DealRole, Email, EmailVerification, PasswordHash, PasswordResetToken, Role,
+    RoleProfile, Signature, User, Username,
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
@@ -22,12 +22,12 @@ use domain::errors::DomainError;
 #[cfg(test)]
 use domain::repositories::PartySearchCriteria;
 #[cfg(test)]
-use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
-#[cfg(test)]
 use domain::repositories::{
-    EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
-    UserRepository,
+    AgreementRepository, EmailVerificationRepository, PartyRepository, PasswordResetRepository,
+    RoleRepository, UserRepository,
 };
+#[cfg(test)]
+use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
 #[cfg(test)]
 use rust_decimal::Decimal;
 #[cfg(test)]
@@ -768,5 +768,97 @@ impl DealRepository for FakeDealRepo {
             .unwrap()
             .get(&deal_id)
             .cloned())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeAgreementRepo {
+    pub agreements: Mutex<HashMap<Uuid, Agreement>>,
+    pub signatures: Mutex<Vec<Signature>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl AgreementRepository for FakeAgreementRepo {
+    async fn create(&self, agreement: &Agreement) -> Result<(), DomainError> {
+        self.agreements
+            .lock()
+            .unwrap()
+            .insert(agreement.id, agreement.clone());
+        Ok(())
+    }
+
+    async fn find_by_deal_id(&self, deal_id: Uuid) -> Result<Option<Agreement>, DomainError> {
+        Ok(self
+            .agreements
+            .lock()
+            .unwrap()
+            .values()
+            .find(|a| a.deal_id == deal_id)
+            .cloned())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Agreement>, DomainError> {
+        Ok(self.agreements.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn update(&self, agreement: &Agreement) -> Result<(), DomainError> {
+        self.agreements
+            .lock()
+            .unwrap()
+            .insert(agreement.id, agreement.clone());
+        Ok(())
+    }
+
+    async fn create_signature(&self, signature: &Signature) -> Result<(), DomainError> {
+        self.signatures.lock().unwrap().push(signature.clone());
+        Ok(())
+    }
+
+    async fn find_signatures_by_agreement(
+        &self,
+        agreement_id: Uuid,
+    ) -> Result<Vec<Signature>, DomainError> {
+        Ok(self
+            .signatures
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.agreement_id == agreement_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn has_party_signed(
+        &self,
+        agreement_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        let agreements = self.agreements.lock().unwrap();
+        let version = agreements
+            .get(&agreement_id)
+            .map(|a| a.version)
+            .unwrap_or(0);
+        drop(agreements);
+        Ok(self.signatures.lock().unwrap().iter().any(|s| {
+            s.agreement_id == agreement_id && s.party_id == party_id && s.version == version
+        }))
+    }
+
+    async fn count_signatures(&self, agreement_id: Uuid) -> Result<i64, DomainError> {
+        let agreements = self.agreements.lock().unwrap();
+        let version = agreements
+            .get(&agreement_id)
+            .map(|a| a.version)
+            .unwrap_or(0);
+        drop(agreements);
+        Ok(self
+            .signatures
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.agreement_id == agreement_id && s.version == version)
+            .count() as i64)
     }
 }

@@ -1,3 +1,4 @@
+pub mod agreement;
 pub mod deal;
 pub mod email_verification;
 pub mod party;
@@ -8,6 +9,7 @@ pub mod term;
 pub mod user;
 pub mod value_distribution;
 
+pub use agreement::*;
 pub use deal::*;
 pub use email_verification::*;
 pub use party::*;

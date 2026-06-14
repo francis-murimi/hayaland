@@ -1,9 +1,10 @@
+use crate::agreements::{GenerateAgreement, GenerateAgreementCommand};
 use crate::deals::create_deal::map_aggregate_to_result;
 use crate::deals::dto::{DealResult, ExecuteTransitionCommand};
 use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
-use domain::entities::{DealStatus, ParticipationStatus, TermStatus};
-use domain::repositories::{DealRepository, PartyRepository};
+use domain::entities::{AgreementStatus, DealStatus, ParticipationStatus, TermStatus};
+use domain::repositories::{AgreementRepository, DealRepository, PartyRepository};
 use domain::services::ValidationConfig;
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -14,6 +15,7 @@ use uuid::Uuid;
 pub struct ExecuteTransition {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    agreement_repo: Arc<dyn AgreementRepository>,
     validation_config: ValidationConfig,
 }
 
@@ -21,11 +23,13 @@ impl ExecuteTransition {
     pub fn new(
         deal_repo: Arc<dyn DealRepository>,
         party_repo: Arc<dyn PartyRepository>,
+        agreement_repo: Arc<dyn AgreementRepository>,
         validation_config: ValidationConfig,
     ) -> Self {
         Self {
             deal_repo,
             party_repo,
+            agreement_repo,
             validation_config,
         }
     }
@@ -117,6 +121,7 @@ impl ExecuteTransition {
                 }
                 self.validate_commit(deal_id, cmd.acknowledge_warnings)
                     .await?;
+                self.require_signed_agreement(deal_id).await?;
             }
             DealStatus::Cancelled => {
                 // Allow cancellation from most active states by any participant.
@@ -143,6 +148,12 @@ impl ExecuteTransition {
             self.deal_repo.update_participation(participation).await?;
         }
         self.deal_repo.update(&deal).await?;
+
+        if cmd.new_status == DealStatus::TermsLocked {
+            self.generate_agreement(deal_id, cmd.actor_user_id, cmd.actor_party_id)
+                .await?;
+        }
+
         self.deal_repo
             .record_history(
                 deal_id,
@@ -228,6 +239,48 @@ impl ExecuteTransition {
             });
         }
         persist_validation(&*self.deal_repo, deal_id, &result).await?;
+        Ok(())
+    }
+
+    async fn generate_agreement(
+        &self,
+        deal_id: Uuid,
+        actor_user_id: Uuid,
+        actor_party_id: Uuid,
+    ) -> Result<(), ApplicationError> {
+        let generator = GenerateAgreement::new(
+            self.deal_repo.clone(),
+            self.party_repo.clone(),
+            self.agreement_repo.clone(),
+        );
+        generator
+            .execute(GenerateAgreementCommand {
+                actor_user_id,
+                actor_party_id,
+                deal_id,
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn require_signed_agreement(&self, deal_id: Uuid) -> Result<(), ApplicationError> {
+        let agreement = self
+            .agreement_repo
+            .find_by_deal_id(deal_id)
+            .await?
+            .ok_or_else(|| {
+                ApplicationError::Validation(vec![
+                    "a signed agreement is required before committing".to_string(),
+                ])
+            })?;
+
+        if agreement.agreement_status != AgreementStatus::Signed {
+            return Err(ApplicationError::Validation(vec![format!(
+                "agreement status is {}, expected SIGNED before committing",
+                agreement.agreement_status.as_str()
+            )]));
+        }
+
         Ok(())
     }
 }

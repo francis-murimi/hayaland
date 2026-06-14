@@ -11,7 +11,8 @@ Rust workspace (Actix Web + PostgreSQL via sqlx) using a hexagonal/clean archite
 - All public errors are typed with `thiserror`; API layer maps them to HTTP.
 
 ## Local development (no Docker required)
-A PostgreSQL cluster is managed inside the project directory so you do not need `docker` or `sudo`:
+A PostgreSQL cluster is managed inside the project directory so you do not need `docker` or `sudo`.
+The project standardises on port **5432**; make sure no other Postgres server is listening on that port before starting the local cluster.
 
 ```bash
 # One-time init
@@ -19,14 +20,14 @@ export PATH="/usr/lib/postgresql/18/bin:$PATH"
 initdb -D .pgdata -U hayaland -A trust --locale=C --encoding=UTF8
 
 # Start the server
-pg_ctl -D .pgdata -l .pgdata/server.log -o "-p 5433 -c unix_socket_directories=/tmp" start
+pg_ctl -D .pgdata -l .pgdata/server.log -o "-p 5432 -c unix_socket_directories=/tmp" start
 
 # Create databases
-psql -U hayaland -h 127.0.0.1 -p 5433 -d postgres -c "CREATE DATABASE hayaland;"
-psql -U hayaland -h 127.0.0.1 -p 5433 -d postgres -c "CREATE DATABASE hayaland_test;"
+psql -U hayaland -h 127.0.0.1 -p 5432 -d postgres -c "CREATE DATABASE hayaland;"
+psql -U hayaland -h 127.0.0.1 -p 5432 -d postgres -c "CREATE DATABASE hayaland_test;"
 
 # Run migrations
-sqlx migrate run --database-url "postgres://hayaland@127.0.0.1:5433/hayaland"
+sqlx migrate run --database-url "postgres://hayaland@127.0.0.1:5432/hayaland"
 
 # Build / run
 cargo build
