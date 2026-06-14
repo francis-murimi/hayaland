@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE agreements\n            SET agreement_status = $1,\n                agreement_text = $2,\n                governing_law = $3,\n                dispute_resolution = $4,\n                effective_date = $5,\n                termination_date = $6,\n                auto_renew = $7,\n                version = $8,\n                digital_signature_url = $9,\n                executed_at = $10\n            WHERE id = $11\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Date",
+        "Date",
+        "Bool",
+        "Int4",
+        "Text",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "86c59096a44ee8a68ac43d0e7a2601cdb18f684c6ff15c60604cab0becd410de"
+}

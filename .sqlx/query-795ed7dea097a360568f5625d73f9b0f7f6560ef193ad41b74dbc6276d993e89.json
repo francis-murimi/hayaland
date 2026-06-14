@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO agreements (\n                id, deal_id, agreement_status, agreement_text, governing_law,\n                dispute_resolution, effective_date, termination_date, auto_renew,\n                version, digital_signature_url, created_at, executed_at\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Date",
+        "Date",
+        "Bool",
+        "Int4",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "795ed7dea097a360568f5625d73f9b0f7f6560ef193ad41b74dbc6276d993e89"
+}

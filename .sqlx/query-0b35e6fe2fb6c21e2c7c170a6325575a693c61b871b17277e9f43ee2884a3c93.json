@@ -1,0 +1,172 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id as \"id!\",\n                deal_id as \"deal_id!\",\n                agreement_status as \"agreement_status!\",\n                agreement_text as \"agreement_text!\",\n                governing_law,\n                dispute_resolution,\n                effective_date,\n                termination_date,\n                auto_renew as \"auto_renew!\",\n                version as \"version!\",\n                digital_signature_url,\n                created_at as \"created_at!\",\n                executed_at\n            FROM agreements\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "agreement_status!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "agreement_status"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "agreement_text!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "agreement_text"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "governing_law",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "governing_law"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "dispute_resolution",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "dispute_resolution"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "effective_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "effective_date"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "termination_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "termination_date"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "auto_renew!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "auto_renew"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "version!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "digital_signature_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "digital_signature_url"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "executed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "agreements",
+            "name": "executed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "0b35e6fe2fb6c21e2c7c170a6325575a693c61b871b17277e9f43ee2884a3c93"
+}
