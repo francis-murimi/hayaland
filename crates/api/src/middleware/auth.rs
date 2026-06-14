@@ -143,12 +143,55 @@ pub fn require_scope(ctx: &AuthContext, scope: &str) -> Result<(), crate::errors
     Ok(())
 }
 
-/// Route-level helper: require ownership of the resource or an admin role.
+/// Returns true if the context holds any of the supplied scopes.
+pub fn has_any_scope(ctx: &AuthContext, scopes: &[&str]) -> bool {
+    scopes.iter().any(|s| ctx.has_scope(s))
+}
+
+/// Route-level helper: require at least one of the supplied scopes.
+pub fn require_any_scope(
+    ctx: &AuthContext,
+    scopes: &[&str],
+) -> Result<(), crate::errors::ApiError> {
+    if !has_any_scope(ctx, scopes) {
+        warn!(user_id = %ctx.user_id, required = ?scopes, "request rejected: insufficient scope");
+        return Err(crate::errors::ApiError::Forbidden);
+    }
+    Ok(())
+}
+
+/// Route-level helper: require a feature scope OR an admin scope (including `admin:*`).
+///
+/// `feature_scope` is the normal user scope (e.g. `users:read`).
+/// `admin_scope` is the domain-specific admin scope (e.g. `admin:users`).
+/// `admin:*` is always accepted as a super-admin fallback.
+pub fn require_scope_or_admin(
+    ctx: &AuthContext,
+    feature_scope: &str,
+    admin_scope: &str,
+) -> Result<(), crate::errors::ApiError> {
+    if ctx.has_scope(feature_scope) || ctx.has_scope(admin_scope) || ctx.has_scope("admin:*") {
+        return Ok(());
+    }
+    warn!(
+        user_id = %ctx.user_id,
+        feature_scope = %feature_scope,
+        admin_scope = %admin_scope,
+        "request rejected: insufficient scope"
+    );
+    Err(crate::errors::ApiError::Forbidden)
+}
+
+/// Route-level helper: require ownership of the resource or an admin scope.
 pub fn require_owner_or_admin(
     ctx: &AuthContext,
     resource_id: uuid::Uuid,
 ) -> Result<(), crate::errors::ApiError> {
-    if ctx.user_id == resource_id || ctx.has_role("admin") {
+    if ctx.user_id == resource_id
+        || ctx.has_role("admin")
+        || ctx.has_scope("admin:*")
+        || ctx.has_scope("admin:users")
+    {
         return Ok(());
     }
     warn!(user_id = %ctx.user_id, resource_id = %resource_id, "request rejected: not owner or admin");

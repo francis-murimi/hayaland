@@ -1,6 +1,6 @@
 use crate::dto::AssignUserRolesRequest;
 use crate::errors::ApiError;
-use crate::middleware::auth::require_scope;
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 use actix_web::{web, HttpResponse};
 use application::roles::dto::AssignUserRolesCommand;
@@ -15,7 +15,7 @@ pub async fn assign_user_roles(
     ctx: web::ReqData<AuthContext>,
 ) -> Result<HttpResponse, ApiError> {
     body.validate().map_err(ApiError::from)?;
-    require_scope(&ctx, "users:admin")?;
+    require_scope_or_admin(&ctx, "users:admin", "admin:users")?;
 
     let user = state
         .assign_user_roles

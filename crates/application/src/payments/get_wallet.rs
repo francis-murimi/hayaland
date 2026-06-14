@@ -28,11 +28,13 @@ impl GetWallet {
         &self,
         actor_user_id: Uuid,
         party_id: Uuid,
+        is_admin: bool,
     ) -> Result<WalletResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(actor_user_id, party_id)
-            .await?
+        if !is_admin
+            && !self
+                .party_repo
+                .is_user_member_of_party(actor_user_id, party_id)
+                .await?
         {
             return Err(ApplicationError::Forbidden);
         }

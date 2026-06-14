@@ -445,7 +445,7 @@ async fn get_wallet_returns_container() {
         .unwrap();
 
     let result = GetWallet::new(party_repo, wallet_repo)
-        .execute(user_id, party_id)
+        .execute(user_id, party_id, false)
         .await
         .unwrap();
 
@@ -479,7 +479,7 @@ async fn get_deal_wallet_computes_sub_wallet() {
         .unwrap();
 
     let result = GetDealWallet::new(party_repo, deal_repo, wallet_repo)
-        .execute(user_id, party_id, deal_id)
+        .execute(user_id, party_id, deal_id, false)
         .await
         .unwrap();
 
@@ -524,6 +524,7 @@ async fn list_wallet_transactions_paginates_and_filters() {
                 offset: Some(0),
                 ..Default::default()
             },
+            false,
         )
         .await
         .unwrap();
@@ -539,6 +540,7 @@ async fn list_wallet_transactions_paginates_and_filters() {
                 transaction_type: Some("DEPOSIT".to_string()),
                 ..Default::default()
             },
+            false,
         )
         .await
         .unwrap();
@@ -578,7 +580,13 @@ async fn list_deal_transactions_filters_by_deal() {
 
     let result =
         ListDealTransactions::new(party_repo.clone(), deal_repo.clone(), wallet_repo.clone())
-            .execute(user_id, party_id, deal_a, ListTransactionsQuery::default())
+            .execute(
+                user_id,
+                party_id,
+                deal_a,
+                ListTransactionsQuery::default(),
+                false,
+            )
             .await
             .unwrap();
 
@@ -599,7 +607,13 @@ async fn list_deal_transactions_rejects_non_participant_deal() {
         .unwrap();
 
     let err = ListDealTransactions::new(party_repo, deal_repo, wallet_repo)
-        .execute(user_id, party_id, deal_id, ListTransactionsQuery::default())
+        .execute(
+            user_id,
+            party_id,
+            deal_id,
+            ListTransactionsQuery::default(),
+            false,
+        )
         .await
         .unwrap_err();
 

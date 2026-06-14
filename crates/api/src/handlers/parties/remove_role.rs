@@ -1,5 +1,6 @@
 use crate::errors::ApiError;
 use crate::handlers::parties::{is_admin, parse_role};
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 use actix_web::HttpMessage;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -18,6 +19,8 @@ pub async fn remove_role(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+
+    require_scope_or_admin(&ctx, "parties:write", "admin:parties")?;
 
     let (party_id, role_str) = path.into_inner();
     let role = parse_role(&role_str)?;

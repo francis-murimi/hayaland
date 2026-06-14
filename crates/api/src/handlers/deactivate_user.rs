@@ -1,6 +1,6 @@
 use crate::dto::UserResponse;
 use crate::errors::ApiError;
-use crate::middleware::auth::{require_owner_or_admin, require_scope};
+use crate::middleware::auth::{require_owner_or_admin, require_scope_or_admin};
 use crate::AppState;
 use actix_web::{web, HttpResponse};
 use application::users::dto::DeactivateUserCommand;
@@ -12,7 +12,7 @@ pub async fn deactivate_user(
     path: web::Path<Uuid>,
     ctx: web::ReqData<AuthContext>,
 ) -> Result<HttpResponse, ApiError> {
-    require_scope(&ctx, "users:write")?;
+    require_scope_or_admin(&ctx, "users:write", "admin:users")?;
 
     let id = path.into_inner();
     require_owner_or_admin(&ctx, id)?;

@@ -1,6 +1,6 @@
 use crate::dto::{RolesResponse, UpdateRoleScopesRequest};
 use crate::errors::ApiError;
-use crate::middleware::auth::require_scope;
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 use actix_web::{web, HttpResponse};
 use application::roles::dto::UpdateRoleScopesCommand;
@@ -11,7 +11,7 @@ pub async fn list_roles(
     state: web::Data<AppState>,
     ctx: web::ReqData<AuthContext>,
 ) -> Result<HttpResponse, ApiError> {
-    require_scope(&ctx, "users:admin")?;
+    require_scope_or_admin(&ctx, "users:admin", "admin:users")?;
     let roles = state.list_roles.execute().await?;
     Ok(HttpResponse::Ok().json(RolesResponse::from(roles)))
 }
@@ -23,7 +23,7 @@ pub async fn update_role_scopes(
     ctx: web::ReqData<AuthContext>,
 ) -> Result<HttpResponse, ApiError> {
     body.validate().map_err(ApiError::from)?;
-    require_scope(&ctx, "users:admin")?;
+    require_scope_or_admin(&ctx, "users:admin", "admin:users")?;
 
     let role = state
         .update_role_scopes

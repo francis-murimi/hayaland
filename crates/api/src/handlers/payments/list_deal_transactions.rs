@@ -21,9 +21,16 @@ pub async fn list_deal_transactions(
         ))?;
 
     let (party_id, deal_id) = path.into_inner();
+    let is_admin = ctx.has_scope("admin:transactions") || ctx.has_scope("admin:*");
     let result = state
         .list_deal_transactions
-        .execute(ctx.user_id, party_id, deal_id, query.into_inner().into())
+        .execute(
+            ctx.user_id,
+            party_id,
+            deal_id,
+            query.into_inner().into(),
+            is_admin,
+        )
         .await?;
     Ok(
         HttpResponse::Ok().json(crate::handlers::payments::dto::TransactionsResponse::from(

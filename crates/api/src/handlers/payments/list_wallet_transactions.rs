@@ -20,9 +20,15 @@ pub async fn list_wallet_transactions(
             application::errors::ApplicationError::Unauthorized,
         ))?;
 
+    let is_admin = ctx.has_scope("admin:transactions") || ctx.has_scope("admin:*");
     let result = state
         .list_wallet_transactions
-        .execute(ctx.user_id, path.into_inner(), query.into_inner().into())
+        .execute(
+            ctx.user_id,
+            path.into_inner(),
+            query.into_inner().into(),
+            is_admin,
+        )
         .await?;
     Ok(
         HttpResponse::Ok().json(crate::handlers::payments::dto::TransactionsResponse::from(

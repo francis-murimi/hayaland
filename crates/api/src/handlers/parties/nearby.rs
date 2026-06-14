@@ -1,6 +1,7 @@
 use crate::dto::{PartiesResponse, SearchPartiesQuery};
 use crate::errors::ApiError;
 use crate::handlers::parties::parse_role;
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 use actix_web::HttpMessage;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -17,13 +18,15 @@ pub async fn nearby_parties(
 ) -> Result<HttpResponse, ApiError> {
     query.validate().map_err(ApiError::from)?;
 
-    let _ctx = req
+    let ctx = req
         .extensions()
         .get::<AuthContext>()
         .cloned()
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+
+    require_scope_or_admin(&ctx, "parties:read", "admin:parties")?;
 
     if query.radius_km.is_none() || query.latitude.is_none() || query.longitude.is_none() {
         return Err(ApiError::Validation(

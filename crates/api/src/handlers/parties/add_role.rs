@@ -1,6 +1,7 @@
 use crate::dto::{AddPartyRoleRequest, PartyRolesResponse};
 use crate::errors::ApiError;
 use crate::handlers::parties::{is_admin, parse_role};
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 use actix_web::HttpMessage;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -25,6 +26,8 @@ pub async fn add_role(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+
+    require_scope_or_admin(&ctx, "parties:write", "admin:parties")?;
 
     let role = parse_role(&body.role_type)?;
     let profile: RoleProfile = serde_json::from_value(body.profile.clone())

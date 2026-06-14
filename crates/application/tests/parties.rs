@@ -2,9 +2,11 @@ use application::errors::ApplicationError;
 use application::parties::dto::{
     AddPartyRoleCommand, CreatePartyCommand, SearchPartiesQuery, UpdatePartyCommand,
 };
+use application::parties::get_party::{GetParty, GetPartyQuery};
+use application::parties::list_roles::{ListPartyRoles, ListPartyRolesQuery};
 use application::parties::{
-    AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
-    SearchParties, SoftDeleteParty, UpdateParty,
+    AddPartyRole, CreateParty, ListMyParties, RemovePartyRole, SearchParties, SoftDeleteParty,
+    UpdateParty,
 };
 use async_trait::async_trait;
 use domain::entities::{
@@ -363,7 +365,16 @@ async fn get_party_returns_existing_party() {
         .execute(sample_party_cmd("Gettable", "get@example.com"))
         .await
         .unwrap();
-    let found = get.execute(created.id).await.unwrap();
+    let found = get
+        .execute(
+            created.id,
+            GetPartyQuery {
+                actor_user_id: owner_user_id(),
+                is_admin: false,
+            },
+        )
+        .await
+        .unwrap();
 
     assert_eq!(found.id, created.id);
 }
@@ -373,7 +384,16 @@ async fn get_party_returns_not_found_for_missing() {
     let repo = Arc::new(FakePartyRepo::default());
     let get = GetParty::new(repo);
 
-    let err = get.execute(Uuid::now_v7()).await.unwrap_err();
+    let err = get
+        .execute(
+            Uuid::now_v7(),
+            GetPartyQuery {
+                actor_user_id: owner_user_id(),
+                is_admin: false,
+            },
+        )
+        .await
+        .unwrap_err();
     assert!(matches!(err, ApplicationError::PartyNotFound));
 }
 
@@ -651,7 +671,16 @@ async fn list_party_roles_returns_roles() {
     .await
     .unwrap();
 
-    let roles = list_roles.execute(created.id).await.unwrap();
+    let roles = list_roles
+        .execute(
+            created.id,
+            ListPartyRolesQuery {
+                actor_user_id: owner_user_id(),
+                is_admin: false,
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(roles.len(), 1);
     assert_eq!(roles[0].role_type, DealRole::Consumer);
 }

@@ -32,11 +32,13 @@ impl ListWalletTransactions {
         actor_user_id: Uuid,
         party_id: Uuid,
         query: ListTransactionsQuery,
+        is_admin: bool,
     ) -> Result<ListTransactionsResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(actor_user_id, party_id)
-            .await?
+        if !is_admin
+            && !self
+                .party_repo
+                .is_user_member_of_party(actor_user_id, party_id)
+                .await?
         {
             return Err(ApplicationError::Forbidden);
         }

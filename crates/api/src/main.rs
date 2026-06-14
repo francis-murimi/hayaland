@@ -175,7 +175,11 @@ async fn main() -> anyhow::Result<()> {
         list_terms: ListTerms::new(deal_repo.clone(), party_repo.clone()),
         set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
-        validate_deal: ValidateDeal::new(deal_repo.clone(), settings.validation.clone()),
+        validate_deal: ValidateDeal::new(
+            deal_repo.clone(),
+            party_repo.clone(),
+            settings.validation.clone(),
+        ),
         generate_agreement: GenerateAgreement::new(
             deal_repo.clone(),
             party_repo.clone(),

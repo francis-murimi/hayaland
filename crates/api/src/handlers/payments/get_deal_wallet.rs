@@ -19,9 +19,10 @@ pub async fn get_deal_wallet(
         ))?;
 
     let (party_id, deal_id) = path.into_inner();
+    let is_admin = ctx.has_scope("admin:transactions") || ctx.has_scope("admin:*");
     let result = state
         .get_deal_wallet
-        .execute(ctx.user_id, party_id, deal_id)
+        .execute(ctx.user_id, party_id, deal_id, is_admin)
         .await?;
     Ok(
         HttpResponse::Ok().json(crate::handlers::payments::dto::DealWalletResponse::from(

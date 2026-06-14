@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 
 #[derive(Debug, serde::Deserialize)]
@@ -34,6 +35,8 @@ pub async fn propose_term(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+    require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
+
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
 
     let cmd = ProposeTermCommand {
@@ -63,6 +66,8 @@ pub async fn counter_term(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+    require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
+
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
     let (deal_id, term_id) = path.into_inner();
 
@@ -90,6 +95,8 @@ pub async fn accept_term(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+    require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
+
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
     let (deal_id, term_id) = path.into_inner();
 
@@ -116,6 +123,8 @@ pub async fn reject_term(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+    require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
+
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
     let (deal_id, term_id) = path.into_inner();
 
@@ -142,6 +151,8 @@ pub async fn withdraw_term(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+    require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
+
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
     let (deal_id, term_id) = path.into_inner();
 
@@ -168,10 +179,12 @@ pub async fn list_terms(
         .ok_or(ApiError::Application(
             application::errors::ApplicationError::Unauthorized,
         ))?;
+    require_scope_or_admin(&ctx, "deals:read", "admin:deals")?;
+
     let actor_party_id = resolve_actor_party_id(&req, &ctx).ok();
     let deal_id = path.into_inner();
 
-    let is_admin = ctx.roles.iter().any(|r| r == "admin");
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
     let result = state
         .list_terms
         .execute(deal_id, ctx.user_id, actor_party_id, is_admin)

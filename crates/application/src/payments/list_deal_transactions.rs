@@ -36,21 +36,24 @@ impl ListDealTransactions {
         party_id: Uuid,
         deal_id: Uuid,
         query: ListTransactionsQuery,
+        is_admin: bool,
     ) -> Result<ListTransactionsResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(actor_user_id, party_id)
-            .await?
-        {
-            return Err(ApplicationError::Forbidden);
-        }
+        if !is_admin {
+            if !self
+                .party_repo
+                .is_user_member_of_party(actor_user_id, party_id)
+                .await?
+            {
+                return Err(ApplicationError::Forbidden);
+            }
 
-        if !self
-            .deal_repo
-            .is_party_participant(deal_id, party_id)
-            .await?
-        {
-            return Err(ApplicationError::DealAccessDenied);
+            if !self
+                .deal_repo
+                .is_party_participant(deal_id, party_id)
+                .await?
+            {
+                return Err(ApplicationError::DealAccessDenied);
+            }
         }
 
         let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);

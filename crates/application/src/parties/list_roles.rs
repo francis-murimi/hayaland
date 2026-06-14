@@ -5,6 +5,13 @@ use std::sync::Arc;
 use tracing::instrument;
 use uuid::Uuid;
 
+/// Query for listing the roles of a single party.
+#[derive(Debug, Clone)]
+pub struct ListPartyRolesQuery {
+    pub actor_user_id: Uuid,
+    pub is_admin: bool,
+}
+
 /// List roles assigned to a party.
 #[derive(Clone)]
 pub struct ListPartyRoles {
@@ -16,14 +23,27 @@ impl ListPartyRoles {
         Self { repo }
     }
 
-    #[instrument(skip(self), fields(party_id = %party_id))]
-    pub async fn execute(&self, party_id: Uuid) -> Result<Vec<RoleResult>, ApplicationError> {
+    #[instrument(skip(self, query), fields(party_id = %party_id))]
+    pub async fn execute(
+        &self,
+        party_id: Uuid,
+        query: ListPartyRolesQuery,
+    ) -> Result<Vec<RoleResult>, ApplicationError> {
         // Ensure party exists.
         let _ = self
             .repo
             .find_by_id(party_id)
             .await?
             .ok_or(ApplicationError::PartyNotFound)?;
+
+        if !query.is_admin
+            && !self
+                .repo
+                .is_user_member_of_party(query.actor_user_id, party_id)
+                .await?
+        {
+            return Err(ApplicationError::Forbidden);
+        }
 
         let roles = self.repo.list_roles(party_id).await?;
         Ok(roles

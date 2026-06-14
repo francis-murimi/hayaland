@@ -4,6 +4,7 @@ use crate::deals::dto::{
     ProposeTermCommand, SetValueDistributionCommand, SubmitDealCommand, TermActionCommand,
     UpdateDealCommand,
 };
+use crate::deals::validate_deal::ValidateDealQuery;
 use crate::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
@@ -635,8 +636,22 @@ async fn validate_deal_returns_good_score() {
         create_sample_deal().await;
     set_valid_value_distribution(&deal_repo, deal_id).await;
 
-    let validate = ValidateDeal::new(deal_repo.clone(), ValidationConfig::default());
-    let result = validate.execute(deal_id).await.unwrap();
+    let validate = ValidateDeal::new(
+        deal_repo.clone(),
+        _party_repo.clone(),
+        ValidationConfig::default(),
+    );
+    let result = validate
+        .execute(
+            deal_id,
+            ValidateDealQuery {
+                actor_user_id: actor_user_id(),
+                actor_party_id: Some(_supplier),
+                is_admin: false,
+            },
+        )
+        .await
+        .unwrap();
 
     assert!(!result.blocked);
     assert!(result.score >= Decimal::from(70));

@@ -1,7 +1,7 @@
 use crate::deals::dto::ValidateDealResult;
 use crate::errors::ApplicationError;
 use domain::entities::{Deal, Term, ValueDistribution};
-use domain::repositories::DealRepository;
+use domain::repositories::{DealRepository, PartyRepository};
 use domain::services::{
     PartyValidationSnapshot, ValidationConfig, ValidationInput, WinWinWinValidator,
 };
@@ -9,23 +9,77 @@ use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
+/// Query used to authorize validation of a deal.
+#[derive(Debug, Clone)]
+pub struct ValidateDealQuery {
+    pub actor_user_id: Uuid,
+    pub actor_party_id: Option<Uuid>,
+    pub is_admin: bool,
+}
+
 /// Run Win-Win-Win validation for a deal and persist the result.
 #[derive(Clone)]
 pub struct ValidateDeal {
     deal_repo: Arc<dyn DealRepository>,
+    party_repo: Arc<dyn PartyRepository>,
     validation_config: ValidationConfig,
 }
 
 impl ValidateDeal {
-    pub fn new(deal_repo: Arc<dyn DealRepository>, validation_config: ValidationConfig) -> Self {
+    pub fn new(
+        deal_repo: Arc<dyn DealRepository>,
+        party_repo: Arc<dyn PartyRepository>,
+        validation_config: ValidationConfig,
+    ) -> Self {
         Self {
             deal_repo,
+            party_repo,
             validation_config,
         }
     }
 
-    #[instrument(skip(self), fields(deal_id = %deal_id))]
-    pub async fn execute(&self, deal_id: Uuid) -> Result<ValidateDealResult, ApplicationError> {
+    #[instrument(skip(self, query), fields(deal_id = %deal_id))]
+    pub async fn execute(
+        &self,
+        deal_id: Uuid,
+        query: ValidateDealQuery,
+    ) -> Result<ValidateDealResult, ApplicationError> {
+        let aggregate = self
+            .deal_repo
+            .find_aggregate_by_id(deal_id)
+            .await?
+            .ok_or(ApplicationError::DealNotFound)?;
+
+        if !query.is_admin {
+            let visible_party_ids: Vec<Uuid> = aggregate
+                .participations
+                .iter()
+                .map(|p| p.party_id)
+                .collect();
+
+            let is_member = query
+                .actor_party_id
+                .map(|pid| visible_party_ids.contains(&pid))
+                .unwrap_or(false);
+
+            if !is_member {
+                let mut member_of_any = false;
+                for pid in &visible_party_ids {
+                    if self
+                        .party_repo
+                        .is_user_member_of_party(query.actor_user_id, *pid)
+                        .await?
+                    {
+                        member_of_any = true;
+                        break;
+                    }
+                }
+                if !member_of_any {
+                    return Err(ApplicationError::DealNotFound);
+                }
+            }
+        }
+
         let result = run_validation(&*self.deal_repo, deal_id, &self.validation_config).await?;
         persist_validation(&*self.deal_repo, deal_id, &result).await?;
         info!(deal_id = %deal_id, score = %result.score, status = ?result.status, "validated deal");
