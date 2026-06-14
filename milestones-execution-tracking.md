@@ -256,7 +256,7 @@ pub struct DealProgressResult {
 
 ## 7. API Routes
 
-All routes require JWT authentication and, where a party acts, the `X-Party-ID` header.
+All routes require JWT authentication and, where a party acts, the `X-Party-ID` header. Users with the `admin` role or `admin:milestones` / `admin:*` scope may access any deal's milestones and progress without being a participating party member.
 
 | Method | Route | Purpose |
 |---|---|---|
@@ -337,10 +337,11 @@ The existing `Deal::can_transition` already allows:
 ## 10. Security & Access Control
 
 1. **Deal participation required** — only members of the three participating parties may view or mutate milestones for a deal.
-2. **Role-specific actions** — only the assigned party may start/complete; only the verifier may verify.
-3. **Status gating** — milestones are immutable once `VERIFIED`; edits are blocked after deal leaves `EXECUTING`.
-4. **No direct balance impact** — `VerifyMilestone` never touches wallet balances directly; it only creates a pending transaction.
-5. **Audit** — every milestone status change is recorded with `completed_at`, `verified_by_party_id`, and the transaction ID of any triggered release.
+2. **Admin override** — platform users with the `admin` role or the `admin:milestones` / `admin:*` scope may view and manage milestones for any deal, bypassing party-membership checks. Admins still supply an `X-Party-ID` header for auditing and to identify the party on whose behalf an action is taken.
+3. **Role-specific actions** — only the assigned party may start/complete; only the verifier may verify.
+4. **Status gating** — milestones are immutable once `VERIFIED`; edits are blocked after deal leaves `EXECUTING`.
+5. **No direct balance impact** — `VerifyMilestone` never touches wallet balances directly; it only creates a pending transaction.
+6. **Audit** — every milestone status change is recorded with `completed_at`, `verified_by_party_id`, and the transaction ID of any triggered release.
 
 ---
 

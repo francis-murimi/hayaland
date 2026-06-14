@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
+use crate::handlers::payments::is_transaction_admin;
 use crate::AppState;
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -36,6 +37,7 @@ pub async fn reject_transaction(
             transaction_id: path.into_inner(),
             decision: ApprovalDecision::Rejected,
             comment: body.comment.clone(),
+            is_admin: is_transaction_admin(&ctx),
         })
         .await?;
 

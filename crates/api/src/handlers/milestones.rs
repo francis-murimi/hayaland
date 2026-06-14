@@ -33,6 +33,10 @@ mod date_serde {
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
 use crate::AppState;
 
+fn is_milestone_admin(ctx: &AuthContext) -> bool {
+    ctx.has_role("admin") || ctx.has_scope("admin:milestones") || ctx.has_scope("admin:*")
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateMilestoneRequest {
     pub milestone_name: String,
@@ -90,6 +94,7 @@ pub async fn create_milestone(
         .execute(CreateMilestoneCommand {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             deal_id: path.into_inner(),
             milestone_name: body.milestone_name.clone(),
             description: body.description.clone(),
@@ -134,6 +139,7 @@ pub async fn list_milestones(
         .execute(ListMilestonesQuery {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             deal_id: path.into_inner(),
             limit: Some(per_page),
             offset: Some(offset),
@@ -162,6 +168,7 @@ pub async fn get_deal_progress(
         .execute(GetDealProgressQuery {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             deal_id: path.into_inner(),
         })
         .await?;
@@ -190,6 +197,7 @@ pub async fn update_milestone(
         .execute(UpdateMilestoneCommand {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             milestone_id,
             milestone_name: body.milestone_name.clone(),
             description: body.description.clone(),
@@ -225,6 +233,7 @@ pub async fn delete_milestone(
         .execute(MilestoneActionCommand {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             milestone_id,
             comment: None,
         })
@@ -254,6 +263,7 @@ pub async fn start_milestone(
         .execute(MilestoneActionCommand {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             milestone_id,
             comment: None,
         })
@@ -283,6 +293,7 @@ pub async fn complete_milestone(
         .execute(MilestoneActionCommand {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             milestone_id,
             comment: body.comment.clone(),
         })
@@ -312,6 +323,7 @@ pub async fn verify_milestone(
         .execute(MilestoneActionCommand {
             actor_user_id: ctx.user_id,
             actor_party_id,
+            is_admin: is_milestone_admin(&ctx),
             milestone_id,
             comment: body.comment.clone(),
         })

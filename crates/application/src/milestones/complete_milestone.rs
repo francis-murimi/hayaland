@@ -1,7 +1,9 @@
 use crate::errors::ApplicationError;
 use crate::milestones::access::{allow_milestone_mutations, ensure_participant};
 use crate::milestones::dto::{MilestoneActionCommand, MilestoneResult};
+use domain::entities::MilestoneStatus;
 use domain::repositories::{DealRepository, MilestoneRepository, PartyRepository};
+use rust_decimal::Decimal;
 use std::sync::Arc;
 use tracing::{info, instrument};
 
@@ -42,6 +44,7 @@ impl CompleteMilestone {
             cmd.actor_user_id,
             cmd.actor_party_id,
             milestone.deal_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -53,7 +56,14 @@ impl CompleteMilestone {
         allow_milestone_mutations(deal.deal_status)?;
 
         let mut milestone = milestone;
-        milestone.complete(cmd.actor_party_id)?;
+        if cmd.is_admin {
+            milestone.milestone_status = MilestoneStatus::Completed;
+            milestone.completion_percentage = Decimal::from(100);
+            milestone.completed_at = Some(time::OffsetDateTime::now_utc());
+            milestone.updated_at = time::OffsetDateTime::now_utc();
+        } else {
+            milestone.complete(cmd.actor_party_id)?;
+        }
         self.milestone_repo.update(&milestone).await?;
 
         info!(milestone_id = %milestone.id, "completed milestone");

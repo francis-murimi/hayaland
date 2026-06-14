@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
+use crate::handlers::payments::is_transaction_admin;
 use crate::AppState;
 
 pub async fn get_transaction(
@@ -22,7 +23,12 @@ pub async fn get_transaction(
 
     let result = state
         .get_transaction
-        .execute(ctx.user_id, actor_party_id, path.into_inner())
+        .execute(
+            ctx.user_id,
+            actor_party_id,
+            path.into_inner(),
+            is_transaction_admin(&ctx),
+        )
         .await?;
 
     Ok(HttpResponse::Ok()

@@ -29,11 +29,13 @@ impl GetTransaction {
         actor_user_id: Uuid,
         actor_party_id: Uuid,
         transaction_id: Uuid,
+        is_admin: bool,
     ) -> Result<TransactionWithApprovalsResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(actor_user_id, actor_party_id)
-            .await?
+        if !is_admin
+            && !self
+                .party_repo
+                .is_user_member_of_party(actor_user_id, actor_party_id)
+                .await?
         {
             return Err(ApplicationError::Forbidden);
         }
@@ -44,7 +46,8 @@ impl GetTransaction {
             .await?
             .ok_or(ApplicationError::NotFound)?;
 
-        if !transaction.involved_party_ids.contains(&actor_party_id)
+        if !is_admin
+            && !transaction.involved_party_ids.contains(&actor_party_id)
             && transaction.from_party_id != Some(actor_party_id)
             && transaction.to_party_id != Some(actor_party_id)
         {
@@ -121,10 +124,51 @@ mod tests {
         wallet_repo.record_pending_transaction(&txn).await.unwrap();
 
         let uc = GetTransaction::new(party_repo, wallet_repo);
-        let result = uc.execute(user_id, party_id, txn.id).await.unwrap();
+        let result = uc.execute(user_id, party_id, txn.id, false).await.unwrap();
 
         assert_eq!(result.transaction.id, txn.id);
         assert_eq!(result.approvals_required, 1);
         assert!(result.approvals.is_empty());
+    }
+
+    #[tokio::test]
+    async fn admin_can_view_transaction_without_membership() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+
+        let party_id = Uuid::now_v7();
+        let admin_user_id = Uuid::now_v7();
+        party_repo.parties.lock().unwrap().insert(
+            party_id,
+            domain::entities::Party::new(
+                party_id,
+                domain::entities::PartyType::Organization,
+                domain::entities::DisplayName::new("Test A").unwrap(),
+                domain::entities::Email::new("a@example.com").unwrap(),
+            ),
+        );
+
+        let txn = Transaction::new_pending(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            TransactionType::EscrowRelease,
+            Some(party_id),
+            Some(party_id),
+            Decimal::from(10),
+            1,
+            vec![party_id],
+            None,
+            None,
+            None,
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = GetTransaction::new(party_repo, wallet_repo);
+        let result = uc
+            .execute(admin_user_id, party_id, txn.id, true)
+            .await
+            .unwrap();
+
+        assert_eq!(result.transaction.id, txn.id);
     }
 }

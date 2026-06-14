@@ -10,17 +10,20 @@ pub async fn ensure_participant(
     actor_user_id: Uuid,
     actor_party_id: Uuid,
     deal_id: Uuid,
+    is_admin: bool,
 ) -> Result<(), ApplicationError> {
-    if !party_repo
-        .is_user_member_of_party(actor_user_id, actor_party_id)
-        .await?
+    if !is_admin
+        && !party_repo
+            .is_user_member_of_party(actor_user_id, actor_party_id)
+            .await?
     {
         return Err(ApplicationError::Forbidden);
     }
 
-    if !deal_repo
-        .is_party_participant(deal_id, actor_party_id)
-        .await?
+    if !is_admin
+        && !deal_repo
+            .is_party_participant(deal_id, actor_party_id)
+            .await?
     {
         return Err(ApplicationError::DealAccessDenied);
     }

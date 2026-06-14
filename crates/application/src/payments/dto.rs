@@ -199,6 +199,8 @@ pub struct ApproveTransactionCommand {
     pub transaction_id: Uuid,
     pub decision: ApprovalDecision,
     pub comment: Option<String>,
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 /// Query for pending transactions awaiting the actor's party approval.
@@ -208,6 +210,8 @@ pub struct ListPendingApprovalsQuery {
     pub actor_party_id: Uuid,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 /// Approval recorded against a transaction.

@@ -38,6 +38,7 @@ impl CreateMilestone {
             cmd.actor_user_id,
             cmd.actor_party_id,
             cmd.deal_id,
+            cmd.is_admin,
         )
         .await?;
 

@@ -378,8 +378,9 @@ Until the milestone feature is built, the admin/system can create release transa
 2. **Atomicity** — approval inserts and ledger mutations happen in one SQL transaction.
 3. **Idempotency** — duplicate approval attempts from the same party return the existing decision or a conflict error.
 4. **Access control** — only members of an involved party may approve/reject; only that party's own members may view its pending approvals list.
-5. **Audit trail** — `transaction_approvals` records `approved_by_user_id`, decision, comment, and timestamp.
-6. **Rejection rollback** — held `pending_balance` is always returned to the source wallet on rejection.
+5. **Admin override** — platform users with the `admin` role or the `admin:transactions` / `admin:*` scope may view and manage any transaction. Admins still provide an `X-Party-ID` header to identify the party on whose behalf they act; the membership check is skipped, but the party must still be one of the transaction's required approvers when submitting a decision. This supports support, moderation, and dispute-resolution workflows.
+6. **Audit trail** — `transaction_approvals` records `approved_by_user_id`, decision, comment, and timestamp.
+7. **Rejection rollback** — held `pending_balance` is always returned to the source wallet on rejection.
 
 ---
 

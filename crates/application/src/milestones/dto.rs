@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct CreateMilestoneCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     pub milestone_name: String,
     pub description: Option<String>,
@@ -23,6 +24,7 @@ pub struct CreateMilestoneCommand {
 pub struct UpdateMilestoneCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub milestone_id: Uuid,
     pub milestone_name: Option<String>,
     pub description: Option<String>,
@@ -38,6 +40,7 @@ pub struct UpdateMilestoneCommand {
 pub struct MilestoneActionCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub milestone_id: Uuid,
     pub comment: Option<String>,
 }
@@ -46,6 +49,7 @@ pub struct MilestoneActionCommand {
 pub struct ListMilestonesQuery {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -55,6 +59,7 @@ pub struct ListMilestonesQuery {
 pub struct GetDealProgressQuery {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
 }
 

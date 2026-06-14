@@ -33,10 +33,11 @@ impl ApproveTransaction {
         &self,
         cmd: ApproveTransactionCommand,
     ) -> Result<TransactionResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
-            .await?
+        if !cmd.is_admin
+            && !self
+                .party_repo
+                .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
+                .await?
         {
             return Err(ApplicationError::Forbidden);
         }
@@ -347,6 +348,7 @@ mod tests {
             .execute(ApproveTransactionCommand {
                 actor_user_id: first_user,
                 actor_party_id: consumer,
+                is_admin: false,
                 transaction_id: txn.id,
                 decision: ApprovalDecision::Approved,
                 comment: None,
@@ -362,6 +364,7 @@ mod tests {
             .execute(ApproveTransactionCommand {
                 actor_user_id: outsider_user,
                 actor_party_id: Uuid::now_v7(),
+                is_admin: false,
                 transaction_id: txn.id,
                 decision: ApprovalDecision::Approved,
                 comment: None,
@@ -376,6 +379,7 @@ mod tests {
             .execute(ApproveTransactionCommand {
                 actor_user_id: second_user,
                 actor_party_id: supplier,
+                is_admin: false,
                 transaction_id: txn.id,
                 decision: ApprovalDecision::Approved,
                 comment: None,
@@ -390,6 +394,7 @@ mod tests {
             .execute(ApproveTransactionCommand {
                 actor_user_id: third_user,
                 actor_party_id: enhancer,
+                is_admin: false,
                 transaction_id: txn.id,
                 decision: ApprovalDecision::Approved,
                 comment: None,
@@ -441,6 +446,7 @@ mod tests {
             .execute(ApproveTransactionCommand {
                 actor_user_id: user_id,
                 actor_party_id: consumer,
+                is_admin: false,
                 transaction_id: txn.id,
                 decision: ApprovalDecision::Rejected,
                 comment: Some("dispute".to_string()),
@@ -486,6 +492,7 @@ mod tests {
         uc.execute(ApproveTransactionCommand {
             actor_user_id: user_id,
             actor_party_id: party_id,
+            is_admin: false,
             transaction_id: txn.id,
             decision: ApprovalDecision::Approved,
             comment: None,
@@ -497,6 +504,7 @@ mod tests {
             .execute(ApproveTransactionCommand {
                 actor_user_id: user_id,
                 actor_party_id: party_id,
+                is_admin: false,
                 transaction_id: txn.id,
                 decision: ApprovalDecision::Approved,
                 comment: None,
@@ -504,5 +512,44 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ApplicationError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn admin_can_approve_without_party_membership() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+
+        let deal_id = Uuid::now_v7();
+        let consumer = Uuid::now_v7();
+        let supplier = Uuid::now_v7();
+        let enhancer = Uuid::now_v7();
+        let admin_user_id = Uuid::now_v7();
+
+        seed_wallet(&wallet_repo, consumer, Decimal::from(0), Decimal::from(300));
+        seed_wallet(&wallet_repo, supplier, Decimal::from(0), Decimal::from(0));
+
+        let txn = pending_escrow_release(deal_id, consumer, supplier, enhancer, Decimal::from(100));
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        let result = uc
+            .execute(ApproveTransactionCommand {
+                actor_user_id: admin_user_id,
+                actor_party_id: consumer,
+                is_admin: true,
+                transaction_id: txn.id,
+                decision: ApprovalDecision::Approved,
+                comment: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.status, "PENDING");
+        let approvals = wallet_repo
+            .find_approvals_for_transaction(txn.id)
+            .await
+            .unwrap();
+        assert_eq!(approvals.len(), 1);
+        assert_eq!(approvals[0].party_id, consumer);
     }
 }

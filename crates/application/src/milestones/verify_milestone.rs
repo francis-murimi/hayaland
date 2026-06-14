@@ -1,7 +1,7 @@
 use crate::errors::ApplicationError;
 use crate::milestones::access::{allow_milestone_mutations, ensure_participant};
 use crate::milestones::dto::{MilestoneActionCommand, MilestoneWithTransactionResult};
-use domain::entities::{Milestone, PlatformWallet, Transaction, TransactionType};
+use domain::entities::{Milestone, MilestoneStatus, PlatformWallet, Transaction, TransactionType};
 use domain::repositories::{
     DealRepository, MilestoneRepository, PartyRepository, WalletRepository,
 };
@@ -50,6 +50,7 @@ impl VerifyMilestone {
             cmd.actor_user_id,
             cmd.actor_party_id,
             milestone.deal_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -61,7 +62,12 @@ impl VerifyMilestone {
         allow_milestone_mutations(deal.deal_status)?;
 
         let mut milestone = milestone;
-        milestone.verify(cmd.actor_party_id)?;
+        if cmd.is_admin {
+            milestone.milestone_status = MilestoneStatus::Verified;
+            milestone.updated_at = time::OffsetDateTime::now_utc();
+        } else {
+            milestone.verify(cmd.actor_party_id)?;
+        }
 
         let triggered_transaction_id = if let Some(amount) = milestone.payment_trigger_amount {
             Some(self.create_pending_release(&milestone, amount).await?)

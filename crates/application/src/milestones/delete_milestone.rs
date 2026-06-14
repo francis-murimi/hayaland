@@ -40,6 +40,7 @@ impl DeleteMilestone {
             cmd.actor_user_id,
             cmd.actor_party_id,
             milestone.deal_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -50,7 +51,7 @@ impl DeleteMilestone {
             .ok_or(ApplicationError::DealNotFound)?;
         allow_milestone_mutations(deal.deal_status)?;
 
-        if milestone.milestone_status == MilestoneStatus::Verified {
+        if !cmd.is_admin && milestone.milestone_status == MilestoneStatus::Verified {
             return Err(ApplicationError::Validation(vec![
                 "verified milestones cannot be deleted".to_string(),
             ]));

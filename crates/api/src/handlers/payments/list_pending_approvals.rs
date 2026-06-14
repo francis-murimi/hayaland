@@ -4,6 +4,7 @@ use application::users::token::AuthContext;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
+use crate::handlers::payments::is_transaction_admin;
 use crate::AppState;
 
 #[derive(Debug, serde::Deserialize)]
@@ -42,6 +43,7 @@ pub async fn list_pending_approvals(
             actor_party_id,
             limit: Some(per_page),
             offset: Some(offset),
+            is_admin: is_transaction_admin(&ctx),
         })
         .await?;
 

@@ -30,10 +30,11 @@ impl ListPendingApprovals {
         &self,
         query: ListPendingApprovalsQuery,
     ) -> Result<ListPendingApprovalsResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(query.actor_user_id, query.actor_party_id)
-            .await?
+        if !query.is_admin
+            && !self
+                .party_repo
+                .is_user_member_of_party(query.actor_user_id, query.actor_party_id)
+                .await?
         {
             return Err(ApplicationError::Forbidden);
         }
@@ -126,6 +127,7 @@ mod tests {
             .execute(ListPendingApprovalsQuery {
                 actor_user_id: user_a,
                 actor_party_id: party_a,
+                is_admin: false,
                 limit: None,
                 offset: None,
             })
@@ -156,11 +158,62 @@ mod tests {
             .execute(ListPendingApprovalsQuery {
                 actor_user_id: user_a,
                 actor_party_id: party_a,
+                is_admin: false,
                 limit: None,
                 offset: None,
             })
             .await
             .unwrap();
         assert_eq!(result.total, 0);
+    }
+
+    #[tokio::test]
+    async fn admin_can_list_pending_approvals_for_any_party() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+
+        let party_a = Uuid::now_v7();
+        let party_b = Uuid::now_v7();
+        let admin_user_id = Uuid::now_v7();
+
+        party_repo.parties.lock().unwrap().insert(
+            party_a,
+            domain::entities::Party::new(
+                party_a,
+                domain::entities::PartyType::Organization,
+                domain::entities::DisplayName::new("Test A").unwrap(),
+                domain::entities::Email::new("a@example.com").unwrap(),
+            ),
+        );
+
+        let txn = Transaction::new_pending(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            TransactionType::EscrowRelease,
+            Some(party_a),
+            Some(party_b),
+            Decimal::from(50),
+            2,
+            vec![party_a, party_b],
+            None,
+            None,
+            None,
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ListPendingApprovals::new(party_repo, wallet_repo);
+        let result = uc
+            .execute(ListPendingApprovalsQuery {
+                actor_user_id: admin_user_id,
+                actor_party_id: party_a,
+                is_admin: true,
+                limit: None,
+                offset: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.total, 1);
+        assert_eq!(result.transactions[0].id, txn.id);
     }
 }

@@ -36,6 +36,7 @@ impl ListMilestones {
             query.actor_user_id,
             query.actor_party_id,
             query.deal_id,
+            query.is_admin,
         )
         .await?;
 

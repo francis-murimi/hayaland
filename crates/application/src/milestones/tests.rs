@@ -236,6 +236,7 @@ async fn create_milestone_succeeds_for_participant() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "Build prototype".to_string(),
             description: None,
@@ -280,6 +281,7 @@ async fn create_milestone_fails_when_deal_not_committed() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "Build prototype".to_string(),
             description: None,
@@ -321,6 +323,7 @@ async fn list_milestones_and_progress() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "First".to_string(),
             description: None,
@@ -337,6 +340,7 @@ async fn list_milestones_and_progress() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "Second".to_string(),
             description: None,
@@ -359,6 +363,7 @@ async fn list_milestones_and_progress() {
         .execute(ListMilestonesQuery {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             limit: Some(10),
             offset: Some(0),
@@ -373,6 +378,7 @@ async fn list_milestones_and_progress() {
         .execute(GetDealProgressQuery {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
         })
         .await
@@ -414,6 +420,7 @@ async fn full_milestone_lifecycle_triggers_transaction() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "Build prototype".to_string(),
             description: None,
@@ -436,6 +443,7 @@ async fn full_milestone_lifecycle_triggers_transaction() {
         .execute(MilestoneActionCommand {
             actor_user_id: user_id,
             actor_party_id: consumer_id,
+            is_admin: false,
             milestone_id: milestone.id,
             comment: None,
         })
@@ -452,6 +460,7 @@ async fn full_milestone_lifecycle_triggers_transaction() {
         .execute(MilestoneActionCommand {
             actor_user_id: user_id,
             actor_party_id: consumer_id,
+            is_admin: false,
             milestone_id: milestone.id,
             comment: None,
         })
@@ -469,6 +478,7 @@ async fn full_milestone_lifecycle_triggers_transaction() {
         .execute(MilestoneActionCommand {
             actor_user_id: user_id,
             actor_party_id: enhancer_id,
+            is_admin: false,
             milestone_id: milestone.id,
             comment: None,
         })
@@ -515,6 +525,7 @@ async fn update_milestone_changes_fields() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "Old name".to_string(),
             description: None,
@@ -537,6 +548,7 @@ async fn update_milestone_changes_fields() {
         .execute(UpdateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             milestone_id: milestone.id,
             milestone_name: Some("New name".to_string()),
             description: Some("desc".to_string()),
@@ -579,6 +591,7 @@ async fn delete_milestone_removes_record() {
         .execute(CreateMilestoneCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             deal_id,
             milestone_name: "To delete".to_string(),
             description: None,
@@ -597,6 +610,7 @@ async fn delete_milestone_removes_record() {
         .execute(MilestoneActionCommand {
             actor_user_id: user_id,
             actor_party_id: supplier_id,
+            is_admin: false,
             milestone_id: milestone.id,
             comment: None,
         })
@@ -604,4 +618,105 @@ async fn delete_milestone_removes_record() {
         .unwrap();
 
     assert_eq!(milestone_repo.count_by_deal(deal_id).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn admin_can_manage_milestones_without_membership() {
+    let (
+        party_repo,
+        deal_repo,
+        milestone_repo,
+        wallet_repo,
+        _user_id,
+        supplier_id,
+        consumer_id,
+        enhancer_id,
+        deal_id,
+    ) = setup();
+
+    let admin_user_id = Uuid::now_v7();
+    let create = CreateMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    );
+    let milestone = create
+        .execute(CreateMilestoneCommand {
+            actor_user_id: admin_user_id,
+            actor_party_id: supplier_id,
+            is_admin: true,
+            deal_id,
+            milestone_name: "Admin milestone".to_string(),
+            description: None,
+            assigned_to_party_id: consumer_id,
+            verified_by_party_id: enhancer_id,
+            due_date: None,
+            completion_criteria: "criteria".to_string(),
+            payment_trigger_amount: Some(Decimal::from(75)),
+            display_order: 1,
+        })
+        .await
+        .unwrap();
+
+    let start = StartMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    );
+    let started = start
+        .execute(MilestoneActionCommand {
+            actor_user_id: admin_user_id,
+            actor_party_id: supplier_id,
+            is_admin: true,
+            milestone_id: milestone.id,
+            comment: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(started.milestone_status, "IN_PROGRESS");
+
+    let complete = CompleteMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    );
+    let completed = complete
+        .execute(MilestoneActionCommand {
+            actor_user_id: admin_user_id,
+            actor_party_id: supplier_id,
+            is_admin: true,
+            milestone_id: milestone.id,
+            comment: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(completed.milestone_status, "COMPLETED");
+
+    let mut consumer_wallet = PlatformWallet::new(Uuid::now_v7(), consumer_id);
+    consumer_wallet.deposit(Decimal::from(200)).unwrap();
+    consumer_wallet.hold_escrow(Decimal::from(200)).unwrap();
+    wallet_repo
+        .wallets
+        .lock()
+        .unwrap()
+        .insert(consumer_id, consumer_wallet);
+
+    let verify = VerifyMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+        wallet_repo.clone(),
+    );
+    let verified = verify
+        .execute(MilestoneActionCommand {
+            actor_user_id: admin_user_id,
+            actor_party_id: supplier_id,
+            is_admin: true,
+            milestone_id: milestone.id,
+            comment: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(verified.milestone.milestone_status, "VERIFIED");
+    assert!(verified.triggered_transaction_id.is_some());
 }

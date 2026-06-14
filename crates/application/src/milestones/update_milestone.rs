@@ -43,6 +43,7 @@ impl UpdateMilestone {
             cmd.actor_user_id,
             cmd.actor_party_id,
             milestone.deal_id,
+            cmd.is_admin,
         )
         .await?;
 
