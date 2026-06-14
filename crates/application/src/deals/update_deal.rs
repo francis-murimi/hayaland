@@ -44,12 +44,13 @@ impl UpdateDeal {
             ]));
         }
 
-        // Only initiator party members can edit.
-        if !self
-            .party_repo
-            .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
-            .await?
-            || deal.initiator_party_id != cmd.actor_party_id
+        // Only initiator party members can edit (admins may act on behalf of a party).
+        if !cmd.is_admin
+            && (!self
+                .party_repo
+                .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
+                .await?
+                || deal.initiator_party_id != cmd.actor_party_id)
         {
             return Err(ApplicationError::Forbidden);
         }

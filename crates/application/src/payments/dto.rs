@@ -14,6 +14,7 @@ pub struct DepositPointsCommand {
     pub description: Option<String>,
     pub payment_method: Option<String>,
     pub external_reference: Option<String>,
+    pub is_admin: bool,
 }
 
 /// Command to record a withdrawal from the party's wallet container.
@@ -26,6 +27,7 @@ pub struct WithdrawPointsCommand {
     pub description: Option<String>,
     pub payment_method: Option<String>,
     pub external_reference: Option<String>,
+    pub is_admin: bool,
 }
 
 /// Command to hold funds in escrow for a deal.

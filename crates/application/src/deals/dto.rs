@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub struct CreateDealCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub title: String,
     pub description: Option<String>,
     pub domain_category_id: Uuid,
@@ -27,6 +28,7 @@ pub struct CreateDealCommand {
 pub struct UpdateDealCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub title: Option<String>,
     pub description: Option<String>,
     pub domain_category_id: Option<Uuid>,
@@ -42,6 +44,7 @@ pub struct UpdateDealCommand {
 pub struct SubmitDealCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
 }
 
 /// Command to execute a deal state transition.
@@ -49,6 +52,7 @@ pub struct SubmitDealCommand {
 pub struct ExecuteTransitionCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub new_status: DealStatus,
     pub reason: Option<String>,
     #[serde(default)]
@@ -136,6 +140,7 @@ pub struct ListDealsQuery {
 pub struct ProposeTermCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     pub term_type: TermType,
     pub term_name: String,
@@ -148,6 +153,7 @@ pub struct ProposeTermCommand {
 pub struct CounterTermCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     pub term_id: Uuid,
     pub description: String,
@@ -158,6 +164,7 @@ pub struct CounterTermCommand {
 pub struct TermActionCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     pub term_id: Uuid,
 }
@@ -185,6 +192,7 @@ pub struct TermResult {
 pub struct SetValueDistributionCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     pub total_value: Decimal,
     pub distribution_model: domain::entities::DistributionModel,

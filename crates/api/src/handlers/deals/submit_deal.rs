@@ -24,10 +24,12 @@ pub async fn submit_deal(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
 
     let cmd = SubmitDealCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
     };
 
     let result = state.submit_deal.execute(path.into_inner(), cmd).await?;

@@ -35,20 +35,22 @@ impl WithdrawPoints {
     ) -> Result<TransactionResult, ApplicationError> {
         validate_amount(cmd.amount)?;
 
-        if !self
-            .party_repo
-            .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
-            .await?
-        {
-            return Err(ApplicationError::Forbidden);
-        }
+        if !cmd.is_admin {
+            if !self
+                .party_repo
+                .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
+                .await?
+            {
+                return Err(ApplicationError::Forbidden);
+            }
 
-        if !self
-            .deal_repo
-            .is_party_participant(cmd.deal_id, cmd.actor_party_id)
-            .await?
-        {
-            return Err(ApplicationError::DealAccessDenied);
+            if !self
+                .deal_repo
+                .is_party_participant(cmd.deal_id, cmd.actor_party_id)
+                .await?
+            {
+                return Err(ApplicationError::DealAccessDenied);
+            }
         }
 
         let mut wallet = self

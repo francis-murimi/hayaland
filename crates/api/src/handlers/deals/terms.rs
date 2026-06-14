@@ -38,10 +38,12 @@ pub async fn propose_term(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
 
     let cmd = ProposeTermCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id: path.into_inner(),
         term_type: body.term_type,
         term_name: body.term_name.clone(),
@@ -69,11 +71,13 @@ pub async fn counter_term(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
     let (deal_id, term_id) = path.into_inner();
 
     let cmd = CounterTermCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id,
         term_id,
         description: body.description.clone(),
@@ -98,11 +102,13 @@ pub async fn accept_term(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
     let (deal_id, term_id) = path.into_inner();
 
     let cmd = TermActionCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id,
         term_id,
     };
@@ -126,11 +132,13 @@ pub async fn reject_term(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
     let (deal_id, term_id) = path.into_inner();
 
     let cmd = TermActionCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id,
         term_id,
     };
@@ -154,11 +162,13 @@ pub async fn withdraw_term(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
     let (deal_id, term_id) = path.into_inner();
 
     let cmd = TermActionCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id,
         term_id,
     };

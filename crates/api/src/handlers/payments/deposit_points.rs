@@ -6,6 +6,8 @@ use validator::Validate;
 
 use crate::errors::ApiError;
 use crate::handlers::payments::dto::DepositRequest;
+use crate::handlers::payments::is_transaction_admin;
+use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 
 pub async fn deposit_points(
@@ -24,6 +26,8 @@ pub async fn deposit_points(
 
     body.validate()?;
 
+    require_scope_or_admin(&ctx, "payments:write", "admin:transactions")?;
+
     let cmd = DepositPointsCommand {
         actor_user_id: ctx.user_id,
         actor_party_id: path.into_inner(),
@@ -32,6 +36,7 @@ pub async fn deposit_points(
         description: body.description.clone(),
         payment_method: body.payment_method.clone(),
         external_reference: body.external_reference.clone(),
+        is_admin: is_transaction_admin(&ctx),
     };
 
     let result = state.deposit_points.execute(cmd).await?;

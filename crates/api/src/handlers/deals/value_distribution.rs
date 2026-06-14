@@ -35,10 +35,12 @@ pub async fn set_value_distribution(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
 
     let cmd = SetValueDistributionCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id: path.into_inner(),
         total_value: body.total_value,
         distribution_model: body.distribution_model,

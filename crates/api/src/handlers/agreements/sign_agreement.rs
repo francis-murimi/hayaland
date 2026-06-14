@@ -31,12 +31,14 @@ pub async fn sign_agreement(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
 
     let ip_address = req.peer_addr().map(|addr| addr.ip().to_string());
 
     let cmd = SignAgreementCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         deal_id: path.into_inner(),
         signature_type: body.signature_type.unwrap_or_default(),
         ip_address,

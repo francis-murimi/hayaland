@@ -16,6 +16,7 @@ pub struct GenerateAgreementCommand {
 pub struct SignAgreementCommand {
     pub actor_user_id: Uuid,
     pub actor_party_id: Uuid,
+    pub is_admin: bool,
     pub deal_id: Uuid,
     #[serde(default = "default_signature_type")]
     pub signature_type: SignatureType,

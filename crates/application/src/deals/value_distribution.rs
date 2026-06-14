@@ -27,10 +27,11 @@ impl SetValueDistribution {
         &self,
         cmd: SetValueDistributionCommand,
     ) -> Result<ValueDistributionResult, ApplicationError> {
-        if !self
-            .party_repo
-            .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
-            .await?
+        if !cmd.is_admin
+            && !self
+                .party_repo
+                .is_user_member_of_party(cmd.actor_user_id, cmd.actor_party_id)
+                .await?
         {
             return Err(ApplicationError::Forbidden);
         }

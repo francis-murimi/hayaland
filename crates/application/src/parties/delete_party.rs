@@ -33,11 +33,11 @@ impl SoftDeleteParty {
                         ) => {}
                 _ => return Err(ApplicationError::Forbidden),
             }
-        }
 
-        let active_deals = self.repo.count_active_deals(party_id).await?;
-        if active_deals > 0 {
-            return Err(ApplicationError::PartyHasActiveDeals);
+            let active_deals = self.repo.count_active_deals(party_id).await?;
+            if active_deals > 0 {
+                return Err(ApplicationError::PartyHasActiveDeals);
+            }
         }
 
         self.repo.soft_delete(party_id).await?;

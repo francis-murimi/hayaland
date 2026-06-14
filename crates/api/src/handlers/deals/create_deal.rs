@@ -56,10 +56,12 @@ pub async fn create_deal(
     require_scope_or_admin(&ctx, "deals:write", "admin:deals")?;
 
     let actor_party_id = resolve_actor_party_id(&req, &ctx)?;
+    let is_admin = ctx.has_scope("admin:deals") || ctx.has_scope("admin:*");
 
     let cmd = CreateDealCommand {
         actor_user_id: ctx.user_id,
         actor_party_id,
+        is_admin,
         title: body.title.clone(),
         description: body.description.clone(),
         domain_category_id: body.domain_category_id,

@@ -146,6 +146,7 @@ async fn create_sample_deal() -> (
         .execute(CreateDealCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             title: "Three-Party Crop Deal".to_string(),
             description: None,
             domain_category_id: category_id,
@@ -220,6 +221,7 @@ async fn create_deal_rejects_actor_who_is_not_party_member() {
         .execute(CreateDealCommand {
             actor_user_id: other_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             title: "Bad Actor Deal".to_string(),
             description: None,
             domain_category_id: category_id,
@@ -272,6 +274,7 @@ async fn update_deal_by_initiator_changes_title() {
             UpdateDealCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
                 title: Some("Updated Title".to_string()),
                 description: None,
                 domain_category_id: None,
@@ -306,6 +309,7 @@ async fn submit_deal_moves_to_suggested() {
             SubmitDealCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
             },
         )
         .await
@@ -355,6 +359,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
             ExecuteTransitionCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
                 new_status: DealStatus::Negotiating,
                 reason: None,
                 acknowledge_warnings: false,
@@ -370,6 +375,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
             ExecuteTransitionCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
                 new_status: DealStatus::TermsLocked,
                 reason: None,
                 acknowledge_warnings: false,
@@ -385,6 +391,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
         sign.execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             signature_type: domain::entities::SignatureType::DigitalAttestation,
             ip_address: None,
@@ -399,6 +406,7 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
             ExecuteTransitionCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
                 new_status: DealStatus::Committed,
                 reason: None,
                 acknowledge_warnings: false,
@@ -440,6 +448,7 @@ async fn propose_term_adds_term_to_deal() {
         .execute(ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_type: TermType::Price,
             term_name: "Unit price".to_string(),
@@ -472,6 +481,7 @@ async fn accept_term_marks_term_accepted() {
         .execute(crate::deals::dto::ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_type: TermType::Price,
             term_name: "Unit price".to_string(),
@@ -486,6 +496,7 @@ async fn accept_term_marks_term_accepted() {
         .execute(TermActionCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: consumer,
+            is_admin: false,
             deal_id,
             term_id: term.id,
         })
@@ -505,6 +516,7 @@ async fn counter_term_creates_new_version() {
         .execute(crate::deals::dto::ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_type: TermType::Price,
             term_name: "Unit price".to_string(),
@@ -519,6 +531,7 @@ async fn counter_term_creates_new_version() {
         .execute(CounterTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: consumer,
+            is_admin: false,
             deal_id,
             term_id: term.id,
             description: "90 points per unit".to_string(),
@@ -541,6 +554,7 @@ async fn reject_and_withdraw_term_are_terminal() {
         .execute(crate::deals::dto::ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_type: TermType::Price,
             term_name: "Unit price".to_string(),
@@ -555,6 +569,7 @@ async fn reject_and_withdraw_term_are_terminal() {
         .execute(TermActionCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: consumer,
+            is_admin: false,
             deal_id,
             term_id: term.id,
         })
@@ -566,6 +581,7 @@ async fn reject_and_withdraw_term_are_terminal() {
         .execute(ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_type: TermType::PaymentTerms,
             term_name: "Payment".to_string(),
@@ -580,6 +596,7 @@ async fn reject_and_withdraw_term_are_terminal() {
         .execute(TermActionCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_id: term2.id,
         })
@@ -601,6 +618,7 @@ async fn set_and_get_value_distribution_updates_deal_totals() {
         .execute(SetValueDistributionCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             total_value: Decimal::from(5000),
             distribution_model: domain::entities::DistributionModel::FixedPrice,
@@ -674,6 +692,7 @@ async fn submit_deal_requires_value_distribution() {
             SubmitDealCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
             },
         )
         .await
@@ -710,6 +729,7 @@ async fn locking_terms_requires_value_distribution() {
             ExecuteTransitionCommand {
                 actor_user_id: actor_user_id(),
                 actor_party_id: supplier,
+                is_admin: false,
                 new_status: DealStatus::TermsLocked,
                 reason: None,
                 acknowledge_warnings: false,

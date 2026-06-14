@@ -109,6 +109,7 @@ async fn deposit_records_transaction_and_updates_balance() {
         .execute(DepositPointsCommand {
             actor_user_id: user_id,
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             amount: Decimal::from(100),
             description: None,
@@ -148,6 +149,7 @@ async fn deposit_rejects_non_member() {
         .execute(DepositPointsCommand {
             actor_user_id: Uuid::now_v7(),
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             amount: Decimal::from(10),
             description: None,
@@ -177,6 +179,7 @@ async fn deposit_rejects_non_participant_deal() {
         .execute(DepositPointsCommand {
             actor_user_id: user_id,
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             amount: Decimal::from(10),
             description: None,
@@ -207,6 +210,7 @@ async fn withdraw_requires_sufficient_balance() {
         .execute(WithdrawPointsCommand {
             actor_user_id: user_id,
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             amount: Decimal::from(50),
             description: None,
@@ -243,6 +247,7 @@ async fn withdraw_reduces_balance() {
         .execute(WithdrawPointsCommand {
             actor_user_id: user_id,
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             amount: Decimal::from(75),
             description: None,
@@ -469,6 +474,7 @@ async fn get_deal_wallet_computes_sub_wallet() {
         .execute(DepositPointsCommand {
             actor_user_id: user_id,
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             amount: Decimal::from(200),
             description: None,
@@ -510,6 +516,7 @@ async fn list_wallet_transactions_paginates_and_filters() {
                 description: None,
                 payment_method: None,
                 external_reference: None,
+                is_admin: false,
             })
             .await
             .unwrap();
@@ -573,6 +580,7 @@ async fn list_deal_transactions_filters_by_deal() {
                 description: None,
                 payment_method: None,
                 external_reference: None,
+                is_admin: false,
             })
             .await
             .unwrap();

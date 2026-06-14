@@ -24,10 +24,12 @@ async fn ensure_actor_can_negotiate(
     deal_id: Uuid,
     actor_user_id: Uuid,
     actor_party_id: Uuid,
+    is_admin: bool,
 ) -> Result<(), ApplicationError> {
-    if !party_repo
-        .is_user_member_of_party(actor_user_id, actor_party_id)
-        .await?
+    if !is_admin
+        && !party_repo
+            .is_user_member_of_party(actor_user_id, actor_party_id)
+            .await?
     {
         return Err(ApplicationError::Forbidden);
     }
@@ -95,6 +97,7 @@ impl ProposeTerm {
             cmd.deal_id,
             cmd.actor_user_id,
             cmd.actor_party_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -141,6 +144,7 @@ impl CounterTerm {
             cmd.deal_id,
             cmd.actor_user_id,
             cmd.actor_party_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -191,6 +195,7 @@ impl AcceptTerm {
             cmd.deal_id,
             cmd.actor_user_id,
             cmd.actor_party_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -231,6 +236,7 @@ impl RejectTerm {
             cmd.deal_id,
             cmd.actor_user_id,
             cmd.actor_party_id,
+            cmd.is_admin,
         )
         .await?;
 
@@ -271,6 +277,7 @@ impl WithdrawTerm {
             cmd.deal_id,
             cmd.actor_user_id,
             cmd.actor_party_id,
+            cmd.is_admin,
         )
         .await?;
 

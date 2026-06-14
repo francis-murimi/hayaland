@@ -1244,6 +1244,8 @@ fn seeded_role_repo() -> Arc<FakeRoleRepo> {
                         "parties:write".to_string(),
                         "deals:read".to_string(),
                         "deals:write".to_string(),
+                        "payments:read".to_string(),
+                        "payments:write".to_string(),
                     ],
                 ),
             ),
@@ -3061,6 +3063,7 @@ async fn prepare_deal_for_agreement(
         .execute(SetValueDistributionCommand {
             actor_user_id,
             actor_party_id,
+            is_admin: false,
             deal_id,
             total_value: Decimal::from(10000),
             distribution_model: DistributionModel::FixedPrice,
@@ -3309,6 +3312,7 @@ async fn seed_deal(
         .execute(application::deals::dto::CreateDealCommand {
             actor_user_id,
             actor_party_id,
+            is_admin: false,
             title: "Wallet Deal".to_string(),
             description: None,
             domain_category_id: category_id,
@@ -3486,6 +3490,48 @@ async fn admin_can_update_party() {
 }
 
 #[actix_rt::test]
+async fn admin_can_delete_party_with_active_deals() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner_admin_delete_party@example.com", "user");
+    let admin_id = seed_user(&fixtures, "admin_delete_party@example.com", "admin");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier = create_party_with_role!(
+        &app,
+        owner_id,
+        "supplier-admin-delete@example.com",
+        "SUPPLIER"
+    );
+    let consumer = create_party_with_role!(
+        &app,
+        owner_id,
+        "consumer-admin-delete@example.com",
+        "CONSUMER"
+    );
+    let enhancer = create_party_with_role!(
+        &app,
+        owner_id,
+        "enhancer-admin-delete@example.com",
+        "ENHANCER"
+    );
+    create_three_party_deal!(&app, owner_id, supplier, consumer, enhancer);
+
+    let delete = test::TestRequest::delete()
+        .uri(&format!("/api/v1/parties/{supplier}"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .to_request();
+    let resp = test::call_service(&app, delete).await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[actix_rt::test]
 async fn admin_can_validate_deal() {
     init_test_tracing();
     let fixtures = test_fixtures();
@@ -3631,6 +3677,121 @@ async fn admin_can_list_terms_and_value_distribution() {
 }
 
 #[actix_rt::test]
+async fn admin_can_manage_deal_without_membership() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner_admin_deal@example.com", "user");
+    let admin_id = seed_user(&fixtures, "admin_deal@example.com", "admin");
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let supplier = create_party_with_role!(
+        &app,
+        owner_id,
+        "supplier-admin-deal@example.com",
+        "SUPPLIER"
+    );
+    let consumer = create_party_with_role!(
+        &app,
+        owner_id,
+        "consumer-admin-deal@example.com",
+        "CONSUMER"
+    );
+    let enhancer = create_party_with_role!(
+        &app,
+        owner_id,
+        "enhancer-admin-deal@example.com",
+        "ENHANCER"
+    );
+
+    let category_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    let create = test::TestRequest::post()
+        .uri("/api/v1/deals")
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "title": "Admin Managed Deal",
+            "domain_category_id": category_id,
+            "consumer_party_id": consumer,
+            "enhancer_party_id": enhancer
+        }))
+        .to_request();
+    let resp = test::call_service(&app, create).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let deal_id = Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
+
+    let update = test::TestRequest::patch()
+        .uri(&format!("/api/v1/deals/{deal_id}"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "title": "Updated by admin"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, update).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["title"], "Updated by admin");
+
+    let set = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/value-distribution"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "total_value": "10000",
+            "distribution_model": "FIXED_PRICE",
+            "supplier_share_percentage": "60",
+            "enhancer_share_percentage": "30",
+            "platform_fee_percentage": "10",
+            "consumer_cost_percentage": "100",
+            "payment_schedule": []
+        }))
+        .to_request();
+    let resp = test::call_service(&app, set).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let propose = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/terms"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .set_json(serde_json::json!({
+            "term_type": "PRICE",
+            "term_name": "Admin term",
+            "description": "100 points",
+            "is_mandatory": true
+        }))
+        .to_request();
+    let resp = test::call_service(&app, propose).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let term_id = Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
+
+    let accept = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/terms/{term_id}/accept"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, accept).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let submit = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/submit"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .insert_header(("X-Party-ID", supplier.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, submit).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["deal_status"], "SUGGESTED");
+}
+
+#[actix_rt::test]
 async fn admin_can_read_wallet_and_transactions() {
     init_test_tracing();
     let fixtures = test_fixtures();
@@ -3724,4 +3885,84 @@ async fn admin_can_read_wallet_and_transactions() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["total"], 1);
+}
+
+#[actix_rt::test]
+async fn admin_can_deposit_and_withdraw_for_party() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "owner_admin_payment@example.com", "user");
+    let admin_id = seed_user(&fixtures, "admin_payment@example.com", "admin");
+
+    let party_id = seed_party(
+        &fixtures.state,
+        owner_id,
+        "payment_admin_party@example.com",
+        DealRole::Supplier,
+    )
+    .await;
+    let consumer_id = seed_party(
+        &fixtures.state,
+        owner_id,
+        "consumer_admin_payment@example.com",
+        DealRole::Consumer,
+    )
+    .await;
+    let enhancer_id = seed_party(
+        &fixtures.state,
+        owner_id,
+        "enhancer_admin_payment@example.com",
+        DealRole::Enhancer,
+    )
+    .await;
+    let deal_id = seed_deal(
+        &fixtures.state,
+        owner_id,
+        party_id,
+        consumer_id,
+        enhancer_id,
+    )
+    .await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let deposit = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet/deposits"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .set_json(serde_json::json!({
+            "dealId": deal_id,
+            "amount": "300.00"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, deposit).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["amount"], "300.00");
+
+    let withdraw = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet/withdrawals"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .set_json(serde_json::json!({
+            "dealId": deal_id,
+            "amount": "100.00"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, withdraw).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["amount"], "100.00");
+
+    let get_wallet = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet"))
+        .insert_header((header::AUTHORIZATION, bearer(admin_id)))
+        .to_request();
+    let resp = test::call_service(&app, get_wallet).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["balance"], "200.00");
 }

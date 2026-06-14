@@ -89,6 +89,7 @@ async fn locked_three_party_deal() -> (
         .execute(CreateDealCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             title: "Three-Party Deal".to_string(),
             description: None,
             domain_category_id: category_id,
@@ -107,6 +108,7 @@ async fn locked_three_party_deal() -> (
         .execute(SetValueDistributionCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id: deal.id,
             total_value: Decimal::from(10000),
             distribution_model: DistributionModel::FixedPrice,
@@ -160,6 +162,7 @@ async fn accept_mandatory_term(
         .execute(ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: proposed_by,
+            is_admin: false,
             deal_id,
             term_type: TermType::Price,
             term_name: "Unit price".to_string(),
@@ -173,6 +176,7 @@ async fn accept_mandatory_term(
         .execute(crate::deals::dto::TermActionCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: accepted_by,
+            is_admin: false,
             deal_id,
             term_id: term.id,
         })
@@ -258,6 +262,7 @@ async fn generate_agreement_requires_mandatory_terms_accepted() {
         .execute(ProposeTermCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             term_type: TermType::Price,
             term_name: "Unit price".to_string(),
@@ -310,6 +315,7 @@ async fn sign_agreement_records_signature() {
         .execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: Some("127.0.0.1".to_string()),
@@ -354,6 +360,7 @@ async fn sign_agreement_fails_for_non_participant_party() {
         .execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: outsider_party,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: None,
@@ -390,6 +397,7 @@ async fn sign_agreement_marks_signed_after_three_signatures() {
         sign.execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: party_id,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: None,
@@ -583,6 +591,7 @@ async fn sign_agreement_fails_when_actor_not_party_member() {
         .execute(SignAgreementCommand {
             actor_user_id: outsider_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: None,
@@ -602,6 +611,7 @@ async fn sign_agreement_fails_when_no_agreement_exists() {
         .execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: None,
@@ -643,6 +653,7 @@ async fn sign_agreement_fails_when_agreement_not_signable() {
         .execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: None,
@@ -680,6 +691,7 @@ async fn sign_agreement_fails_when_party_already_signed() {
     sign.execute(SignAgreementCommand {
         actor_user_id: actor_user_id(),
         actor_party_id: supplier,
+        is_admin: false,
         deal_id,
         signature_type: SignatureType::DigitalAttestation,
         ip_address: None,
@@ -691,6 +703,7 @@ async fn sign_agreement_fails_when_party_already_signed() {
         .execute(SignAgreementCommand {
             actor_user_id: actor_user_id(),
             actor_party_id: supplier,
+            is_admin: false,
             deal_id,
             signature_type: SignatureType::DigitalAttestation,
             ip_address: None,
