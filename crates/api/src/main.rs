@@ -16,6 +16,10 @@ use application::parties::{
 };
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
+use application::payments::{
+    CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetWallet, HoldEscrow,
+    ListDealTransactions, ListWalletTransactions, RecordAdjustment, ReleaseEscrow, WithdrawPoints,
+};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -27,7 +31,7 @@ use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
 use domain::repositories::{
     AgreementRepository, DealRepository, EmailVerificationRepository, PartyRepository,
-    PasswordResetRepository, RoleRepository, UserRepository,
+    PasswordResetRepository, RoleRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
@@ -36,7 +40,7 @@ use infrastructure::{
     repositories::{
         PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
         PostgresPartyRepository, PostgresPasswordResetRepository, PostgresRoleRepository,
-        PostgresUserRepository,
+        PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -72,7 +76,8 @@ async fn main() -> anyhow::Result<()> {
     let party_repo: Arc<dyn PartyRepository> = Arc::new(PostgresPartyRepository::new(pool.clone()));
     let deal_repo: Arc<dyn DealRepository> = Arc::new(PostgresDealRepository::new(pool.clone()));
     let agreement_repo: Arc<dyn AgreementRepository> =
-        Arc::new(PostgresAgreementRepository::new(pool));
+        Arc::new(PostgresAgreementRepository::new(pool.clone()));
+    let wallet_repo: Arc<dyn WalletRepository> = Arc::new(PostgresWalletRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -129,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
         reset_password: ResetPassword::new(repo.clone(), password_reset_repo, hasher),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
-        create_party: CreateParty::new(party_repo.clone()),
+        create_party: CreateParty::new_with_wallet(party_repo.clone(), wallet_repo.clone()),
         get_party: GetParty::new(party_repo.clone()),
         list_my_parties: ListMyParties::new(party_repo.clone()),
         search_parties: SearchParties::new(party_repo.clone()),
@@ -178,6 +183,44 @@ async fn main() -> anyhow::Result<()> {
             agreement_repo.clone(),
         ),
         admin_update_agreement: AdminUpdateAgreement::new(deal_repo.clone(), agreement_repo),
+        create_wallet: CreateWallet::new(wallet_repo.clone()),
+        deposit_points: DepositPoints::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        withdraw_points: WithdrawPoints::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        get_wallet: GetWallet::new(party_repo.clone(), wallet_repo.clone()),
+        get_deal_wallet: GetDealWallet::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        hold_escrow: HoldEscrow::new(party_repo.clone(), deal_repo.clone(), wallet_repo.clone()),
+        release_escrow: ReleaseEscrow::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        deduct_fee: DeductFee::new(party_repo.clone(), deal_repo.clone(), wallet_repo.clone()),
+        record_adjustment: RecordAdjustment::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        list_wallet_transactions: ListWalletTransactions::new(
+            party_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        list_deal_transactions: ListDealTransactions::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
         token_validator: token_service,
     };
 

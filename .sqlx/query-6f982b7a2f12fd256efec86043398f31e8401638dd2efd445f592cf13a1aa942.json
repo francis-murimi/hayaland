@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE platform_wallets\n            SET balance = $1,\n                escrow_balance = $2,\n                pending_balance = $3,\n                total_deposited = $4,\n                total_withdrawn = $5,\n                updated_at = $6\n            WHERE id = $7\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Numeric",
+        "Numeric",
+        "Numeric",
+        "Numeric",
+        "Numeric",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6f982b7a2f12fd256efec86043398f31e8401638dd2efd445f592cf13a1aa942"
+}

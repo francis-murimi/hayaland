@@ -5,6 +5,7 @@ pub mod postgres_party_repository;
 pub mod postgres_password_reset_repository;
 pub mod postgres_role_repository;
 pub mod postgres_user_repository;
+pub mod postgres_wallet_repository;
 
 pub use postgres_agreement_repository::PostgresAgreementRepository;
 pub use postgres_deal_repository::PostgresDealRepository;
@@ -13,3 +14,4 @@ pub use postgres_party_repository::PostgresPartyRepository;
 pub use postgres_password_reset_repository::PostgresPasswordResetRepository;
 pub use postgres_role_repository::PostgresRoleRepository;
 pub use postgres_user_repository::PostgresUserRepository;
+pub use postgres_wallet_repository::PostgresWalletRepository;

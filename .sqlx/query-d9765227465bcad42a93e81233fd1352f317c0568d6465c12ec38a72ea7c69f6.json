@@ -1,0 +1,237 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id as \"id!\",\n                deal_id as \"deal_id!\",\n                agreement_id,\n                milestone_id,\n                transaction_type as \"transaction_type!\",\n                from_party_id,\n                to_party_id,\n                amount as \"amount!\",\n                currency as \"currency!\",\n                description,\n                status as \"status!\",\n                payment_method,\n                external_reference,\n                requires_approval as \"requires_approval!\",\n                approvals_required as \"approvals_required!\",\n                approvals_received as \"approvals_received!\",\n                executed_at,\n                created_at as \"created_at!\"\n            FROM transactions\n            WHERE (from_party_id = $1 OR to_party_id = $1)\n              AND ($2::uuid IS NULL OR deal_id = $2)\n              AND ($3::text IS NULL OR status = $3)\n              AND ($4::text IS NULL OR transaction_type = $4)\n            ORDER BY created_at ASC\n            LIMIT $5\n            OFFSET $6\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "agreement_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "agreement_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "milestone_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "milestone_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "transaction_type!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "transaction_type"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "from_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "from_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "to_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "to_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "amount!",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "amount"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "currency!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "status!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "payment_method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "payment_method"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "external_reference",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "external_reference"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "requires_approval!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "requires_approval"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "approvals_required!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "approvals_required"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "approvals_received!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "approvals_received"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "executed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "executed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "d9765227465bcad42a93e81233fd1352f317c0568d6465c12ec38a72ea7c69f6"
+}

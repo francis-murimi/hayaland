@@ -4,7 +4,7 @@
 >
 > **Audience:** Backend engineers, product owners, and API consumers.
 >
-> **Based on:** `3partydeal.pdf` Software Design Document (§3.21, §6.10, §8.4), `hayaland-deal-plan.md`, `deal-plan.md`, `party-guide.md`, `negotiation-guide.md`, and the existing `hayaland` Rust codebase.
+> **Based on:** `3partydeal.pdf` Software Design Document (§3.21, §6.10, §8.4), `hayaland-deal-plan.md`, `deal-plan.md`, `party-guide.md`, `negotiation-guide.md`, `AGENTS.md`, and the existing `hayaland` Rust codebase (including the Agreement Generation & Signing feature).
 
 ---
 
@@ -52,7 +52,7 @@ The trust engine reads from the following existing tables:
 | `messages` / `deal_history` | Response timestamps used to compute `average_response_hours` |
 | `disputes` | `against_party_id`, `dispute_status`, `resolution_type` |
 
-> **Note:** `party_verifications` and `messages` are defined in the design documents but are not yet implemented in the current migrations. The trust calculator must treat them as optional inputs and fall back to defaults when missing.
+> **Note:** `party_verifications`, `messages`, and `disputes` are defined in the design documents but are not yet implemented in the current migrations. `reviews`, `trust_scores`, `platform_wallets`, `transactions`, `transaction_approvals`, `agreements`, and `signatures` are implemented. The trust calculator must treat unimplemented tables as optional inputs and fall back to defaults when missing.
 
 ---
 
@@ -532,11 +532,53 @@ CREATE TABLE IF NOT EXISTS transaction_approvals (
 );
 ```
 
+### 9.5 `agreements`
+
+Created by the Agreement Generation & Signing feature. Relevant to transactions because `transactions.agreement_id` references the agreement under which a payment is made. `deal_id` is unique, so there is at most one agreement row per deal; renegotiation updates the same row and bumps `version`.
+
+```sql
+CREATE TABLE IF NOT EXISTS agreements (
+    id UUID PRIMARY KEY,
+    deal_id UUID NOT NULL UNIQUE REFERENCES deals(id) ON DELETE CASCADE,
+    agreement_status TEXT NOT NULL DEFAULT 'DRAFT'
+        CHECK (agreement_status IN ('DRAFT','PENDING_SIGNATURES','SIGNED','EXECUTED','TERMINATED')),
+    agreement_text TEXT NOT NULL,
+    governing_law TEXT,
+    dispute_resolution TEXT,
+    effective_date DATE,
+    termination_date DATE,
+    auto_renew BOOLEAN NOT NULL DEFAULT false,
+    version INTEGER NOT NULL DEFAULT 1,
+    digital_signature_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    executed_at TIMESTAMPTZ
+);
+```
+
+### 9.6 `signatures`
+
+Digital attestations recorded when a party signs the current agreement version. The unique key includes `version`, so a party can re-sign after a renegotiation produces a new agreement version.
+
+```sql
+CREATE TABLE IF NOT EXISTS signatures (
+    id UUID PRIMARY KEY,
+    agreement_id UUID NOT NULL REFERENCES agreements(id) ON DELETE CASCADE,
+    party_id UUID NOT NULL REFERENCES parties(id),
+    signed_by_user_id UUID NOT NULL REFERENCES users(id),
+    signature_type TEXT NOT NULL,
+    signature_data TEXT NOT NULL,
+    ip_address TEXT,
+    signed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    version INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (agreement_id, party_id, version)
+);
+```
+
 ---
 
 ## 10. Domain & Application Additions
 
-To implement this document in the existing hexagonal codebase, the following modules are recommended (no existing code is changed):
+To implement this document in the existing hexagonal codebase, the following modules are recommended (no existing source code is changed). Note that the Agreement Generation & Signing feature is already implemented; trust and payment use cases should reuse the existing `AgreementRepository`, `GetAgreement`, and `SignAgreement` ports rather than duplicating that logic.
 
 ### 10.1 `crates/domain`
 
@@ -778,15 +820,21 @@ X-Party-ID: <party-id>
 
 ## 12. Integration with the Deal Lifecycle
 
-| Deal state | Trust action | Transaction action |
-|---|---|---|
-| `TERMS_LOCKED → COMMITTED` | — | Consumer `DEPOSIT` / `ESCROW_HOLD` for total deal value |
-| `COMMITTED → EXECUTING` | — | Escrow confirmed, milestones enabled |
-| Milestone verified | — | `ESCROW_RELEASE` transaction created in `PENDING`; supplier/enhancer approve |
-| `EXECUTING → COMPLETED` | Increase completed deal counts; request reviews | Final releases completed |
-| Deal cancelled | Increase cancelled count; apply penalty | `ADJUSTMENT` refund transaction |
-| Deal disputed | Increase disputed count | Freeze related transactions until resolved |
-| Review submitted | Recalculate review component | — |
+The current codebase implements the statuses `DRAFT → SUGGESTED → PENDING_REVIEW → NEGOTIATING → TERMS_LOCKED → COMMITTED → EXECUTING → COMPLETED`, plus `CANCELLED`, `DISPUTED`, `ON_HOLD`, `AWAITING_PARTY`, and `EXPIRED`. Trust and transaction actions are triggered mainly at the transitions below.
+
+| Deal state | Agreement action | Trust action | Transaction action |
+|---|---|---|---|
+| `NEGOTIATING → TERMS_LOCKED` | Generate agreement; status becomes `PENDING_SIGNATURES` | — | — |
+| `TERMS_LOCKED` | All parties sign → agreement status becomes `SIGNED` | — | — |
+| `TERMS_LOCKED → COMMITTED` (requires `SIGNED` agreement) | — | — | Consumer `DEPOSIT` / `ESCROW_HOLD` for total deal value |
+| `COMMITTED → EXECUTING` | — | — | Escrow confirmed, milestones enabled |
+| Milestone verified | — | — | `ESCROW_RELEASE` transaction created in `PENDING`; supplier/enhancer approve |
+| `EXECUTING → COMPLETED` | Mark agreement `EXECUTED` | Increase completed deal counts; request reviews | Final releases completed |
+| Deal cancelled | Mark agreement `TERMINATED` (admin-only) | Increase cancelled count; apply penalty | `ADJUSTMENT` refund transaction |
+| Deal disputed | — | Increase disputed count | Freeze related transactions until resolved |
+| Review submitted | — | Recalculate review component | — |
+
+> **Agreement pre-condition:** the existing `ExecuteTransition` use case enforces that the deal cannot move from `TERMS_LOCKED` to `COMMITTED` until the agreement is `SIGNED`. Trust/payment flows should therefore assume that any `COMMITTED` or later deal has a signed agreement, and should reference `transactions.agreement_id` when recording settlement transactions.
 
 ---
 
@@ -837,6 +885,7 @@ Result: **Gold tier**, overall score **78**.
 
 ## 15. Open Points & Future Extensions
 
+- **Implementation status:** the `trust_scores`, `platform_wallets`, `transactions`, `transaction_approvals`, `agreements`, `signatures`, and `reviews` tables exist in the migration set, but the application use cases, repositories, and API endpoints for trust-score calculation and transaction workflow are not yet implemented. This document serves as the specification for that work.
 - **Market-benchmark provider:** integrate external pricing data to weight value-bonus more accurately.
 - **Machine-learning risk score:** add a predicted default-risk component with human-review safeguards.
 - **Graph trust network:** score parties based on the trustworthiness of their repeated partners.
@@ -856,4 +905,6 @@ Result: **Gold tier**, overall score **78**.
 | **Platform Wallet** | A Party's ledger record: available balance, escrow balance, and pending balance. |
 | **Transaction Approval** | Approval by every party involved in a transaction before it is marked verified/complete. |
 | **Trust Tier** | Bronze / Silver / Gold / Platinum classification based on overall score. |
+| **Agreement** | Legal text generated when a deal reaches `TERMS_LOCKED`, signed digitally by all parties before commitment. |
+| **Signature** | A party's SHA-256 attestation recorded against an agreement version. |
 | **Decay** | Scheduled reduction of score for inactivity or ageing penalties. |

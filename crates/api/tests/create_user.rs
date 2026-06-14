@@ -21,6 +21,10 @@ use application::parties::{
 };
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
+use application::payments::{
+    CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetWallet, HoldEscrow,
+    ListDealTransactions, ListWalletTransactions, RecordAdjustment, ReleaseEscrow, WithdrawPoints,
+};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -33,8 +37,9 @@ use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::entities::{
-    Agreement, DealRole, DealStatus, DistributionModel, Email, EmailVerification, PasswordHash,
-    PasswordResetToken, Role, RoleProfile, Signature, User, Username,
+    Agreement, Currency, DealRole, DealStatus, DealWallet, DistributionModel, Email,
+    EmailVerification, PasswordHash, PasswordResetToken, PlatformWallet, Role, RoleProfile,
+    Signature, TransactionType, User, Username,
 };
 use domain::entities::{Party, PartyType, UserPartyMembership};
 use domain::errors::DomainError;
@@ -42,7 +47,7 @@ use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
     AgreementRepository, DealAggregate, DealListResult, DealRepository, DealSearchCriteria,
     EmailVerificationRepository, PartyRepository, PasswordResetRepository, RoleRepository,
-    UserRepository,
+    TransactionFilters, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
@@ -505,6 +510,7 @@ impl PartyRepository for FakePartyRepo {
 }
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 struct FakeDealRepo {
     deals: Mutex<HashMap<Uuid, domain::entities::Deal>>,
     participations: Mutex<Vec<domain::entities::DealParticipation>>,
@@ -825,6 +831,165 @@ impl EmailQueue for FakeEmailQueue {
     }
 }
 
+#[derive(Default)]
+struct FakeWalletRepo {
+    wallets: Mutex<HashMap<Uuid, PlatformWallet>>,
+    transactions: Mutex<Vec<domain::entities::Transaction>>,
+}
+
+#[async_trait]
+impl WalletRepository for FakeWalletRepo {
+    async fn create(&self, wallet: &PlatformWallet) -> Result<(), DomainError> {
+        self.wallets
+            .lock()
+            .unwrap()
+            .insert(wallet.party_id, wallet.clone());
+        Ok(())
+    }
+
+    async fn find_by_party_id(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Option<PlatformWallet>, DomainError> {
+        Ok(self.wallets.lock().unwrap().get(&party_id).cloned())
+    }
+
+    async fn update(&self, wallet: &PlatformWallet) -> Result<(), DomainError> {
+        self.wallets
+            .lock()
+            .unwrap()
+            .insert(wallet.party_id, wallet.clone());
+        Ok(())
+    }
+
+    async fn record_transaction(
+        &self,
+        wallet: &PlatformWallet,
+        transaction: &domain::entities::Transaction,
+    ) -> Result<(), DomainError> {
+        self.wallets
+            .lock()
+            .unwrap()
+            .insert(wallet.party_id, wallet.clone());
+        self.transactions.lock().unwrap().push(transaction.clone());
+        Ok(())
+    }
+
+    async fn find_transactions(
+        &self,
+        party_id: Uuid,
+        filters: &TransactionFilters,
+    ) -> Result<Vec<domain::entities::Transaction>, DomainError> {
+        let txns = self.transactions.lock().unwrap();
+        let mut results: Vec<domain::entities::Transaction> = txns
+            .iter()
+            .filter(|t| t.from_party_id == Some(party_id) || t.to_party_id == Some(party_id))
+            .filter(|t| filters.deal_id.is_none_or(|d| t.deal_id == d))
+            .filter(|t| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| t.status.as_str() == s)
+            })
+            .filter(|t| {
+                filters
+                    .transaction_type
+                    .as_ref()
+                    .is_none_or(|tt| t.transaction_type.as_str() == tt)
+            })
+            .cloned()
+            .collect();
+        results.sort_by_key(|a| a.created_at);
+        let start = filters.offset as usize;
+        let end = (filters.offset + filters.limit) as usize;
+        Ok(results
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect())
+    }
+
+    async fn count_transactions(
+        &self,
+        party_id: Uuid,
+        filters: &TransactionFilters,
+    ) -> Result<i64, DomainError> {
+        let count = self
+            .transactions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.from_party_id == Some(party_id) || t.to_party_id == Some(party_id))
+            .filter(|t| filters.deal_id.is_none_or(|d| t.deal_id == d))
+            .filter(|t| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| t.status.as_str() == s)
+            })
+            .filter(|t| {
+                filters
+                    .transaction_type
+                    .as_ref()
+                    .is_none_or(|tt| t.transaction_type.as_str() == tt)
+            })
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn compute_deal_wallet(
+        &self,
+        party_id: Uuid,
+        deal_id: Uuid,
+    ) -> Result<Option<DealWallet>, DomainError> {
+        let txns = self.transactions.lock().unwrap();
+        let has_activity = txns.iter().any(|t| {
+            t.deal_id == deal_id
+                && (t.from_party_id == Some(party_id) || t.to_party_id == Some(party_id))
+        });
+        if !has_activity {
+            return Ok(None);
+        }
+
+        let mut dw = DealWallet::new(party_id, deal_id, Currency::Points);
+        for t in txns.iter() {
+            if t.deal_id != deal_id {
+                continue;
+            }
+            match t.transaction_type {
+                TransactionType::Deposit if t.to_party_id == Some(party_id) => {
+                    dw.deposited += t.amount;
+                    dw.contributed += t.amount;
+                }
+                TransactionType::Withdrawal if t.from_party_id == Some(party_id) => {
+                    dw.withdrawn += t.amount;
+                    dw.contributed -= t.amount;
+                }
+                TransactionType::EscrowHold if t.from_party_id == Some(party_id) => {
+                    dw.held_in_escrow += t.amount;
+                    dw.contributed += t.amount;
+                }
+                TransactionType::EscrowRelease if t.to_party_id == Some(party_id) => {
+                    dw.released += t.amount;
+                    dw.held_in_escrow -= t.amount;
+                }
+                TransactionType::Fee if t.from_party_id == Some(party_id) => {
+                    dw.fees_paid += t.amount;
+                }
+                TransactionType::Adjustment if t.to_party_id == Some(party_id) => {
+                    dw.released += t.amount;
+                }
+                TransactionType::Adjustment if t.from_party_id == Some(party_id) => {
+                    dw.contributed += t.amount;
+                }
+                _ => {}
+            }
+        }
+        dw.net_position = dw.released + dw.withdrawn - dw.fees_paid - dw.contributed;
+        Ok(Some(dw))
+    }
+}
+
 struct TestFixtures {
     state: AppState,
     repo: Arc<FakeRepo>,
@@ -876,6 +1041,7 @@ fn test_fixtures() -> TestFixtures {
         agreements: Mutex::new(HashMap::new()),
         signatures: Mutex::new(Vec::new()),
     });
+    let wallet_repo: Arc<dyn WalletRepository> = Arc::new(FakeWalletRepo::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -919,7 +1085,7 @@ fn test_fixtures() -> TestFixtures {
         reset_password: ResetPassword::new(repo.clone(), password_reset_repo, hasher.clone()),
         list_roles: ListRoles::new(role_repo.clone()),
         update_role_scopes: UpdateRoleScopes::new(role_repo),
-        create_party: CreateParty::new(party_repo.clone()),
+        create_party: CreateParty::new_with_wallet(party_repo.clone(), wallet_repo.clone()),
         get_party: GetParty::new(party_repo.clone()),
         list_my_parties: ListMyParties::new(party_repo.clone()),
         search_parties: SearchParties::new(party_repo.clone()),
@@ -968,6 +1134,44 @@ fn test_fixtures() -> TestFixtures {
             agreement_repo.clone(),
         ),
         admin_update_agreement: AdminUpdateAgreement::new(deal_repo.clone(), agreement_repo),
+        create_wallet: CreateWallet::new(wallet_repo.clone()),
+        deposit_points: DepositPoints::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        withdraw_points: WithdrawPoints::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        get_wallet: GetWallet::new(party_repo.clone(), wallet_repo.clone()),
+        get_deal_wallet: GetDealWallet::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        hold_escrow: HoldEscrow::new(party_repo.clone(), deal_repo.clone(), wallet_repo.clone()),
+        release_escrow: ReleaseEscrow::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        deduct_fee: DeductFee::new(party_repo.clone(), deal_repo.clone(), wallet_repo.clone()),
+        record_adjustment: RecordAdjustment::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        list_wallet_transactions: ListWalletTransactions::new(
+            party_repo.clone(),
+            wallet_repo.clone(),
+        ),
+        list_deal_transactions: ListDealTransactions::new(
+            party_repo.clone(),
+            deal_repo.clone(),
+            wallet_repo.clone(),
+        ),
         token_validator: token,
     };
 
@@ -2776,4 +2980,150 @@ async fn admin_can_get_and_update_agreement() {
     assert_eq!(body["governing_law"].as_str().unwrap(), "California");
     assert_eq!(body["dispute_resolution"].as_str().unwrap(), "Arbitration");
     assert_eq!(body["auto_renew"].as_bool().unwrap(), true);
+}
+
+async fn seed_party(state: &AppState, owner_id: Uuid, email: &str, role: DealRole) -> Uuid {
+    state
+        .create_party
+        .execute(application::parties::dto::CreatePartyCommand {
+            actor_user_id: owner_id,
+            party_type: PartyType::Organization,
+            display_name: "Wallet Party".to_string(),
+            email: email.to_string(),
+            phone: None,
+            tax_id: None,
+            primary_domain_id: None,
+            latitude: None,
+            longitude: None,
+            service_radius_km: None,
+            roles: vec![role],
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+async fn seed_deal(
+    state: &AppState,
+    actor_user_id: Uuid,
+    actor_party_id: Uuid,
+    consumer_party_id: Uuid,
+    enhancer_party_id: Uuid,
+) -> Uuid {
+    let category_id = Uuid::parse_str("a1b2c3d4-e5f6-7890-abcd-ef1234567890").unwrap();
+    state
+        .create_deal
+        .execute(application::deals::dto::CreateDealCommand {
+            actor_user_id,
+            actor_party_id,
+            title: "Wallet Deal".to_string(),
+            description: None,
+            domain_category_id: category_id,
+            consumer_party_id,
+            enhancer_party_id,
+            expected_start_date: None,
+            expected_end_date: None,
+            timeline: None,
+            latitude: None,
+            longitude: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+#[actix_rt::test]
+async fn wallet_endpoints_manage_points_for_party() {
+    init_test_tracing();
+    let fixtures = test_fixtures();
+    let owner_id = seed_user(&fixtures, "wallet_owner@example.com", "user");
+    let party_id = seed_party(
+        &fixtures.state,
+        owner_id,
+        "wallet_party@example.com",
+        DealRole::Supplier,
+    )
+    .await;
+    let consumer_id = seed_party(
+        &fixtures.state,
+        owner_id,
+        "consumer_wallet@example.com",
+        DealRole::Consumer,
+    )
+    .await;
+    let enhancer_id = seed_party(
+        &fixtures.state,
+        owner_id,
+        "enhancer_wallet@example.com",
+        DealRole::Enhancer,
+    )
+    .await;
+    let deal_id = seed_deal(
+        &fixtures.state,
+        owner_id,
+        party_id,
+        consumer_id,
+        enhancer_id,
+    )
+    .await;
+
+    let app = test::init_service(
+        actix_web::App::new()
+            .app_data(Data::new(fixtures.state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let get_wallet = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, get_wallet).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["partyId"], party_id.to_string());
+    assert_eq!(body["balance"], "0");
+
+    let deposit = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet/deposits"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .set_json(serde_json::json!({
+            "dealId": deal_id,
+            "amount": "150.00"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, deposit).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["amount"], "150.00");
+
+    let get_wallet = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, get_wallet).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["balance"], "150.00");
+
+    let get_deal_wallet = test::TestRequest::get()
+        .uri(&format!(
+            "/api/v1/parties/{party_id}/deals/{deal_id}/wallet"
+        ))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, get_deal_wallet).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["deposited"], "150.00");
+
+    let list_transactions = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/wallet/transactions"))
+        .insert_header((header::AUTHORIZATION, bearer(owner_id)))
+        .to_request();
+    let resp = test::call_service(&app, list_transactions).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["transactions"].as_array().unwrap().len(), 1);
 }

@@ -22,6 +22,10 @@ use application::parties::{
 };
 use application::password_reset::request_password_reset::RequestPasswordReset;
 use application::password_reset::reset_password::ResetPassword;
+use application::payments::{
+    CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetWallet, HoldEscrow,
+    ListDealTransactions, ListWalletTransactions, RecordAdjustment, ReleaseEscrow, WithdrawPoints,
+};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -80,6 +84,17 @@ pub struct AppState {
     pub get_agreement: GetAgreement,
     pub sign_agreement: SignAgreement,
     pub admin_update_agreement: AdminUpdateAgreement,
+    pub create_wallet: CreateWallet,
+    pub deposit_points: DepositPoints,
+    pub withdraw_points: WithdrawPoints,
+    pub get_wallet: GetWallet,
+    pub get_deal_wallet: GetDealWallet,
+    pub hold_escrow: HoldEscrow,
+    pub release_escrow: ReleaseEscrow,
+    pub deduct_fee: DeductFee,
+    pub record_adjustment: RecordAdjustment,
+    pub list_wallet_transactions: ListWalletTransactions,
+    pub list_deal_transactions: ListDealTransactions,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

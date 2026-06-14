@@ -6,8 +6,10 @@ pub mod party_role;
 pub mod password_reset_token;
 pub mod role;
 pub mod term;
+pub mod transaction;
 pub mod user;
 pub mod value_distribution;
+pub mod wallet;
 
 pub use agreement::*;
 pub use deal::*;
@@ -17,5 +19,7 @@ pub use party_role::*;
 pub use password_reset_token::*;
 pub use role::*;
 pub use term::*;
+pub use transaction::*;
 pub use user::*;
 pub use value_distribution::*;
+pub use wallet::*;

@@ -12,8 +12,9 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
-    Agreement, DealRole, Email, EmailVerification, PasswordHash, PasswordResetToken, Role,
-    RoleProfile, Signature, User, Username,
+    Agreement, Currency, DealRole, DealWallet, Email, EmailVerification, PasswordHash,
+    PasswordResetToken, PlatformWallet, Role, RoleProfile, Signature, Transaction, TransactionType,
+    User, Username,
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
@@ -24,7 +25,7 @@ use domain::repositories::PartySearchCriteria;
 #[cfg(test)]
 use domain::repositories::{
     AgreementRepository, EmailVerificationRepository, PartyRepository, PasswordResetRepository,
-    RoleRepository, UserRepository,
+    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 #[cfg(test)]
 use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
@@ -776,6 +777,167 @@ impl DealRepository for FakeDealRepo {
 pub struct FakeAgreementRepo {
     pub agreements: Mutex<HashMap<Uuid, Agreement>>,
     pub signatures: Mutex<Vec<Signature>>,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeWalletRepo {
+    pub wallets: Mutex<HashMap<Uuid, PlatformWallet>>,
+    pub transactions: Mutex<Vec<Transaction>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl WalletRepository for FakeWalletRepo {
+    async fn create(&self, wallet: &PlatformWallet) -> Result<(), DomainError> {
+        self.wallets
+            .lock()
+            .unwrap()
+            .insert(wallet.party_id, wallet.clone());
+        Ok(())
+    }
+
+    async fn find_by_party_id(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Option<PlatformWallet>, DomainError> {
+        Ok(self.wallets.lock().unwrap().get(&party_id).cloned())
+    }
+
+    async fn update(&self, wallet: &PlatformWallet) -> Result<(), DomainError> {
+        self.wallets
+            .lock()
+            .unwrap()
+            .insert(wallet.party_id, wallet.clone());
+        Ok(())
+    }
+
+    async fn record_transaction(
+        &self,
+        wallet: &PlatformWallet,
+        transaction: &Transaction,
+    ) -> Result<(), DomainError> {
+        self.wallets
+            .lock()
+            .unwrap()
+            .insert(wallet.party_id, wallet.clone());
+        self.transactions.lock().unwrap().push(transaction.clone());
+        Ok(())
+    }
+
+    async fn find_transactions(
+        &self,
+        party_id: Uuid,
+        filters: &TransactionFilters,
+    ) -> Result<Vec<Transaction>, DomainError> {
+        let txns = self.transactions.lock().unwrap();
+        let mut results: Vec<Transaction> = txns
+            .iter()
+            .filter(|t| t.from_party_id == Some(party_id) || t.to_party_id == Some(party_id))
+            .filter(|t| filters.deal_id.is_none_or(|d| t.deal_id == d))
+            .filter(|t| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| t.status.as_str() == s)
+            })
+            .filter(|t| {
+                filters
+                    .transaction_type
+                    .as_ref()
+                    .is_none_or(|tt| t.transaction_type.as_str() == tt)
+            })
+            .cloned()
+            .collect();
+        results.sort_by_key(|a| a.created_at);
+        let start = filters.offset as usize;
+        let end = (filters.offset + filters.limit) as usize;
+        Ok(results
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect())
+    }
+
+    async fn count_transactions(
+        &self,
+        party_id: Uuid,
+        filters: &TransactionFilters,
+    ) -> Result<i64, DomainError> {
+        let count = self
+            .transactions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.from_party_id == Some(party_id) || t.to_party_id == Some(party_id))
+            .filter(|t| filters.deal_id.is_none_or(|d| t.deal_id == d))
+            .filter(|t| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| t.status.as_str() == s)
+            })
+            .filter(|t| {
+                filters
+                    .transaction_type
+                    .as_ref()
+                    .is_none_or(|tt| t.transaction_type.as_str() == tt)
+            })
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn compute_deal_wallet(
+        &self,
+        party_id: Uuid,
+        deal_id: Uuid,
+    ) -> Result<Option<DealWallet>, DomainError> {
+        let txns = self.transactions.lock().unwrap();
+        let has_activity = txns.iter().any(|t| {
+            t.deal_id == deal_id
+                && (t.from_party_id == Some(party_id) || t.to_party_id == Some(party_id))
+        });
+        if !has_activity {
+            return Ok(None);
+        }
+
+        let mut dw = DealWallet::new(party_id, deal_id, Currency::Points);
+        for t in txns.iter() {
+            if t.deal_id != deal_id {
+                continue;
+            }
+            match t.transaction_type {
+                TransactionType::Deposit if t.to_party_id == Some(party_id) => {
+                    dw.deposited += t.amount;
+                    dw.contributed += t.amount;
+                }
+                TransactionType::Withdrawal if t.from_party_id == Some(party_id) => {
+                    dw.withdrawn += t.amount;
+                    dw.contributed -= t.amount;
+                }
+                TransactionType::EscrowHold if t.from_party_id == Some(party_id) => {
+                    dw.held_in_escrow += t.amount;
+                    dw.contributed += t.amount;
+                }
+                TransactionType::EscrowRelease if t.to_party_id == Some(party_id) => {
+                    dw.released += t.amount;
+                    dw.held_in_escrow -= t.amount;
+                }
+                TransactionType::Fee if t.from_party_id == Some(party_id) => {
+                    dw.fees_paid += t.amount;
+                }
+                TransactionType::Adjustment if t.to_party_id == Some(party_id) => {
+                    dw.released += t.amount;
+                }
+                TransactionType::Adjustment if t.from_party_id == Some(party_id) => {
+                    dw.contributed += t.amount;
+                }
+                _ => {}
+            }
+        }
+        dw.net_position = dw.released + dw.withdrawn - dw.fees_paid - dw.contributed;
+        Ok(Some(dw))
+    }
 }
 
 #[cfg(test)]

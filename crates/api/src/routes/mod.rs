@@ -2,6 +2,7 @@ use actix_web::{web, HttpResponse};
 
 pub mod deals;
 pub mod parties;
+pub mod payments;
 pub mod users;
 
 pub mod admin;
@@ -13,6 +14,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(users::configure)
             .configure(parties::configure)
             .configure(deals::configure)
+            .configure(payments::configure)
             .configure(admin::configure)
             .route("/health", web::get().to(health))
             .route("/auth/login", web::post().to(crate::handlers::login::login))

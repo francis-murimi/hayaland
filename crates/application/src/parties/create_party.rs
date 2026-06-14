@@ -1,9 +1,10 @@
 use crate::errors::ApplicationError;
 use crate::parties::dto::{CreatePartyCommand, PartyResult};
+use crate::payments::CreateWallet;
 use domain::entities::{
     DisplayName, Email, GeoPoint, Party, PartyMembershipRole, RoleProfile, UserPartyMembership,
 };
-use domain::repositories::PartyRepository;
+use domain::repositories::{PartyRepository, WalletRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
@@ -12,11 +13,27 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct CreateParty {
     repo: Arc<dyn PartyRepository>,
+    wallet_repo: Option<Arc<dyn WalletRepository>>,
 }
 
 impl CreateParty {
+    /// Basic constructor used by tests that do not exercise the wallet.
     pub fn new(repo: Arc<dyn PartyRepository>) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            wallet_repo: None,
+        }
+    }
+
+    /// Full constructor that also creates the party's wallet container.
+    pub fn new_with_wallet(
+        repo: Arc<dyn PartyRepository>,
+        wallet_repo: Arc<dyn WalletRepository>,
+    ) -> Self {
+        Self {
+            repo,
+            wallet_repo: Some(wallet_repo),
+        }
     }
 
     #[instrument(skip(self, cmd), fields(email = %cmd.email, display_name = %cmd.display_name))]
@@ -46,6 +63,10 @@ impl CreateParty {
         party.service_radius_km = cmd.service_radius_km;
 
         self.repo.create(&party).await?;
+
+        if let Some(wallet_repo) = &self.wallet_repo {
+            CreateWallet::new(wallet_repo.clone()).execute(id).await?;
+        }
 
         let membership = UserPartyMembership::new(
             Uuid::now_v7(),
