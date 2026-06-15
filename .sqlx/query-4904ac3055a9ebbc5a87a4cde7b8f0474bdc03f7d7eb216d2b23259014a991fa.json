@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COALESCE(SUM(points), 0) as \"sum!\"\n            FROM party_verifications\n            WHERE party_id = $1\n              AND status = 'APPROVED'\n              AND (expires_at IS NULL OR expires_at > now())\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sum!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4904ac3055a9ebbc5a87a4cde7b8f0474bdc03f7d7eb216d2b23259014a991fa"
+}

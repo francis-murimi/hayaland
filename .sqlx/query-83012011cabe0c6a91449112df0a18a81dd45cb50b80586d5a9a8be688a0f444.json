@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO party_verifications (\n                id, party_id, requested_by_user_id, reviewed_by_user_id, verification_type,\n                status, points, evidence_urls, provider_reference, provider_payload,\n                rejection_reason, review_notes, requested_at, reviewed_at, expires_at,\n                created_at, updated_at\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Int4",
+        "TextArray",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "83012011cabe0c6a91449112df0a18a81dd45cb50b80586d5a9a8be688a0f444"
+}

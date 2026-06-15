@@ -30,6 +30,7 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
+use application::ports::NoOpTrustScoreRecalculation;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -44,16 +45,20 @@ use async_trait::async_trait;
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, DistributionModel,
     Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Review,
-    Role, RoleProfile, Signature, TransactionApproval, TransactionStatus,
-    TransactionType, User, Username,
+    Role, RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
+    Username,
 };
-use domain::entities::{Party, PartyType, UserPartyMembership};
+use domain::entities::{
+    Party, PartyType, PartyVerification, PartyVerificationStatus, PartyVerificationType,
+    UserPartyMembership,
+};
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
     AgreementRepository, DealAggregate, DealListResult, DealRepository, DealSearchCriteria,
-    EmailVerificationRepository, MilestoneRepository, PartyRepository, PasswordResetRepository,
-    ReviewRepository, RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    EmailVerificationRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, ReviewRepository, RoleRepository, TransactionFilters, UserRepository,
+    VerificationListFilters, VerificationListResult, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
@@ -1397,6 +1402,236 @@ impl ReviewRepository for FakeReviewRepo {
     }
 }
 
+#[derive(Default)]
+struct FakePartyVerificationRepo {
+    verifications: Mutex<Vec<PartyVerification>>,
+}
+
+#[async_trait]
+impl PartyVerificationRepository for FakePartyVerificationRepo {
+    async fn create(&self, verification: &PartyVerification) -> Result<(), DomainError> {
+        self.verifications
+            .lock()
+            .unwrap()
+            .push(verification.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<PartyVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|v| v.id == id)
+            .cloned())
+    }
+
+    async fn find_active_by_party_and_type(
+        &self,
+        party_id: Uuid,
+        verification_type: PartyVerificationType,
+    ) -> Result<Option<PartyVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|v| {
+                v.party_id == party_id
+                    && v.verification_type == verification_type
+                    && matches!(
+                        v.status,
+                        PartyVerificationStatus::Pending | PartyVerificationStatus::Approved
+                    )
+            })
+            .cloned())
+    }
+
+    async fn list_by_party(&self, party_id: Uuid) -> Result<Vec<PartyVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.party_id == party_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list(
+        &self,
+        filters: &VerificationListFilters,
+    ) -> Result<VerificationListResult, DomainError> {
+        let all: Vec<PartyVerification> = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| v.status.as_str() == s)
+            })
+            .filter(|v| {
+                filters
+                    .verification_type
+                    .as_ref()
+                    .is_none_or(|t| v.verification_type.as_str() == t)
+            })
+            .filter(|v| filters.party_id.is_none_or(|p| v.party_id == p))
+            .cloned()
+            .collect();
+
+        let total = all.len() as i64;
+        let start = filters.offset as usize;
+        let end = (filters.offset + filters.limit) as usize;
+        let paginated = all
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+
+        Ok(VerificationListResult {
+            verifications: paginated,
+            total,
+            limit: filters.limit,
+            offset: filters.offset,
+        })
+    }
+
+    async fn count(&self, filters: &VerificationListFilters) -> Result<i64, DomainError> {
+        let count = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| v.status.as_str() == s)
+            })
+            .filter(|v| {
+                filters
+                    .verification_type
+                    .as_ref()
+                    .is_none_or(|t| v.verification_type.as_str() == t)
+            })
+            .filter(|v| filters.party_id.is_none_or(|p| v.party_id == p))
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn approve(
+        &self,
+        id: Uuid,
+        reviewed_by_user_id: Uuid,
+        review_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        let v = verifications
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or(DomainError::VerificationNotFound)?;
+        v.approve(reviewed_by_user_id, review_notes);
+        Ok(())
+    }
+
+    async fn reject(
+        &self,
+        id: Uuid,
+        reviewed_by_user_id: Uuid,
+        rejection_reason: String,
+        review_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        let v = verifications
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or(DomainError::VerificationNotFound)?;
+        v.reject(reviewed_by_user_id, rejection_reason, review_notes);
+        Ok(())
+    }
+
+    async fn revoke(
+        &self,
+        id: Uuid,
+        reviewed_by_user_id: Uuid,
+        reason: String,
+        review_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        let v = verifications
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or(DomainError::VerificationNotFound)?;
+        v.revoke(reviewed_by_user_id, reason, review_notes);
+        Ok(())
+    }
+
+    async fn sum_approved_points(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let now = time::OffsetDateTime::now_utc();
+        let sum: i32 = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.party_id == party_id)
+            .filter(|v| matches!(v.status, PartyVerificationStatus::Approved))
+            .filter(|v| v.expires_at.is_none_or(|exp| exp > now))
+            .map(|v| v.points)
+            .sum();
+        Ok(sum as i64)
+    }
+
+    async fn count_by_status(&self, party_id: Uuid, status: &str) -> Result<i64, DomainError> {
+        let status = PartyVerificationStatus::try_from(status)?;
+        let count = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.party_id == party_id && v.status == status)
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn set_provider_reference(
+        &self,
+        id: Uuid,
+        provider_reference: String,
+        provider_payload: Option<serde_json::Value>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        if let Some(v) = verifications.iter_mut().find(|v| v.id == id) {
+            v.provider_reference = Some(provider_reference);
+            v.provider_payload = provider_payload;
+        }
+        Ok(())
+    }
+
+    async fn mark_expired(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        if let Some(v) = verifications.iter_mut().find(|v| v.id == id) {
+            if matches!(v.status, PartyVerificationStatus::Approved) {
+                v.status = PartyVerificationStatus::Expired;
+                v.updated_at = time::OffsetDateTime::now_utc();
+            }
+        }
+        Ok(())
+    }
+
+    async fn update_verification_level(
+        &self,
+        _party_id: Uuid,
+        _verification_level: i32,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+}
+
 struct TestFixtures {
     state: AppState,
     repo: Arc<FakeRepo>,
@@ -1463,6 +1698,8 @@ fn test_fixtures() -> TestFixtures {
     let wallet_repo: Arc<dyn WalletRepository> = Arc::new(FakeWalletRepo::default());
     let milestone_repo: Arc<dyn MilestoneRepository> = Arc::new(FakeMilestoneRepo::default());
     let review_repo: Arc<dyn ReviewRepository> = Arc::new(FakeReviewRepo::default());
+    let party_verification_repo: Arc<dyn PartyVerificationRepository> =
+        Arc::new(FakePartyVerificationRepo::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -1647,7 +1884,7 @@ fn test_fixtures() -> TestFixtures {
             review_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
-            Arc::new(application::reviews::submit_review::NoOpTrustScoreRecalculation),
+            Arc::new(NoOpTrustScoreRecalculation),
         ),
         list_deal_reviews: application::reviews::ListDealReviews::new(
             deal_repo.clone(),
@@ -1664,6 +1901,36 @@ fn test_fixtures() -> TestFixtures {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        submit_verification: application::verifications::SubmitVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+        ),
+        list_party_verifications: application::verifications::ListPartyVerifications::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+        ),
+        get_verification_status: application::verifications::GetVerificationStatus::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+        ),
+        approve_verification: application::verifications::ApproveVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        reject_verification: application::verifications::RejectVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        revoke_verification: application::verifications::RevokeVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        list_admin_verifications: application::verifications::ListAdminVerifications::new(
+            party_verification_repo.clone(),
+        ),
         token_validator: token,
     };
 

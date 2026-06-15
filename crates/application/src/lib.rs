@@ -6,9 +6,11 @@ pub mod milestones;
 pub mod parties;
 pub mod password_reset;
 pub mod payments;
+pub mod ports;
 pub mod reviews;
 pub mod roles;
 pub mod users;
+pub mod verifications;
 
 #[cfg(test)]
 pub mod test_helpers;

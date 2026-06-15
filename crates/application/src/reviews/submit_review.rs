@@ -1,26 +1,11 @@
 use crate::errors::ApplicationError;
+use crate::ports::TrustScoreRecalculationPort;
 use crate::reviews::dto::{ReviewResult, SubmitReviewCommand};
 use domain::entities::{DealStatus, Review, ReviewRating, ReviewText};
 use domain::repositories::{DealRepository, PartyRepository, ReviewRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
-
-/// Outbound port used to request trust-score recalculation after a review is saved.
-#[async_trait::async_trait]
-pub trait TrustScoreRecalculationPort: Send + Sync {
-    async fn request_recalculation(&self, party_id: Uuid) -> Result<(), ApplicationError>;
-}
-
-/// No-op implementation for the review milestone; replace with the real trust-score use case.
-pub struct NoOpTrustScoreRecalculation;
-
-#[async_trait::async_trait]
-impl TrustScoreRecalculationPort for NoOpTrustScoreRecalculation {
-    async fn request_recalculation(&self, _party_id: Uuid) -> Result<(), ApplicationError> {
-        Ok(())
-    }
-}
 
 #[derive(Clone)]
 pub struct SubmitReview {

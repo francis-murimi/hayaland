@@ -107,6 +107,24 @@ pub enum DomainError {
     #[error("a review already exists for this deal and party")]
     DuplicateReview,
 
+    #[error("a verification already exists for this party and type")]
+    DuplicateVerification,
+
+    #[error("verification not found")]
+    VerificationNotFound,
+
+    #[error("invalid verification type: {message}")]
+    InvalidVerificationType { message: String },
+
+    #[error("rejection reason is required")]
+    MissingRejectionReason,
+
+    #[error("verification evidence is required")]
+    MissingVerificationEvidence,
+
+    #[error("invalid verification state transition from {from} to {to}")]
+    InvalidVerificationStateTransition { from: String, to: String },
+
     #[error("party not found")]
     PartyNotFound,
 

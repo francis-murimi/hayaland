@@ -45,6 +45,10 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::token::TokenVerifier;
 use application::users::update_user::UpdateUser;
+use application::verifications::{
+    ApproveVerification, GetVerificationStatus, ListAdminVerifications, ListPartyVerifications,
+    RejectVerification, RevokeVerification, SubmitVerification,
+};
 use std::net::TcpListener;
 use std::sync::Arc;
 use tracing_actix_web::TracingLogger;
@@ -122,6 +126,13 @@ pub struct AppState {
     pub get_deal_review_status: GetDealReviewStatus,
     pub hide_review: HideReview,
     pub list_admin_reviews: ListAdminReviews,
+    pub submit_verification: SubmitVerification,
+    pub list_party_verifications: ListPartyVerifications,
+    pub get_verification_status: GetVerificationStatus,
+    pub approve_verification: ApproveVerification,
+    pub reject_verification: RejectVerification,
+    pub revoke_verification: RevokeVerification,
+    pub list_admin_verifications: ListAdminVerifications,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

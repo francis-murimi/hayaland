@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE party_verifications\n            SET status = 'EXPIRED',\n                updated_at = now()\n            WHERE id = $1 AND status = 'APPROVED'\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "96234759f76eb860a70d53f321f3e7f30373ff56fb0d587b9379296129bdfe10"
+}

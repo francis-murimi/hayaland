@@ -5,6 +5,7 @@ pub mod parties;
 pub mod payments;
 pub mod reviews;
 pub mod users;
+pub mod verifications;
 
 pub mod admin;
 
@@ -17,6 +18,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(deals::configure)
             .configure(payments::configure)
             .configure(reviews::configure)
+            .configure(verifications::configure)
             .configure(admin::configure)
             .route("/health", web::get().to(health))
             .route("/auth/login", web::post().to(crate::handlers::login::login))

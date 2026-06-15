@@ -30,6 +30,12 @@ pub enum ApplicationError {
     #[error("a review already exists for this deal and party")]
     DuplicateReview,
 
+    #[error("a verification already exists for this party and type")]
+    DuplicateVerification,
+
+    #[error("verification not found")]
+    VerificationNotFound,
+
     #[error("party role has active deals and cannot be removed")]
     PartyRoleHasActiveDeals,
 
@@ -124,6 +130,8 @@ impl From<DomainError> for ApplicationError {
             DomainError::DuplicatePartyEmail => ApplicationError::DuplicatePartyEmail,
             DomainError::DuplicatePartyRole => ApplicationError::DuplicatePartyRole,
             DomainError::DuplicateReview => ApplicationError::DuplicateReview,
+            DomainError::DuplicateVerification => ApplicationError::DuplicateVerification,
+            DomainError::VerificationNotFound => ApplicationError::VerificationNotFound,
             DomainError::PartyNotFound => ApplicationError::PartyNotFound,
             DomainError::RoleNotFound => ApplicationError::RoleNotFound,
             DomainError::PartyRoleHasActiveDeals => ApplicationError::PartyRoleHasActiveDeals,
@@ -136,6 +144,20 @@ impl From<DomainError> for ApplicationError {
             }
             DomainError::InvalidStateTransition { from, to } => {
                 ApplicationError::InvalidStateTransition { from, to }
+            }
+            DomainError::InvalidVerificationType { message } => {
+                ApplicationError::Validation(vec![message])
+            }
+            DomainError::MissingRejectionReason => {
+                ApplicationError::Validation(vec!["rejection reason is required".to_string()])
+            }
+            DomainError::InvalidVerificationStateTransition { from, to } => {
+                ApplicationError::Validation(vec![format!(
+                    "invalid verification state transition from {from} to {to}"
+                )])
+            }
+            DomainError::MissingVerificationEvidence => {
+                ApplicationError::Validation(vec!["verification evidence is required".to_string()])
             }
             DomainError::DealNotFound => ApplicationError::DealNotFound,
             DomainError::DealParticipationNotFound => ApplicationError::DealParticipationNotFound,

@@ -3,11 +3,11 @@ use crate::deals::execute_transition::ExecuteTransition;
 use crate::errors::ApplicationError;
 use crate::parties::dto::CreatePartyCommand;
 use crate::parties::CreateParty;
+use crate::ports::NoOpTrustScoreRecalculation;
 use crate::reviews::dto::{
     AdminReviewListQuery, GetReviewQuery, ListDealReviewsQuery, ListPartyReviewsQuery,
     SubmitReviewCommand,
 };
-use crate::reviews::submit_review::NoOpTrustScoreRecalculation;
 use crate::reviews::{
     GetDealReviewStatus, GetReview, HideReview, ListAdminReviews, ListDealReviews,
     ListPartyReviews, SubmitReview,

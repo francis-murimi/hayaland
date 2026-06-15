@@ -25,6 +25,7 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
+use application::ports::NoOpTrustScoreRecalculation;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -36,8 +37,8 @@ use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
 use domain::repositories::{
     AgreementRepository, DealRepository, EmailVerificationRepository, MilestoneRepository,
-    PartyRepository, PasswordResetRepository, ReviewRepository, RoleRepository, UserRepository,
-    WalletRepository,
+    PartyRepository, PartyVerificationRepository, PasswordResetRepository, ReviewRepository,
+    RoleRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
@@ -45,9 +46,9 @@ use infrastructure::{
     migrations,
     repositories::{
         PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
-        PostgresMilestoneRepository, PostgresPartyRepository, PostgresPasswordResetRepository,
-        PostgresReviewRepository, PostgresRoleRepository, PostgresUserRepository,
-        PostgresWalletRepository,
+        PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
+        PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
+        PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -89,7 +90,10 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PostgresWalletRepository::new(pool.clone()));
     let milestone_repo: Arc<dyn MilestoneRepository> =
         Arc::new(PostgresMilestoneRepository::new(pool.clone()));
-    let review_repo: Arc<dyn ReviewRepository> = Arc::new(PostgresReviewRepository::new(pool));
+    let review_repo: Arc<dyn ReviewRepository> =
+        Arc::new(PostgresReviewRepository::new(pool.clone()));
+    let party_verification_repo: Arc<dyn PartyVerificationRepository> =
+        Arc::new(PostgresPartyVerificationRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -189,7 +193,7 @@ async fn main() -> anyhow::Result<()> {
             review_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
-            Arc::new(application::reviews::submit_review::NoOpTrustScoreRecalculation),
+            Arc::new(NoOpTrustScoreRecalculation),
         ),
         list_deal_reviews: application::reviews::ListDealReviews::new(
             deal_repo.clone(),
@@ -206,6 +210,36 @@ async fn main() -> anyhow::Result<()> {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        submit_verification: application::verifications::SubmitVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+        ),
+        list_party_verifications: application::verifications::ListPartyVerifications::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+        ),
+        get_verification_status: application::verifications::GetVerificationStatus::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+        ),
+        approve_verification: application::verifications::ApproveVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        reject_verification: application::verifications::RejectVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        revoke_verification: application::verifications::RevokeVerification::new(
+            party_verification_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        list_admin_verifications: application::verifications::ListAdminVerifications::new(
+            party_verification_repo.clone(),
+        ),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
         counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
         accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),

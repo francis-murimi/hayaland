@@ -40,7 +40,6 @@ use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
-
 use domain::repositories::{
     AgreementRepository, DealRepository, EmailVerificationRepository, MilestoneRepository,
     PartyRepository, PartyVerificationRepository, PasswordResetRepository, ReviewRepository,
@@ -56,7 +55,6 @@ use infrastructure::{
     },
     security::{Argon2PasswordHasher, JwtTokenService},
 };
-use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -99,7 +97,7 @@ async fn build_state(pool: PgPool) -> AppState {
     let review_repo: Arc<dyn ReviewRepository> =
         Arc::new(PostgresReviewRepository::new(pool.clone()));
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
-        Arc::new(PostgresPartyVerificationRepository::new(pool));
+        Arc::new(PostgresPartyVerificationRepository::new(pool.clone()));
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher);
     let token_service: Arc<dyn TokenVerifier> = Arc::new(TestTokenService {
         secret: "test-secret".to_string(),
@@ -366,76 +364,39 @@ async fn auth_token(
         .unwrap()
 }
 
-async fn setup_executing_deal(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid, Uuid) {
-    let deal_id = Uuid::now_v7();
-    let supplier_user = Uuid::now_v7();
-    let consumer_user = Uuid::now_v7();
-    let supplier_party = Uuid::now_v7();
-    let consumer_party = Uuid::now_v7();
-    let category_id = Uuid::now_v7();
+async fn setup_party_with_member(pool: &PgPool) -> (Uuid, Uuid, Uuid) {
+    let user_id = Uuid::now_v7();
+    let party_id = Uuid::now_v7();
 
-    sqlx::query!("INSERT INTO categories (id, category_name, category_code, category_type) VALUES ($1, $2, $3, $4)",
-        category_id, "Test", "TEST", "DOMAIN"
+    sqlx::query!(
+        r#"
+        INSERT INTO users (id, email, username, password_hash, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+        user_id,
+        "member@example.com",
+        "member",
+        "hashed:password123",
+        time::OffsetDateTime::now_utc(),
+        time::OffsetDateTime::now_utc()
     )
     .execute(pool)
     .await
     .unwrap();
 
-    for (user_id, email) in [
-        (supplier_user, "supplier@example.com"),
-        (consumer_user, "consumer@example.com"),
-    ] {
-        sqlx::query!(
-            r#"
-            INSERT INTO users (id, email, username, password_hash, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
-            user_id,
-            email,
-            email.replace('@', "_"),
-            "hashed:password123",
-            time::OffsetDateTime::now_utc(),
-            time::OffsetDateTime::now_utc()
-        )
-        .execute(pool)
-        .await
-        .unwrap();
-    }
-
-    for (party_id, email) in [
-        (supplier_party, "supplier-party@example.com"),
-        (consumer_party, "consumer-party@example.com"),
-    ] {
-        sqlx::query!(
-            r#"
-            INSERT INTO parties (
-                id, party_type, display_name, email, verification_status, is_active, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
-            party_id,
-            "ORGANIZATION",
-            "Test Party",
-            email,
-            "UNVERIFIED",
-            true,
-            time::OffsetDateTime::now_utc(),
-            time::OffsetDateTime::now_utc()
-        )
-        .execute(pool)
-        .await
-        .unwrap();
-    }
-
     sqlx::query!(
         r#"
-        INSERT INTO user_party_memberships (id, user_id, party_id, member_role, is_active, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO parties (
+            id, party_type, display_name, email, verification_status, is_active, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
-        Uuid::now_v7(),
-        supplier_user,
-        supplier_party,
-        "OWNER",
+        party_id,
+        "ORGANIZATION",
+        "Verified Party",
+        "party@example.com",
+        "UNVERIFIED",
         true,
+        time::OffsetDateTime::now_utc(),
         time::OffsetDateTime::now_utc()
     )
     .execute(pool)
@@ -448,8 +409,8 @@ async fn setup_executing_deal(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid, Uuid) {
         VALUES ($1, $2, $3, $4, $5, $6)
         "#,
         Uuid::now_v7(),
-        consumer_user,
-        consumer_party,
+        user_id,
+        party_id,
         "OWNER",
         true,
         time::OffsetDateTime::now_utc()
@@ -458,92 +419,58 @@ async fn setup_executing_deal(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid, Uuid) {
     .await
     .unwrap();
 
+    (user_id, party_id, Uuid::now_v7())
+}
+
+async fn setup_admin(pool: &PgPool) -> Uuid {
+    let admin_id = Uuid::now_v7();
     sqlx::query!(
         r#"
-        INSERT INTO deals (
-            id, deal_reference, deal_title, domain_category_id, initiator_party_id, initiator_role,
-            deal_status, platform_fee_percentage, platform_fee_amount, is_public, current_state_entered_at,
-            created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        INSERT INTO users (id, email, username, password_hash, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
         "#,
-        deal_id,
-        format!("DL-{}-0001", Uuid::now_v7()),
-        "Test Deal",
-        category_id,
-        supplier_party,
-        "SUPPLIER",
-        "EXECUTING",
-        Decimal::ZERO,
-        Decimal::ZERO,
-        false,
-        time::OffsetDateTime::now_utc(),
+        admin_id,
+        "admin@example.com",
+        "admin",
+        "hashed:password123",
         time::OffsetDateTime::now_utc(),
         time::OffsetDateTime::now_utc()
     )
     .execute(pool)
     .await
     .unwrap();
-
-    for (party_id, role, is_initiator) in [
-        (supplier_party, "SUPPLIER", true),
-        (consumer_party, "CONSUMER", false),
-    ] {
-        sqlx::query!(
-            r#"
-            INSERT INTO deal_participations (
-                id, deal_id, party_id, role, participation_status, is_initiator, invited_at, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
-            Uuid::now_v7(),
-            deal_id,
-            party_id,
-            role,
-            "ACCEPTED",
-            is_initiator,
-            time::OffsetDateTime::now_utc(),
-            time::OffsetDateTime::now_utc()
-        )
-        .execute(pool)
-        .await
-        .unwrap();
-    }
-
-    (
-        deal_id,
-        supplier_user,
-        consumer_user,
-        supplier_party,
-        consumer_party,
-    )
+    admin_id
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn create_review_returns_201(pool: PgPool) {
+async fn create_verification_returns_201(pool: PgPool) {
     let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
-        setup_executing_deal(&pool).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
     let token = auth_token(
         &state.token_validator,
-        supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
     )
     .await;
 
     let app = test::init_service(
         App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(state.clone()))
             .configure(routes::configure),
     )
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .insert_header(("X-Party-ID", party_id.to_string()))
         .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "Great partner"
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id-front.png", "id-back.png"],
+            "notes": "national ID"
         }))
         .to_request();
 
@@ -551,40 +478,78 @@ async fn create_review_returns_201(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["overallRating"], 4);
-    assert_eq!(body["reviewerPartyId"], supplier_party.to_string());
-    assert_eq!(body["reviewedPartyId"], consumer_party.to_string());
+    assert_eq!(body["verificationType"], "GOVERNMENT_ID");
+    assert_eq!(body["status"], "PENDING");
+    assert_eq!(body["points"], 30);
+    assert_eq!(body["evidenceUrls"].as_array().unwrap().len(), 2);
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn duplicate_review_returns_conflict(pool: PgPool) {
+async fn create_verification_requires_evidence_for_admin_reviewed_types(pool: PgPool) {
     let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
-        setup_executing_deal(&pool).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
     let token = auth_token(
         &state.token_validator,
-        supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
     )
     .await;
 
     let app = test::init_service(
         App::new()
-            .app_data(Data::new(state))
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .set_json(serde_json::json!({
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": []
+        }))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn duplicate_verification_returns_conflict(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+    let token = auth_token(
+        &state.token_validator,
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
             .configure(routes::configure),
     )
     .await;
 
     let body = serde_json::json!({
-        "reviewedPartyId": consumer_party,
-        "overallRating": 4
+        "verificationType": "GOVERNMENT_ID",
+        "evidenceUrls": ["id.png"]
     });
 
     for i in 0..2 {
         let req = test::TestRequest::post()
-            .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
+            .uri(&format!("/api/v1/parties/{party_id}/verifications"))
             .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-            .insert_header(("X-Party-ID", supplier_party.to_string()))
+            .insert_header(("X-Party-ID", party_id.to_string()))
             .set_json(&body)
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -597,15 +562,16 @@ async fn duplicate_review_returns_conflict(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn non_participant_cannot_list_deal_reviews(pool: PgPool) {
+async fn non_member_cannot_create_verification(pool: PgPool) {
     let state = build_state(pool.clone()).await;
-    let (deal_id, _, _consumer_user, _, _) = setup_executing_deal(&pool).await;
+    let (_, party_id, _) = setup_party_with_member(&pool).await;
 
-    // Create an unrelated user/party.
     let outsider_user = Uuid::now_v7();
-    let outsider_party = Uuid::now_v7();
     sqlx::query!(
-        "INSERT INTO users (id, email, username, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        r#"
+        INSERT INTO users (id, email, username, password_hash, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
         outsider_user,
         "outsider@example.com",
         "outsider",
@@ -616,65 +582,14 @@ async fn non_participant_cannot_list_deal_reviews(pool: PgPool) {
     .execute(&pool)
     .await
     .unwrap();
-    sqlx::query!(
-        "INSERT INTO parties (id, party_type, display_name, email, verification_status, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        outsider_party,
-        "ORGANIZATION",
-        "Outsider",
-        "outsider-party@example.com",
-        "UNVERIFIED",
-        true,
-        time::OffsetDateTime::now_utc(),
-        time::OffsetDateTime::now_utc()
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query!(
-        "INSERT INTO user_party_memberships (id, user_id, party_id, member_role, is_active, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        Uuid::now_v7(),
-        outsider_user,
-        outsider_party,
-        "OWNER",
-        true,
-        time::OffsetDateTime::now_utc()
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
 
     let token = auth_token(
         &state.token_validator,
         outsider_user,
-        vec!["reviews:read".to_string()],
-    )
-    .await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(Data::new(state))
-            .configure(routes::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", outsider_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
-#[sqlx::test(migrations = "../../migrations")]
-async fn admin_can_hide_review(pool: PgPool) {
-    let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
-        setup_executing_deal(&pool).await;
-    let user_token = auth_token(
-        &state.token_validator,
-        supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
     )
     .await;
 
@@ -686,26 +601,157 @@ async fn admin_can_hide_review(pool: PgPool) {
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
         .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "needs moderation"
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id.png"]
+        }))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_can_approve_and_status_becomes_verified(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+    let admin_id = setup_admin(&pool).await;
+
+    let user_token = auth_token(
+        &state.token_validator,
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+    let admin_token = auth_token(
+        &state.token_validator,
+        admin_id,
+        vec!["admin:verifications".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .set_json(serde_json::json!({
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id.png"]
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    let review_id = body["id"].as_str().unwrap();
+    let verification_id = body["id"].as_str().unwrap();
 
-    let admin_user = Uuid::now_v7();
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/v1/admin/verifications/{verification_id}/approve"
+        ))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
+        .set_json(serde_json::json!({"reviewNotes": "approved"}))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications/status"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["verificationStatus"], "VERIFIED");
+    assert_eq!(body["verificationLevel"], 2);
+    assert_eq!(body["effectivePoints"], 30);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_can_reject_verification(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+    let admin_id = setup_admin(&pool).await;
+
+    let user_token = auth_token(
+        &state.token_validator,
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+    let admin_token = auth_token(
+        &state.token_validator,
+        admin_id,
+        vec!["admin:verifications".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .set_json(serde_json::json!({
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id.png"]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let verification_id = body["id"].as_str().unwrap();
+
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/v1/admin/verifications/{verification_id}/reject"
+        ))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
+        .set_json(serde_json::json!({"reason": "expired document"}))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "REJECTED");
+    assert_eq!(body["rejectionReason"], "expired document");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_party_verifications_hides_evidence_from_outsider(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+
+    let outsider_user = Uuid::now_v7();
+    let outsider_party = Uuid::now_v7();
     sqlx::query!(
-        "INSERT INTO users (id, email, username, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        admin_user,
-        "admin@example.com",
-        "admin",
+        r#"
+        INSERT INTO users (id, email, username, password_hash, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+        outsider_user,
+        "outsider@example.com",
+        "outsider",
         "hashed:password123",
         time::OffsetDateTime::now_utc(),
         time::OffsetDateTime::now_utc()
@@ -713,32 +759,131 @@ async fn admin_can_hide_review(pool: PgPool) {
     .execute(&pool)
     .await
     .unwrap();
-    let admin_token = auth_token(
+    sqlx::query!(
+        r#"
+        INSERT INTO parties (id, party_type, display_name, email, verification_status, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        outsider_party,
+        "ORGANIZATION",
+        "Outsider",
+        "outsider@example.com",
+        "UNVERIFIED",
+        true,
+        time::OffsetDateTime::now_utc(),
+        time::OffsetDateTime::now_utc()
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query!(
+        r#"
+        INSERT INTO user_party_memberships (id, user_id, party_id, member_role, is_active, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+        Uuid::now_v7(),
+        outsider_user,
+        outsider_party,
+        "OWNER",
+        true,
+        time::OffsetDateTime::now_utc()
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let user_token = auth_token(
         &state.token_validator,
-        admin_user,
-        vec!["admin:reviews".to_string()],
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
     )
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/admin/reviews/{review_id}/hide"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
         .set_json(serde_json::json!({
-            "platformResponse": "removed by admin"
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["secret.png"]
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let outsider_token = auth_token(
+        &state.token_validator,
+        outsider_user,
+        vec!["verifications:read".to_string()],
+    )
+    .await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/reviews/{review_id}"))
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {outsider_token}")))
+        .insert_header(("X-Party-ID", outsider_party.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_queue_lists_pending_verifications(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+    let admin_id = setup_admin(&pool).await;
+
+    let user_token = auth_token(
+        &state.token_validator,
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+    let admin_token = auth_token(
+        &state.token_validator,
+        admin_id,
+        vec!["admin:verifications".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .set_json(serde_json::json!({
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id.png"]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let req = test::TestRequest::get()
+        .uri("/api/v1/admin/verifications?status=PENDING")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["isPublic"], false);
-    assert!(body["reviewText"].is_null());
-    assert_eq!(body["platformResponse"], "removed by admin");
+    assert_eq!(body["total"], 1);
 }

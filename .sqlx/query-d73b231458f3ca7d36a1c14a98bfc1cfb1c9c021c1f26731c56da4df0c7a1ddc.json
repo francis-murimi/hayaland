@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM party_verifications\n            WHERE ($1::text IS NULL OR status = $1)\n              AND ($2::text IS NULL OR verification_type = $2)\n              AND ($3::uuid IS NULL OR party_id = $3)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "d73b231458f3ca7d36a1c14a98bfc1cfb1c9c021c1f26731c56da4df0c7a1ddc"
+}

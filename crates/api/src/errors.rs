@@ -30,9 +30,13 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::DuplicateUsername)
             | ApiError::Application(ApplicationError::DuplicatePartyEmail)
             | ApiError::Application(ApplicationError::DuplicatePartyRole)
-            | ApiError::Application(ApplicationError::DuplicateReview) => StatusCode::CONFLICT,
+            | ApiError::Application(ApplicationError::DuplicateReview)
+            | ApiError::Application(ApplicationError::DuplicateVerification) => {
+                StatusCode::CONFLICT
+            }
             ApiError::Application(ApplicationError::NotFound)
             | ApiError::Application(ApplicationError::PartyNotFound)
+            | ApiError::Application(ApplicationError::VerificationNotFound)
             | ApiError::Application(ApplicationError::RoleNotFound)
             | ApiError::Application(ApplicationError::DealNotFound)
             | ApiError::Application(ApplicationError::DealParticipationNotFound) => {
@@ -73,6 +77,12 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::DuplicatePartyEmail) => "duplicate_party_email",
             ApiError::Application(ApplicationError::DuplicatePartyRole) => "duplicate_party_role",
             ApiError::Application(ApplicationError::DuplicateReview) => "duplicate_review",
+            ApiError::Application(ApplicationError::DuplicateVerification) => {
+                "duplicate_verification"
+            }
+            ApiError::Application(ApplicationError::VerificationNotFound) => {
+                "verification_not_found"
+            }
             ApiError::Application(ApplicationError::WeakPassword { .. }) => "weak_password",
             ApiError::Application(ApplicationError::NotFound) => "not_found",
             ApiError::Application(ApplicationError::PartyNotFound) => "party_not_found",

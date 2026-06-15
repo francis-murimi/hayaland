@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE party_verifications\n            SET status = 'APPROVED',\n                reviewed_by_user_id = $2,\n                reviewed_at = $3,\n                review_notes = COALESCE($4, review_notes),\n                updated_at = $3\n            WHERE id = $1 AND status = 'PENDING'\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "61162746c8f8a53cfc33a9f0bc46ea1856af0b4ea025e8be3bb1a63c75949ea8"
+}

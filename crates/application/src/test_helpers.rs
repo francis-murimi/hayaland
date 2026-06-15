@@ -19,6 +19,7 @@ use domain::entities::{
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
+use domain::entities::{PartyVerification, PartyVerificationStatus, PartyVerificationType};
 #[cfg(test)]
 use domain::errors::DomainError;
 #[cfg(test)]
@@ -26,11 +27,12 @@ use domain::repositories::PartySearchCriteria;
 #[cfg(test)]
 use domain::repositories::{
     AgreementRepository, EmailVerificationRepository, MilestoneRepository, PartyRepository,
-    PasswordResetRepository, ReviewListResult, ReviewRepository, ReviewSearchCriteria,
-    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    PartyVerificationRepository, PasswordResetRepository, ReviewListResult, ReviewRepository,
+    ReviewSearchCriteria, RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 #[cfg(test)]
 use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
+use domain::repositories::{VerificationListFilters, VerificationListResult};
 #[cfg(test)]
 use rust_decimal::Decimal;
 #[cfg(test)]
@@ -1432,4 +1434,254 @@ pub fn test_review(
         None,
         true,
     )
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakePartyVerificationRepo {
+    pub verifications: Mutex<Vec<PartyVerification>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl PartyVerificationRepository for FakePartyVerificationRepo {
+    async fn create(&self, verification: &PartyVerification) -> Result<(), DomainError> {
+        self.verifications
+            .lock()
+            .unwrap()
+            .push(verification.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<PartyVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|v| v.id == id)
+            .cloned())
+    }
+
+    async fn find_active_by_party_and_type(
+        &self,
+        party_id: Uuid,
+        verification_type: PartyVerificationType,
+    ) -> Result<Option<PartyVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|v| {
+                v.party_id == party_id
+                    && v.verification_type == verification_type
+                    && matches!(
+                        v.status,
+                        PartyVerificationStatus::Pending | PartyVerificationStatus::Approved
+                    )
+            })
+            .cloned())
+    }
+
+    async fn list_by_party(&self, party_id: Uuid) -> Result<Vec<PartyVerification>, DomainError> {
+        Ok(self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.party_id == party_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list(
+        &self,
+        filters: &VerificationListFilters,
+    ) -> Result<VerificationListResult, DomainError> {
+        let all: Vec<PartyVerification> = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| v.status.as_str() == s)
+            })
+            .filter(|v| {
+                filters
+                    .verification_type
+                    .as_ref()
+                    .is_none_or(|t| v.verification_type.as_str() == t)
+            })
+            .filter(|v| filters.party_id.is_none_or(|p| v.party_id == p))
+            .cloned()
+            .collect();
+
+        let total = all.len() as i64;
+        let start = filters.offset as usize;
+        let end = (filters.offset + filters.limit) as usize;
+        let paginated = all
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+
+        Ok(VerificationListResult {
+            verifications: paginated,
+            total,
+            limit: filters.limit,
+            offset: filters.offset,
+        })
+    }
+
+    async fn count(&self, filters: &VerificationListFilters) -> Result<i64, DomainError> {
+        let count = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| {
+                filters
+                    .status
+                    .as_ref()
+                    .is_none_or(|s| v.status.as_str() == s)
+            })
+            .filter(|v| {
+                filters
+                    .verification_type
+                    .as_ref()
+                    .is_none_or(|t| v.verification_type.as_str() == t)
+            })
+            .filter(|v| filters.party_id.is_none_or(|p| v.party_id == p))
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn approve(
+        &self,
+        id: Uuid,
+        reviewed_by_user_id: Uuid,
+        review_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        let v = verifications
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or(DomainError::VerificationNotFound)?;
+        if !matches!(v.status, PartyVerificationStatus::Pending) {
+            return Err(DomainError::InvalidVerificationStateTransition {
+                from: v.status.as_str().to_string(),
+                to: "APPROVED".to_string(),
+            });
+        }
+        v.approve(reviewed_by_user_id, review_notes);
+        Ok(())
+    }
+
+    async fn reject(
+        &self,
+        id: Uuid,
+        reviewed_by_user_id: Uuid,
+        rejection_reason: String,
+        review_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        let v = verifications
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or(DomainError::VerificationNotFound)?;
+        if !matches!(v.status, PartyVerificationStatus::Pending) {
+            return Err(DomainError::InvalidVerificationStateTransition {
+                from: v.status.as_str().to_string(),
+                to: "REJECTED".to_string(),
+            });
+        }
+        v.reject(reviewed_by_user_id, rejection_reason, review_notes);
+        Ok(())
+    }
+
+    async fn revoke(
+        &self,
+        id: Uuid,
+        reviewed_by_user_id: Uuid,
+        reason: String,
+        review_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        let v = verifications
+            .iter_mut()
+            .find(|v| v.id == id)
+            .ok_or(DomainError::VerificationNotFound)?;
+        if !matches!(v.status, PartyVerificationStatus::Approved) {
+            return Err(DomainError::InvalidVerificationStateTransition {
+                from: v.status.as_str().to_string(),
+                to: "REVOKED".to_string(),
+            });
+        }
+        v.revoke(reviewed_by_user_id, reason, review_notes);
+        Ok(())
+    }
+
+    async fn sum_approved_points(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let now = time::OffsetDateTime::now_utc();
+        let sum: i32 = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.party_id == party_id)
+            .filter(|v| matches!(v.status, PartyVerificationStatus::Approved))
+            .filter(|v| v.expires_at.is_none_or(|exp| exp > now))
+            .map(|v| v.points)
+            .sum();
+        Ok(sum as i64)
+    }
+
+    async fn count_by_status(&self, party_id: Uuid, status: &str) -> Result<i64, DomainError> {
+        let status = PartyVerificationStatus::try_from(status)?;
+        let count = self
+            .verifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.party_id == party_id && v.status == status)
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn set_provider_reference(
+        &self,
+        id: Uuid,
+        provider_reference: String,
+        provider_payload: Option<serde_json::Value>,
+    ) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        if let Some(v) = verifications.iter_mut().find(|v| v.id == id) {
+            v.provider_reference = Some(provider_reference);
+            v.provider_payload = provider_payload;
+        }
+        Ok(())
+    }
+
+    async fn mark_expired(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut verifications = self.verifications.lock().unwrap();
+        if let Some(v) = verifications.iter_mut().find(|v| v.id == id) {
+            if matches!(v.status, PartyVerificationStatus::Approved) {
+                v.status = PartyVerificationStatus::Expired;
+                v.updated_at = time::OffsetDateTime::now_utc();
+            }
+        }
+        Ok(())
+    }
+
+    async fn update_verification_level(
+        &self,
+        _party_id: Uuid,
+        _verification_level: i32,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
 }
