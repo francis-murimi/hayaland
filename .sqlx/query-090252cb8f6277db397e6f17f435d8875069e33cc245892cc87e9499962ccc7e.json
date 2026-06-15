@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id FROM message_reactions\n            WHERE message_id = $1 AND user_id = $2\n              AND ($3::uuid IS NULL OR party_id = $3)\n              AND reaction_type = $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "message_reactions",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "090252cb8f6277db397e6f17f435d8875069e33cc245892cc87e9499962ccc7e"
+}

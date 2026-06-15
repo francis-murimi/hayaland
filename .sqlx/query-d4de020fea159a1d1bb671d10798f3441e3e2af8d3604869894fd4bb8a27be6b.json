@@ -1,0 +1,113 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT r.id, r.name, r.description, r.room_type, r.created_by_user_id, r.is_deleted, r.created_at, r.updated_at\n            FROM chat_rooms r\n            WHERE r.is_deleted = false\n              AND EXISTS (\n                  SELECT 1 FROM chat_room_memberships m\n                  WHERE m.room_id = r.id\n                    AND (m.user_id = $1 OR m.party_id = ANY($2))\n              )\n            ORDER BY r.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "room_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "room_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_by_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "created_by_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "is_deleted",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "is_deleted"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "chat_rooms",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d4de020fea159a1d1bb671d10798f3441e3e2af8d3604869894fd4bb8a27be6b"
+}

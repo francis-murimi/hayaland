@@ -1,5 +1,6 @@
 pub mod agreements;
 pub mod assign_user_roles;
+pub mod chatrooms;
 pub mod create_user;
 pub mod deactivate_user;
 pub mod deals;
@@ -7,6 +8,7 @@ pub mod forgot_password;
 pub mod get_user;
 pub mod list_users;
 pub mod login;
+pub mod messages;
 pub mod milestones;
 pub mod parties;
 pub mod payments;

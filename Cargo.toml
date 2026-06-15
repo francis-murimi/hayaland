@@ -47,6 +47,10 @@ actix-web = "4.10"
 actix-rt = "2.10"
 tracing-actix-web = "0.7"
 jsonwebtoken = "9"
+actix-web-actors = "4.3"
+
+# Messaging
+aes-gcm = "0.10"
 
 [profile.release]
 strip = true

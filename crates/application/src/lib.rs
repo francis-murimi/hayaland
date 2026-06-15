@@ -1,7 +1,9 @@
 pub mod agreements;
+pub mod chatrooms;
 pub mod deals;
 pub mod email;
 pub mod errors;
+pub mod messages;
 pub mod milestones;
 pub mod parties;
 pub mod password_reset;

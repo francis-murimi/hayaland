@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as count\n            FROM chat_rooms\n            WHERE ($1::bool = true OR is_deleted = false)\n              AND ($2::text IS NULL OR room_type = $2)\n              AND (room_type = 'PUBLIC' OR id = ANY($3))\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Text",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "5ea2bd3d6268e9275a25e5553f3e8dbc1f66610fa58df5c2b530864ef731547c"
+}

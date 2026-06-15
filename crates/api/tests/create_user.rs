@@ -1,6 +1,7 @@
 use actix_web::http::StatusCode;
 use actix_web::{http::header, test, web::Data};
 use api::routes;
+use api::websocket::SessionRegistry;
 use api::AppState;
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
@@ -30,7 +31,7 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
-use application::ports::NoOpTrustScoreRecalculation;
+use application::ports::{EncryptionService, NoOpTrustScoreRecalculation, RealtimePublisher};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -41,6 +42,16 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
+use application::{
+    chatrooms::{
+        CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
+        ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
+    },
+    messages::{
+        AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
+        MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
+    },
+};
 use async_trait::async_trait;
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, DistributionModel,
@@ -49,14 +60,16 @@ use domain::entities::{
     Username,
 };
 use domain::entities::{
-    Party, PartyType, PartyVerification, PartyVerificationStatus, PartyVerificationType,
-    UserPartyMembership,
+    ChatRoom, ChatRoomMemberRole, ChatRoomMembership, Conversation, Message, MessageReaction,
+    MessageRead, Party, PartyType, PartyVerification, PartyVerificationStatus,
+    PartyVerificationType, RecipientType, UserPartyMembership,
 };
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
-    AgreementRepository, DealAggregate, DealListResult, DealRepository, DealSearchCriteria,
-    EmailVerificationRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    AgreementRepository, ChatRoomListQuery, ChatRoomRepository, DealAggregate, DealListResult,
+    DealRepository, DealSearchCriteria, EmailVerificationRepository, MessageListQuery,
+    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
     PasswordResetRepository, ReviewRepository, RoleRepository, TransactionFilters, UserRepository,
     VerificationListFilters, VerificationListResult, WalletRepository,
 };
@@ -64,6 +77,7 @@ use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 static INIT_TRACING: Once = Once::new();
@@ -1632,6 +1646,261 @@ impl PartyVerificationRepository for FakePartyVerificationRepo {
     }
 }
 
+#[derive(Default)]
+struct FakeMessageRepo;
+
+#[async_trait]
+impl MessageRepository for FakeMessageRepo {
+    async fn create_conversation(&self, _conversation: &Conversation) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_conversation_by_id(
+        &self,
+        _id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_direct_user_conversation(
+        &self,
+        _user_a_id: Uuid,
+        _user_b_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_direct_party_conversation(
+        &self,
+        _party_a_id: Uuid,
+        _party_b_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_party_members_conversation(
+        &self,
+        _party_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_deal_conversation(
+        &self,
+        _deal_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_room_conversation(
+        &self,
+        _room_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        unimplemented!()
+    }
+    async fn touch_conversation(
+        &self,
+        _conversation_id: Uuid,
+        _last_message_at: OffsetDateTime,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn create_message(&self, _message: &Message) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_message_by_id(&self, _id: Uuid) -> Result<Option<Message>, DomainError> {
+        unimplemented!()
+    }
+    async fn list_messages(
+        &self,
+        _conversation_id: Uuid,
+        _query: &MessageListQuery,
+    ) -> Result<Vec<domain::repositories::MessageWithMeta>, DomainError> {
+        unimplemented!()
+    }
+    async fn update_message(&self, _message: &Message) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn soft_delete_message(&self, _id: Uuid) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn set_message_pinned(
+        &self,
+        _message_id: Uuid,
+        _is_pinned: bool,
+        _pinned_at: Option<OffsetDateTime>,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn list_pinned_messages(
+        &self,
+        _conversation_id: Uuid,
+    ) -> Result<Vec<domain::repositories::MessageWithMeta>, DomainError> {
+        unimplemented!()
+    }
+    async fn mark_read(&self, _read: &MessageRead) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_read(
+        &self,
+        _message_id: Uuid,
+        _user_id: Uuid,
+    ) -> Result<Option<MessageRead>, DomainError> {
+        unimplemented!()
+    }
+    async fn unread_count_for_user(
+        &self,
+        _user_id: Uuid,
+        _party_id: Option<Uuid>,
+    ) -> Result<i64, DomainError> {
+        unimplemented!()
+    }
+    async fn list_conversations_for_user(
+        &self,
+        _user_id: Uuid,
+        _party_id: Option<Uuid>,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<domain::repositories::ConversationSummary>, DomainError> {
+        unimplemented!()
+    }
+    async fn toggle_reaction(
+        &self,
+        _reaction: &MessageReaction,
+    ) -> Result<Option<MessageReaction>, DomainError> {
+        unimplemented!()
+    }
+    async fn list_reactions_for_message(
+        &self,
+        _message_id: Uuid,
+    ) -> Result<Vec<MessageReaction>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_messages_by_recipient(
+        &self,
+        _recipient_type: RecipientType,
+        _recipient_id: Uuid,
+    ) -> Result<i64, DomainError> {
+        unimplemented!()
+    }
+}
+
+#[derive(Default)]
+struct FakeChatRoomRepo;
+
+#[async_trait]
+impl ChatRoomRepository for FakeChatRoomRepo {
+    async fn create_room(&self, _room: &ChatRoom) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_room_by_id(&self, _id: Uuid) -> Result<Option<ChatRoom>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_room_by_name(&self, _name: &str) -> Result<Option<ChatRoom>, DomainError> {
+        unimplemented!()
+    }
+    async fn update_room(&self, _room: &ChatRoom) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn soft_delete_room(&self, _id: Uuid) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn list_rooms(
+        &self,
+        _query: &ChatRoomListQuery,
+        _visible_room_ids: &[Uuid],
+    ) -> Result<Vec<ChatRoom>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_rooms(
+        &self,
+        _query: &ChatRoomListQuery,
+        _visible_room_ids: &[Uuid],
+    ) -> Result<i64, DomainError> {
+        unimplemented!()
+    }
+    async fn add_membership(&self, _membership: &ChatRoomMembership) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn remove_membership(&self, _membership_id: Uuid) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_membership_by_id(
+        &self,
+        _membership_id: Uuid,
+    ) -> Result<Option<ChatRoomMembership>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_membership_for_user(
+        &self,
+        _room_id: Uuid,
+        _user_id: Uuid,
+    ) -> Result<Option<ChatRoomMembership>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_membership_for_party(
+        &self,
+        _room_id: Uuid,
+        _party_id: Uuid,
+    ) -> Result<Option<ChatRoomMembership>, DomainError> {
+        unimplemented!()
+    }
+    async fn update_membership_role(
+        &self,
+        _membership_id: Uuid,
+        _role: ChatRoomMemberRole,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn list_memberships_for_room(
+        &self,
+        _room_id: Uuid,
+    ) -> Result<Vec<ChatRoomMembership>, DomainError> {
+        unimplemented!()
+    }
+    async fn list_room_ids_for_user(
+        &self,
+        _user_id: Uuid,
+        _party_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, DomainError> {
+        unimplemented!()
+    }
+    async fn is_user_in_room(
+        &self,
+        _room_id: Uuid,
+        _user_id: Uuid,
+        _party_ids: &[Uuid],
+    ) -> Result<bool, DomainError> {
+        unimplemented!()
+    }
+    async fn is_party_in_room(
+        &self,
+        _room_id: Uuid,
+        _party_ids: &[Uuid],
+    ) -> Result<bool, DomainError> {
+        unimplemented!()
+    }
+    async fn list_rooms_for_user(
+        &self,
+        _user_id: Uuid,
+        _party_ids: &[Uuid],
+    ) -> Result<Vec<ChatRoom>, DomainError> {
+        unimplemented!()
+    }
+}
+
+struct FakeEncryptionService;
+
+#[async_trait]
+impl EncryptionService for FakeEncryptionService {
+    async fn encrypt(
+        &self,
+        plaintext: &str,
+    ) -> Result<String, application::errors::ApplicationError> {
+        Ok(plaintext.to_string())
+    }
+    async fn decrypt(
+        &self,
+        ciphertext: &str,
+    ) -> Result<String, application::errors::ApplicationError> {
+        Ok(ciphertext.to_string())
+    }
+}
+
 struct TestFixtures {
     state: AppState,
     repo: Arc<FakeRepo>,
@@ -1700,6 +1969,11 @@ fn test_fixtures() -> TestFixtures {
     let review_repo: Arc<dyn ReviewRepository> = Arc::new(FakeReviewRepo::default());
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(FakePartyVerificationRepo::default());
+    let message_repo: Arc<dyn MessageRepository> = Arc::new(FakeMessageRepo::default());
+    let chat_room_repo: Arc<dyn ChatRoomRepository> = Arc::new(FakeChatRoomRepo::default());
+    let encryption_service: Arc<dyn EncryptionService> = Arc::new(FakeEncryptionService);
+    let realtime_publisher: Arc<dyn RealtimePublisher> =
+        Arc::new(application::ports::NoOpRealtimePublisher);
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -1931,6 +2205,91 @@ fn test_fixtures() -> TestFixtures {
         list_admin_verifications: application::verifications::ListAdminVerifications::new(
             party_verification_repo.clone(),
         ),
+        send_message: SendMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        edit_message: EditMessage::new(
+            message_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        delete_message: SoftDeleteMessage::new(
+            message_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_message: GetMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        list_messages: ListMessages::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        list_conversations: ListConversations::new(message_repo.clone()),
+        mark_read: MarkRead::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        react: ToggleReaction::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_unread_count: GetUnreadCount::new(message_repo.clone()),
+        pin_message: PinMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        unpin_message: UnpinMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        admin_broadcast: AdminBroadcast::new(
+            message_repo.clone(),
+            repo.clone(),
+            party_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        create_chat_room: CreateChatRoom::new(chat_room_repo.clone(), message_repo.clone()),
+        update_chat_room: UpdateChatRoom::new(chat_room_repo.clone()),
+        delete_chat_room: SoftDeleteChatRoom::new(
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_chat_room: GetChatRoom::new(chat_room_repo.clone()),
+        list_chat_rooms: ListChatRooms::new(chat_room_repo.clone(), party_repo.clone()),
+        join_chat_room: JoinChatRoom::new(chat_room_repo.clone(), party_repo.clone()),
+        leave_chat_room: LeaveChatRoom::new(chat_room_repo.clone()),
+        manage_chat_room_membership: ManageChatRoomMembership::new(chat_room_repo.clone()),
+        encryption_service,
+        realtime_publisher,
+        message_repository: message_repo,
+        chat_room_repository: chat_room_repo,
+        websocket_registry: SessionRegistry::new(),
         token_validator: token,
     };
 

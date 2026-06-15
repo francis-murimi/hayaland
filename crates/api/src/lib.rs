@@ -3,6 +3,7 @@ pub mod errors;
 pub mod handlers;
 pub mod middleware;
 pub mod routes;
+pub mod websocket;
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
@@ -49,6 +50,18 @@ use application::verifications::{
     ApproveVerification, GetVerificationStatus, ListAdminVerifications, ListPartyVerifications,
     RejectVerification, RevokeVerification, SubmitVerification,
 };
+use application::{
+    chatrooms::{
+        CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
+        ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
+    },
+    messages::{
+        AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
+        MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
+    },
+    ports::{EncryptionService, RealtimePublisher},
+};
+use domain::repositories::{ChatRoomRepository, MessageRepository};
 use std::net::TcpListener;
 use std::sync::Arc;
 use tracing_actix_web::TracingLogger;
@@ -133,6 +146,31 @@ pub struct AppState {
     pub reject_verification: RejectVerification,
     pub revoke_verification: RevokeVerification,
     pub list_admin_verifications: ListAdminVerifications,
+    pub send_message: SendMessage,
+    pub edit_message: EditMessage,
+    pub delete_message: SoftDeleteMessage,
+    pub get_message: GetMessage,
+    pub list_messages: ListMessages,
+    pub list_conversations: ListConversations,
+    pub mark_read: MarkRead,
+    pub react: ToggleReaction,
+    pub get_unread_count: GetUnreadCount,
+    pub pin_message: PinMessage,
+    pub unpin_message: UnpinMessage,
+    pub admin_broadcast: AdminBroadcast,
+    pub create_chat_room: CreateChatRoom,
+    pub update_chat_room: UpdateChatRoom,
+    pub delete_chat_room: SoftDeleteChatRoom,
+    pub get_chat_room: GetChatRoom,
+    pub list_chat_rooms: ListChatRooms,
+    pub join_chat_room: JoinChatRoom,
+    pub leave_chat_room: LeaveChatRoom,
+    pub manage_chat_room_membership: ManageChatRoomMembership,
+    pub encryption_service: Arc<dyn EncryptionService>,
+    pub realtime_publisher: Arc<dyn RealtimePublisher>,
+    pub message_repository: Arc<dyn MessageRepository>,
+    pub chat_room_repository: Arc<dyn ChatRoomRepository>,
+    pub websocket_registry: crate::websocket::SessionRegistry,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

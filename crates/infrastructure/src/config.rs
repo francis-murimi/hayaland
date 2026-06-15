@@ -18,6 +18,8 @@ pub struct Settings {
     pub deal_timeouts: DealTimeoutSettings,
     #[serde(default)]
     pub deal_timeout_worker: DealTimeoutWorkerSettings,
+    #[serde(default)]
+    pub messages: MessagesSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -114,6 +116,27 @@ fn default_email_retry_base_delay_ms() -> u64 {
 
 fn default_email_retry_max_delay_ms() -> u64 {
     5000
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct MessagesSettings {
+    #[serde(default)]
+    pub encryption_key: SecretString,
+    #[serde(default = "default_max_pinned_per_conversation")]
+    pub max_pinned_per_conversation: i32,
+}
+
+impl Default for MessagesSettings {
+    fn default() -> Self {
+        Self {
+            encryption_key: SecretString::from(""),
+            max_pinned_per_conversation: default_max_pinned_per_conversation(),
+        }
+    }
+}
+
+fn default_max_pinned_per_conversation() -> i32 {
+    5
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -275,6 +298,7 @@ mod tests {
         assert_eq!(default_email_max_retries(), 3);
         assert_eq!(default_email_retry_base_delay_ms(), 500);
         assert_eq!(default_email_retry_max_delay_ms(), 5000);
+        assert_eq!(default_max_pinned_per_conversation(), 5);
     }
 
     #[test]
@@ -323,6 +347,7 @@ mod tests {
             validation: Default::default(),
             deal_timeouts: Default::default(),
             deal_timeout_worker: Default::default(),
+            messages: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();
@@ -355,6 +380,7 @@ mod tests {
             validation: Default::default(),
             deal_timeouts: Default::default(),
             deal_timeout_worker: Default::default(),
+            messages: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();

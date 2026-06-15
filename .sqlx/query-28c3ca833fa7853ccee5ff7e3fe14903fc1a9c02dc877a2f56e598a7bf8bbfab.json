@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE chat_rooms\n            SET name = $1,\n                description = $2,\n                room_type = $3,\n                created_by_user_id = $4,\n                is_deleted = $5,\n                created_at = $6,\n                updated_at = $7\n            WHERE id = $8\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "28c3ca833fa7853ccee5ff7e3fe14903fc1a9c02dc877a2f56e598a7bf8bbfab"
+}

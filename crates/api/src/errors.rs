@@ -25,6 +25,9 @@ impl ResponseError for ApiError {
         match self {
             ApiError::Application(ApplicationError::Validation(_))
             | ApiError::Application(ApplicationError::WeakPassword { .. })
+            | ApiError::Application(ApplicationError::InvalidMessageContent(_))
+            | ApiError::Application(ApplicationError::InvalidRecipient(_))
+            | ApiError::Application(ApplicationError::InvalidReactionType(_))
             | ApiError::Validation(_) => StatusCode::BAD_REQUEST,
             ApiError::Application(ApplicationError::DuplicateEmail)
             | ApiError::Application(ApplicationError::DuplicateUsername)
@@ -39,7 +42,11 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::VerificationNotFound)
             | ApiError::Application(ApplicationError::RoleNotFound)
             | ApiError::Application(ApplicationError::DealNotFound)
-            | ApiError::Application(ApplicationError::DealParticipationNotFound) => {
+            | ApiError::Application(ApplicationError::DealParticipationNotFound)
+            | ApiError::Application(ApplicationError::MessageNotFound)
+            | ApiError::Application(ApplicationError::ConversationNotFound)
+            | ApiError::Application(ApplicationError::ChatRoomNotFound)
+            | ApiError::Application(ApplicationError::ChatRoomMembershipNotFound) => {
                 StatusCode::NOT_FOUND
             }
             ApiError::Application(ApplicationError::InvalidCredentials)
@@ -49,12 +56,18 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::CannotDeactivateAdmin)
             | ApiError::Application(ApplicationError::CannotRemoveFirstAdmin)
             | ApiError::Application(ApplicationError::AlreadyVerified)
+            | ApiError::Application(ApplicationError::CannotEditMessage)
+            | ApiError::Application(ApplicationError::CannotDeleteMessage)
+            | ApiError::Application(ApplicationError::CannotManageChatRoom)
             | ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::PartyHasActiveDeals)
             | ApiError::Application(ApplicationError::PartyRoleHasActiveDeals)
             | ApiError::Application(ApplicationError::InvalidStateTransition { .. })
             | ApiError::Application(ApplicationError::InvalidValueDistribution { .. })
-            | ApiError::Application(ApplicationError::WinWinWinValidationFailed { .. }) => {
+            | ApiError::Application(ApplicationError::WinWinWinValidationFailed { .. })
+            | ApiError::Application(ApplicationError::ChatRoomAlreadyExists)
+            | ApiError::Application(ApplicationError::AlreadyChatRoomMember)
+            | ApiError::Application(ApplicationError::ReplyNotInSameContext) => {
                 StatusCode::CONFLICT
             }
             ApiError::Application(ApplicationError::DealAccessDenied) => StatusCode::FORBIDDEN,
@@ -80,6 +93,12 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::DuplicateVerification) => {
                 "duplicate_verification"
             }
+            ApiError::Application(ApplicationError::ChatRoomAlreadyExists) => {
+                "chat_room_already_exists"
+            }
+            ApiError::Application(ApplicationError::AlreadyChatRoomMember) => {
+                "already_chat_room_member"
+            }
             ApiError::Application(ApplicationError::VerificationNotFound) => {
                 "verification_not_found"
             }
@@ -87,6 +106,14 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::NotFound) => "not_found",
             ApiError::Application(ApplicationError::PartyNotFound) => "party_not_found",
             ApiError::Application(ApplicationError::RoleNotFound) => "role_not_found",
+            ApiError::Application(ApplicationError::MessageNotFound) => "message_not_found",
+            ApiError::Application(ApplicationError::ConversationNotFound) => {
+                "conversation_not_found"
+            }
+            ApiError::Application(ApplicationError::ChatRoomNotFound) => "chat_room_not_found",
+            ApiError::Application(ApplicationError::ChatRoomMembershipNotFound) => {
+                "chat_room_membership_not_found"
+            }
             ApiError::Application(ApplicationError::InvalidCredentials) => "invalid_credentials",
             ApiError::Application(ApplicationError::AccountInactive) => "account_inactive",
             ApiError::Application(ApplicationError::Unauthorized) => "unauthorized",
@@ -103,6 +130,21 @@ impl ResponseError for ApiError {
                 "invalid_or_expired_token"
             }
             ApiError::Application(ApplicationError::AlreadyVerified) => "already_verified",
+            ApiError::Application(ApplicationError::CannotEditMessage) => "cannot_edit_message",
+            ApiError::Application(ApplicationError::CannotDeleteMessage) => "cannot_delete_message",
+            ApiError::Application(ApplicationError::CannotManageChatRoom) => {
+                "cannot_manage_chat_room"
+            }
+            ApiError::Application(ApplicationError::ReplyNotInSameContext) => {
+                "reply_not_in_same_context"
+            }
+            ApiError::Application(ApplicationError::InvalidMessageContent(_)) => {
+                "invalid_message_content"
+            }
+            ApiError::Application(ApplicationError::InvalidRecipient(_)) => "invalid_recipient",
+            ApiError::Application(ApplicationError::InvalidReactionType(_)) => {
+                "invalid_reaction_type"
+            }
             ApiError::Application(ApplicationError::PartyHasActiveDeals) => {
                 "party_has_active_deals"
             }

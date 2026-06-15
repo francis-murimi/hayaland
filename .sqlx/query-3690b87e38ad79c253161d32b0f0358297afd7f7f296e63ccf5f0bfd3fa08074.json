@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as count\n            FROM messages m\n            JOIN conversations c ON c.id = m.conversation_id\n            WHERE m.is_deleted = false\n              AND m.sender_user_id != $1\n              AND NOT EXISTS (\n                  SELECT 1 FROM message_reads r\n                  WHERE r.message_id = m.id AND r.user_id = $1\n              )\n              AND (\n                  (c.conversation_type = 'DIRECT_USER' AND (c.user_a_id = $1 OR c.user_b_id = $1))\n                  OR (c.conversation_type = 'DIRECT_PARTY'\n                      AND $2::uuid IS NOT NULL\n                      AND (c.party_a_id = $2 OR c.party_b_id = $2))\n                  OR (c.conversation_type = 'PARTY_MEMBERS'\n                      AND $2::uuid IS NOT NULL\n                      AND c.party_id = $2)\n                  OR (c.conversation_type = 'DEAL' AND EXISTS (\n                      SELECT 1 FROM deal_participations dp\n                      JOIN user_party_memberships upm ON upm.party_id = dp.party_id\n                      WHERE dp.deal_id = c.deal_id AND upm.user_id = $1\n                  ))\n                  OR (c.conversation_type = 'ROOM' AND EXISTS (\n                      SELECT 1 FROM chat_room_memberships crm\n                      WHERE crm.room_id = c.room_id\n                        AND (crm.user_id = $1 OR EXISTS (\n                            SELECT 1 FROM user_party_memberships upm\n                            WHERE upm.party_id = crm.party_id AND upm.user_id = $1\n                        ))\n                  ))\n                  OR (c.conversation_type = 'ADMIN_BROADCAST' AND (\n                      m.recipient_user_id = $1\n                      OR m.recipient_party_id IN (\n                          SELECT party_id FROM user_party_memberships WHERE user_id = $1\n                      )\n                  ))\n              )\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3690b87e38ad79c253161d32b0f0358297afd7f7f296e63ccf5f0bfd3fa08074"
+}

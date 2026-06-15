@@ -1,6 +1,7 @@
 use actix_web::http::header;
 use actix_web::{http::StatusCode, test, web::Data, App};
 use api::routes;
+use api::websocket::SessionRegistry;
 use api::AppState;
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
@@ -28,7 +29,7 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
-use application::ports::NoOpTrustScoreRecalculation;
+use application::ports::{EncryptionService, NoOpTrustScoreRecalculation, RealtimePublisher};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -39,22 +40,34 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
+use application::{
+    chatrooms::{
+        CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
+        ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
+    },
+    messages::{
+        AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
+        MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
+    },
+};
 use async_trait::async_trait;
 
 use domain::repositories::{
-    AgreementRepository, DealRepository, EmailVerificationRepository, MilestoneRepository,
-    PartyRepository, PartyVerificationRepository, PasswordResetRepository, ReviewRepository,
-    RoleRepository, UserRepository, WalletRepository,
+    AgreementRepository, ChatRoomRepository, DealRepository, EmailVerificationRepository,
+    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, ReviewRepository, RoleRepository, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use infrastructure::{
+    realtime::InMemoryRealtimePublisher,
     repositories::{
-        PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
+        PostgresAgreementRepository, PostgresChatRoomRepository, PostgresDealRepository,
+        PostgresEmailVerificationRepository, PostgresMessageRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
         PostgresUserRepository, PostgresWalletRepository,
     },
-    security::{Argon2PasswordHasher, JwtTokenService},
+    security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
 };
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -98,6 +111,10 @@ async fn build_state(pool: PgPool) -> AppState {
         Arc::new(PostgresMilestoneRepository::new(pool.clone()));
     let review_repo: Arc<dyn ReviewRepository> =
         Arc::new(PostgresReviewRepository::new(pool.clone()));
+    let message_repo: Arc<dyn MessageRepository> =
+        Arc::new(PostgresMessageRepository::new(pool.clone()));
+    let chat_room_repo: Arc<dyn ChatRoomRepository> =
+        Arc::new(PostgresChatRoomRepository::new(pool.clone()));
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(PostgresPartyVerificationRepository::new(pool));
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher);
@@ -107,6 +124,10 @@ async fn build_state(pool: PgPool) -> AppState {
     let token_generator: Arc<dyn TokenGenerator> = Arc::new(TestTokenService {
         secret: "test-secret".to_string(),
     });
+    const TEST_MESSAGE_KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+    let encryption_service: Arc<dyn EncryptionService> =
+        Arc::new(MessageEncryptionService::from_base64(TEST_MESSAGE_KEY).unwrap());
+    let realtime_publisher: Arc<dyn RealtimePublisher> = Arc::new(InMemoryRealtimePublisher::new());
 
     AppState {
         create_user: CreateUser::new(
@@ -334,6 +355,91 @@ async fn build_state(pool: PgPool) -> AppState {
         list_admin_verifications: application::verifications::ListAdminVerifications::new(
             party_verification_repo.clone(),
         ),
+        send_message: SendMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        edit_message: EditMessage::new(
+            message_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        delete_message: SoftDeleteMessage::new(
+            message_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_message: GetMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        list_messages: ListMessages::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        list_conversations: ListConversations::new(message_repo.clone()),
+        mark_read: MarkRead::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        react: ToggleReaction::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_unread_count: GetUnreadCount::new(message_repo.clone()),
+        pin_message: PinMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        unpin_message: UnpinMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        admin_broadcast: AdminBroadcast::new(
+            message_repo.clone(),
+            repo.clone(),
+            party_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        create_chat_room: CreateChatRoom::new(chat_room_repo.clone(), message_repo.clone()),
+        update_chat_room: UpdateChatRoom::new(chat_room_repo.clone()),
+        delete_chat_room: SoftDeleteChatRoom::new(
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_chat_room: GetChatRoom::new(chat_room_repo.clone()),
+        list_chat_rooms: ListChatRooms::new(chat_room_repo.clone(), party_repo.clone()),
+        join_chat_room: JoinChatRoom::new(chat_room_repo.clone(), party_repo.clone()),
+        leave_chat_room: LeaveChatRoom::new(chat_room_repo.clone()),
+        manage_chat_room_membership: ManageChatRoomMembership::new(chat_room_repo.clone()),
+        encryption_service,
+        realtime_publisher,
+        message_repository: message_repo,
+        chat_room_repository: chat_room_repo,
+        websocket_registry: SessionRegistry::new(),
         token_validator: token_service,
     }
 }

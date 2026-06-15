@@ -1685,3 +1685,640 @@ impl PartyVerificationRepository for FakePartyVerificationRepo {
         Ok(())
     }
 }
+
+#[cfg(test)]
+use crate::ports::{EncryptionService, MessageEvent, RealtimePublisher};
+#[cfg(test)]
+use domain::entities::{
+    ChatRoom, ChatRoomMemberRole, ChatRoomMembership, ChatRoomType, Conversation, ConversationType,
+    Message, MessageReaction, MessageRead, ReactionType, RecipientType,
+};
+#[cfg(test)]
+use domain::repositories::{
+    ChatRoomListQuery, ChatRoomRepository, ConversationSummary, MessageListQuery,
+    MessageRepository, MessageWithMeta,
+};
+
+#[cfg(test)]
+pub struct FakeEncryptionService;
+
+#[cfg(test)]
+#[async_trait]
+impl EncryptionService for FakeEncryptionService {
+    async fn encrypt(&self, plaintext: &str) -> Result<String, ApplicationError> {
+        Ok(format!("enc:{plaintext}"))
+    }
+
+    async fn decrypt(&self, ciphertext: &str) -> Result<String, ApplicationError> {
+        Ok(ciphertext
+            .strip_prefix("enc:")
+            .unwrap_or(ciphertext)
+            .to_string())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct RecordingPublisher {
+    pub events: Mutex<Vec<MessageEvent>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl RealtimePublisher for RecordingPublisher {
+    async fn publish(&self, event: MessageEvent) -> Result<(), ApplicationError> {
+        self.events.lock().unwrap().push(event);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeMessageRepo {
+    pub conversations: Mutex<HashMap<Uuid, Conversation>>,
+    pub messages: Mutex<HashMap<Uuid, Message>>,
+    pub reads: Mutex<HashMap<(Uuid, Uuid), MessageRead>>,
+    pub reactions: Mutex<Vec<MessageReaction>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl MessageRepository for FakeMessageRepo {
+    async fn create_conversation(&self, conversation: &Conversation) -> Result<(), DomainError> {
+        self.conversations
+            .lock()
+            .unwrap()
+            .insert(conversation.id, conversation.clone());
+        Ok(())
+    }
+
+    async fn find_conversation_by_id(&self, id: Uuid) -> Result<Option<Conversation>, DomainError> {
+        Ok(self.conversations.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn find_direct_user_conversation(
+        &self,
+        user_a_id: Uuid,
+        user_b_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        Ok(self
+            .conversations
+            .lock()
+            .unwrap()
+            .values()
+            .find(|c| {
+                c.conversation_type == ConversationType::DirectUser
+                    && ((c.user_a_id == Some(user_a_id) && c.user_b_id == Some(user_b_id))
+                        || (c.user_a_id == Some(user_b_id) && c.user_b_id == Some(user_a_id)))
+            })
+            .cloned())
+    }
+
+    async fn find_direct_party_conversation(
+        &self,
+        party_a_id: Uuid,
+        party_b_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        Ok(self
+            .conversations
+            .lock()
+            .unwrap()
+            .values()
+            .find(|c| {
+                c.conversation_type == ConversationType::DirectParty
+                    && ((c.party_a_id == Some(party_a_id) && c.party_b_id == Some(party_b_id))
+                        || (c.party_a_id == Some(party_b_id) && c.party_b_id == Some(party_a_id)))
+            })
+            .cloned())
+    }
+
+    async fn find_party_members_conversation(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        Ok(self
+            .conversations
+            .lock()
+            .unwrap()
+            .values()
+            .find(|c| {
+                c.conversation_type == ConversationType::PartyMembers
+                    && c.party_id == Some(party_id)
+            })
+            .cloned())
+    }
+
+    async fn find_deal_conversation(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        Ok(self
+            .conversations
+            .lock()
+            .unwrap()
+            .values()
+            .find(|c| c.conversation_type == ConversationType::Deal && c.deal_id == Some(deal_id))
+            .cloned())
+    }
+
+    async fn find_room_conversation(
+        &self,
+        room_id: Uuid,
+    ) -> Result<Option<Conversation>, DomainError> {
+        Ok(self
+            .conversations
+            .lock()
+            .unwrap()
+            .values()
+            .find(|c| c.conversation_type == ConversationType::Room && c.room_id == Some(room_id))
+            .cloned())
+    }
+
+    async fn touch_conversation(
+        &self,
+        conversation_id: Uuid,
+        last_message_at: time::OffsetDateTime,
+    ) -> Result<(), DomainError> {
+        if let Some(c) = self.conversations.lock().unwrap().get_mut(&conversation_id) {
+            c.last_message_at = last_message_at;
+        }
+        Ok(())
+    }
+
+    async fn create_message(&self, message: &Message) -> Result<(), DomainError> {
+        self.messages
+            .lock()
+            .unwrap()
+            .insert(message.id, message.clone());
+        Ok(())
+    }
+
+    async fn find_message_by_id(&self, id: Uuid) -> Result<Option<Message>, DomainError> {
+        Ok(self.messages.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn list_messages(
+        &self,
+        conversation_id: Uuid,
+        query: &MessageListQuery,
+    ) -> Result<Vec<MessageWithMeta>, DomainError> {
+        let before = query
+            .before_id
+            .and_then(|id| self.messages.lock().unwrap().get(&id).map(|m| m.created_at));
+        let mut msgs: Vec<Message> = self
+            .messages
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|m| m.conversation_id == conversation_id)
+            .filter(|m| before.is_none_or(|t| m.created_at < t))
+            .cloned()
+            .collect();
+        msgs.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        let limited: Vec<Message> = msgs.into_iter().take(query.limit as usize).collect();
+        let reactions = self.reactions.lock().unwrap();
+        let result: Vec<MessageWithMeta> = limited
+            .into_iter()
+            .map(|m| {
+                let likes = reactions
+                    .iter()
+                    .filter(|r| r.message_id == m.id && r.reaction_type == ReactionType::Like)
+                    .count() as i64;
+                let dislikes = reactions
+                    .iter()
+                    .filter(|r| r.message_id == m.id && r.reaction_type == ReactionType::Dislike)
+                    .count() as i64;
+                let reads = self
+                    .reads
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .filter(|r| r.message_id == m.id)
+                    .count() as i64;
+                MessageWithMeta {
+                    message: m,
+                    read_count: reads,
+                    likes,
+                    dislikes,
+                    user_reaction: None,
+                }
+            })
+            .collect();
+        Ok(result)
+    }
+
+    async fn update_message(&self, message: &Message) -> Result<(), DomainError> {
+        self.messages
+            .lock()
+            .unwrap()
+            .insert(message.id, message.clone());
+        Ok(())
+    }
+
+    async fn soft_delete_message(&self, id: Uuid) -> Result<(), DomainError> {
+        if let Some(m) = self.messages.lock().unwrap().get_mut(&id) {
+            m.is_deleted = true;
+        }
+        Ok(())
+    }
+
+    async fn set_message_pinned(
+        &self,
+        message_id: Uuid,
+        is_pinned: bool,
+        pinned_at: Option<time::OffsetDateTime>,
+    ) -> Result<(), DomainError> {
+        if let Some(m) = self.messages.lock().unwrap().get_mut(&message_id) {
+            m.is_pinned = is_pinned;
+            m.pinned_at = pinned_at;
+        }
+        Ok(())
+    }
+
+    async fn list_pinned_messages(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<Vec<MessageWithMeta>, DomainError> {
+        self.list_messages(
+            conversation_id,
+            &MessageListQuery {
+                before_id: None,
+                limit: i64::MAX,
+            },
+        )
+        .await
+        .map(|v| v.into_iter().filter(|m| m.message.is_pinned).collect())
+    }
+
+    async fn mark_read(&self, read: &MessageRead) -> Result<(), DomainError> {
+        self.reads
+            .lock()
+            .unwrap()
+            .entry((read.message_id, read.user_id))
+            .or_insert_with(|| read.clone());
+        Ok(())
+    }
+
+    async fn find_read(
+        &self,
+        message_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<MessageRead>, DomainError> {
+        Ok(self
+            .reads
+            .lock()
+            .unwrap()
+            .get(&(message_id, user_id))
+            .cloned())
+    }
+
+    async fn unread_count_for_user(
+        &self,
+        user_id: Uuid,
+        _party_id: Option<Uuid>,
+    ) -> Result<i64, DomainError> {
+        let reads = self.reads.lock().unwrap();
+        let count = self
+            .messages
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|m| m.sender_user_id != user_id && !m.is_deleted)
+            .filter(|m| !reads.contains_key(&(m.id, user_id)))
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn list_conversations_for_user(
+        &self,
+        user_id: Uuid,
+        party_id: Option<Uuid>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ConversationSummary>, DomainError> {
+        let all: Vec<Conversation> = self
+            .conversations
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|c| {
+                c.conversation_type == ConversationType::DirectUser
+                    && (c.user_a_id == Some(user_id) || c.user_b_id == Some(user_id))
+                    || c.conversation_type == ConversationType::DirectParty
+                        && (c.party_a_id == party_id || c.party_b_id == party_id)
+                    || c.conversation_type == ConversationType::PartyMembers
+                        && c.party_id == party_id
+                    || c.conversation_type == ConversationType::Deal
+                    || c.conversation_type == ConversationType::Room
+                    || c.conversation_type == ConversationType::AdminBroadcast
+            })
+            .cloned()
+            .collect();
+        let mut sorted = all;
+        sorted.sort_by(|a, b| b.last_message_at.cmp(&a.last_message_at));
+        let reads = self.reads.lock().unwrap();
+        let msgs = self.messages.lock().unwrap();
+        let summaries: Vec<ConversationSummary> = sorted
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .map(|c| {
+                let unread = msgs
+                    .values()
+                    .filter(|m| m.conversation_id == c.id && m.sender_user_id != user_id)
+                    .filter(|m| !reads.contains_key(&(m.id, user_id)))
+                    .count() as i64;
+                ConversationSummary {
+                    conversation: c,
+                    unread_count: unread,
+                }
+            })
+            .collect();
+        Ok(summaries)
+    }
+
+    async fn toggle_reaction(
+        &self,
+        reaction: &MessageReaction,
+    ) -> Result<Option<MessageReaction>, DomainError> {
+        let mut reactions = self.reactions.lock().unwrap();
+        let key = (
+            reaction.message_id,
+            reaction.user_id,
+            reaction.party_id,
+            reaction.reaction_type,
+        );
+        if let Some(pos) = reactions
+            .iter()
+            .position(|r| (r.message_id, r.user_id, r.party_id, r.reaction_type) == key)
+        {
+            reactions.remove(pos);
+            Ok(None)
+        } else {
+            reactions.push(reaction.clone());
+            Ok(Some(reaction.clone()))
+        }
+    }
+
+    async fn list_reactions_for_message(
+        &self,
+        message_id: Uuid,
+    ) -> Result<Vec<MessageReaction>, DomainError> {
+        Ok(self
+            .reactions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.message_id == message_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn count_messages_by_recipient(
+        &self,
+        recipient_type: RecipientType,
+        recipient_id: Uuid,
+    ) -> Result<i64, DomainError> {
+        let count = self
+            .messages
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|m| {
+                m.recipient_type == recipient_type
+                    && match recipient_type {
+                        RecipientType::User => m.recipient_user_id == Some(recipient_id),
+                        RecipientType::Party => m.recipient_party_id == Some(recipient_id),
+                        RecipientType::Deal => m.recipient_deal_id == Some(recipient_id),
+                        RecipientType::Room => m.recipient_room_id == Some(recipient_id),
+                        _ => false,
+                    }
+            })
+            .count() as i64;
+        Ok(count)
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeChatRoomRepo {
+    pub rooms: Mutex<HashMap<Uuid, ChatRoom>>,
+    pub memberships: Mutex<Vec<ChatRoomMembership>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl ChatRoomRepository for FakeChatRoomRepo {
+    async fn create_room(&self, room: &ChatRoom) -> Result<(), DomainError> {
+        self.rooms.lock().unwrap().insert(room.id, room.clone());
+        Ok(())
+    }
+
+    async fn find_room_by_id(&self, id: Uuid) -> Result<Option<ChatRoom>, DomainError> {
+        Ok(self.rooms.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn find_room_by_name(&self, name: &str) -> Result<Option<ChatRoom>, DomainError> {
+        Ok(self
+            .rooms
+            .lock()
+            .unwrap()
+            .values()
+            .find(|r| r.name.as_str() == name)
+            .cloned())
+    }
+
+    async fn update_room(&self, room: &ChatRoom) -> Result<(), DomainError> {
+        self.rooms.lock().unwrap().insert(room.id, room.clone());
+        Ok(())
+    }
+
+    async fn soft_delete_room(&self, id: Uuid) -> Result<(), DomainError> {
+        if let Some(r) = self.rooms.lock().unwrap().get_mut(&id) {
+            r.soft_delete();
+        }
+        Ok(())
+    }
+
+    async fn list_rooms(
+        &self,
+        query: &ChatRoomListQuery,
+        visible_room_ids: &[Uuid],
+    ) -> Result<Vec<ChatRoom>, DomainError> {
+        let visible: std::collections::HashSet<Uuid> = visible_room_ids.iter().copied().collect();
+        let mut rooms: Vec<ChatRoom> = self
+            .rooms
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| query.include_deleted || !r.is_deleted)
+            .filter(|r| query.room_type.is_none_or(|t| r.room_type == t))
+            .filter(|r| r.room_type == ChatRoomType::Public || visible.contains(&r.id))
+            .cloned()
+            .collect();
+        rooms.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(rooms
+            .into_iter()
+            .skip(query.offset as usize)
+            .take(query.limit as usize)
+            .collect())
+    }
+
+    async fn count_rooms(
+        &self,
+        query: &ChatRoomListQuery,
+        visible_room_ids: &[Uuid],
+    ) -> Result<i64, DomainError> {
+        let list = self.list_rooms(query, visible_room_ids).await?;
+        Ok(list.len() as i64)
+    }
+
+    async fn add_membership(&self, membership: &ChatRoomMembership) -> Result<(), DomainError> {
+        self.memberships.lock().unwrap().push(membership.clone());
+        Ok(())
+    }
+
+    async fn remove_membership(&self, membership_id: Uuid) -> Result<(), DomainError> {
+        self.memberships
+            .lock()
+            .unwrap()
+            .retain(|m| m.id != membership_id);
+        Ok(())
+    }
+
+    async fn find_membership_by_id(
+        &self,
+        membership_id: Uuid,
+    ) -> Result<Option<ChatRoomMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.id == membership_id)
+            .cloned())
+    }
+
+    async fn find_membership_for_user(
+        &self,
+        room_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<ChatRoomMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.room_id == room_id && m.user_id == Some(user_id))
+            .cloned())
+    }
+
+    async fn find_membership_for_party(
+        &self,
+        room_id: Uuid,
+        party_id: Uuid,
+    ) -> Result<Option<ChatRoomMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.room_id == room_id && m.party_id == Some(party_id))
+            .cloned())
+    }
+
+    async fn update_membership_role(
+        &self,
+        membership_id: Uuid,
+        role: ChatRoomMemberRole,
+    ) -> Result<(), DomainError> {
+        if let Some(m) = self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|m| m.id == membership_id)
+        {
+            m.member_role = role;
+        }
+        Ok(())
+    }
+
+    async fn list_memberships_for_room(
+        &self,
+        room_id: Uuid,
+    ) -> Result<Vec<ChatRoomMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.room_id == room_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_room_ids_for_user(
+        &self,
+        user_id: Uuid,
+        party_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, DomainError> {
+        let party_set: std::collections::HashSet<Uuid> = party_ids.iter().copied().collect();
+        let ids: std::collections::HashSet<Uuid> = self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| {
+                m.user_id == Some(user_id) || m.party_id.is_some_and(|p| party_set.contains(&p))
+            })
+            .map(|m| m.room_id)
+            .collect();
+        Ok(ids.into_iter().collect())
+    }
+
+    async fn is_user_in_room(
+        &self,
+        room_id: Uuid,
+        user_id: Uuid,
+        party_ids: &[Uuid],
+    ) -> Result<bool, DomainError> {
+        let party_set: std::collections::HashSet<Uuid> = party_ids.iter().copied().collect();
+        Ok(self.memberships.lock().unwrap().iter().any(|m| {
+            m.room_id == room_id
+                && (m.user_id == Some(user_id)
+                    || m.party_id.is_some_and(|p| party_set.contains(&p)))
+        }))
+    }
+
+    async fn is_party_in_room(
+        &self,
+        room_id: Uuid,
+        party_ids: &[Uuid],
+    ) -> Result<bool, DomainError> {
+        let party_set: std::collections::HashSet<Uuid> = party_ids.iter().copied().collect();
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m.room_id == room_id && m.party_id.is_some_and(|p| party_set.contains(&p))))
+    }
+
+    async fn list_rooms_for_user(
+        &self,
+        user_id: Uuid,
+        party_ids: &[Uuid],
+    ) -> Result<Vec<ChatRoom>, DomainError> {
+        let room_ids = self.list_room_ids_for_user(user_id, party_ids).await?;
+        let set: std::collections::HashSet<Uuid> = room_ids.iter().copied().collect();
+        Ok(self
+            .rooms
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| set.contains(&r.id))
+            .cloned()
+            .collect())
+    }
+}

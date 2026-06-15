@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO message_reads (id, message_id, user_id, party_id, read_at)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (message_id, user_id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b54af19ae3139fa151f3651727744c18845be0dfa51d7310a88da298f619c68b"
+}

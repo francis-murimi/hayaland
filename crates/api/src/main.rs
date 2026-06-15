@@ -1,4 +1,5 @@
 use anyhow::Context;
+use api::websocket::{SessionRegistry, WebSocketPublisher};
 use api::{run, AppState};
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
@@ -35,22 +36,35 @@ use application::users::deactivate_user::DeactivateUser;
 use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
+use application::{
+    chatrooms::{
+        CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
+        ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
+    },
+    messages::{
+        AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
+        MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
+    },
+    ports::{EncryptionService, RealtimePublisher},
+};
 use domain::repositories::{
-    AgreementRepository, DealRepository, EmailVerificationRepository, MilestoneRepository,
-    PartyRepository, PartyVerificationRepository, PasswordResetRepository, ReviewRepository,
-    RoleRepository, UserRepository, WalletRepository,
+    AgreementRepository, ChatRoomRepository, DealRepository, EmailVerificationRepository,
+    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, ReviewRepository, RoleRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
     email::{run_worker, InMemoryEmailQueue, SmtpEmailSender},
     migrations,
+    realtime::InMemoryRealtimePublisher,
     repositories::{
-        PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
+        PostgresAgreementRepository, PostgresChatRoomRepository, PostgresDealRepository,
+        PostgresEmailVerificationRepository, PostgresMessageRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
         PostgresUserRepository, PostgresWalletRepository,
     },
-    security::{Argon2PasswordHasher, JwtTokenService},
+    security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
     telemetry,
     workers::run_deal_timeout_worker,
 };
@@ -92,12 +106,26 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PostgresMilestoneRepository::new(pool.clone()));
     let review_repo: Arc<dyn ReviewRepository> =
         Arc::new(PostgresReviewRepository::new(pool.clone()));
+    let message_repo: Arc<dyn MessageRepository> =
+        Arc::new(PostgresMessageRepository::new(pool.clone()));
+    let chat_room_repo: Arc<dyn ChatRoomRepository> =
+        Arc::new(PostgresChatRoomRepository::new(pool.clone()));
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(PostgresPartyVerificationRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
         settings.auth.token_expiry_seconds,
+    ));
+    let encryption_service: Arc<dyn EncryptionService> = Arc::new(
+        MessageEncryptionService::from_base64(settings.messages.encryption_key.expose_secret())
+            .context("failed to load message encryption service")?,
+    );
+    let in_memory_publisher = Arc::new(InMemoryRealtimePublisher::new());
+    let websocket_registry = SessionRegistry::new();
+    let realtime_publisher: Arc<dyn RealtimePublisher> = Arc::new(WebSocketPublisher::new(
+        in_memory_publisher,
+        websocket_registry.clone(),
     ));
     let email_sender =
         Arc::new(SmtpEmailSender::new(&settings.email).context("failed to create email sender")?);
@@ -351,6 +379,91 @@ async fn main() -> anyhow::Result<()> {
             milestone_repo.clone(),
             wallet_repo.clone(),
         ),
+        send_message: SendMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        edit_message: EditMessage::new(
+            message_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        delete_message: SoftDeleteMessage::new(
+            message_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_message: GetMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        list_messages: ListMessages::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        list_conversations: ListConversations::new(message_repo.clone()),
+        mark_read: MarkRead::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        react: ToggleReaction::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_unread_count: GetUnreadCount::new(message_repo.clone()),
+        pin_message: PinMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        unpin_message: UnpinMessage::new(
+            message_repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            chat_room_repo.clone(),
+            encryption_service.clone(),
+        ),
+        admin_broadcast: AdminBroadcast::new(
+            message_repo.clone(),
+            repo.clone(),
+            party_repo.clone(),
+            encryption_service.clone(),
+            realtime_publisher.clone(),
+        ),
+        create_chat_room: CreateChatRoom::new(chat_room_repo.clone(), message_repo.clone()),
+        update_chat_room: UpdateChatRoom::new(chat_room_repo.clone()),
+        delete_chat_room: SoftDeleteChatRoom::new(
+            chat_room_repo.clone(),
+            realtime_publisher.clone(),
+        ),
+        get_chat_room: GetChatRoom::new(chat_room_repo.clone()),
+        list_chat_rooms: ListChatRooms::new(chat_room_repo.clone(), party_repo.clone()),
+        join_chat_room: JoinChatRoom::new(chat_room_repo.clone(), party_repo.clone()),
+        leave_chat_room: LeaveChatRoom::new(chat_room_repo.clone()),
+        manage_chat_room_membership: ManageChatRoomMembership::new(chat_room_repo.clone()),
+        encryption_service,
+        realtime_publisher,
+        message_repository: message_repo,
+        chat_room_repository: chat_room_repo,
+        websocket_registry,
         token_validator: token_service,
     };
 

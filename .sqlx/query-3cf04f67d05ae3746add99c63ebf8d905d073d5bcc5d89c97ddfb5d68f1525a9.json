@@ -1,0 +1,160 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, conversation_type, user_a_id, user_b_id, party_a_id, party_b_id,\n                party_id, deal_id, room_id, title, last_message_at, created_at\n            FROM conversations\n            WHERE conversation_type = 'PARTY_MEMBERS' AND party_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "conversation_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "conversation_type"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "user_a_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "user_a_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "user_b_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "user_b_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "party_a_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "party_a_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "party_b_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "party_b_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "deal_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "room_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "room_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "last_message_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "last_message_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "conversations",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "3cf04f67d05ae3746add99c63ebf8d905d073d5bcc5d89c97ddfb5d68f1525a9"
+}

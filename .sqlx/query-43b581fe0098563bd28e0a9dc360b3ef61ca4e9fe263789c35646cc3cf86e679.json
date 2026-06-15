@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE chat_rooms\n            SET is_deleted = true, updated_at = now()\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "43b581fe0098563bd28e0a9dc360b3ef61ca4e9fe263789c35646cc3cf86e679"
+}

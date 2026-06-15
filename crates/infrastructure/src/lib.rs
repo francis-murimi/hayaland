@@ -2,6 +2,7 @@ pub mod config;
 pub mod database;
 pub mod email;
 pub mod migrations;
+pub mod realtime;
 pub mod repositories;
 pub mod security;
 pub mod telemetry;

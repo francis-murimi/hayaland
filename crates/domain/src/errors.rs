@@ -140,6 +140,60 @@ pub enum DomainError {
     #[error("invalid search parameters: {message}")]
     InvalidSearchParameters { message: String },
 
+    #[error("message not found")]
+    MessageNotFound,
+
+    #[error("conversation not found")]
+    ConversationNotFound,
+
+    #[error("chat room not found")]
+    ChatRoomNotFound,
+
+    #[error("chat room already exists")]
+    ChatRoomAlreadyExists,
+
+    #[error("chat room membership not found")]
+    ChatRoomMembershipNotFound,
+
+    #[error("already a member of this chat room")]
+    AlreadyChatRoomMember,
+
+    #[error("invalid chat room name: {message}")]
+    InvalidChatRoomName { message: String },
+
+    #[error("invalid chat room type: {message}")]
+    InvalidChatRoomType { message: String },
+
+    #[error("invalid chat room member role: {message}")]
+    InvalidChatRoomMemberRole { message: String },
+
+    #[error("invalid message content: {message}")]
+    InvalidMessageContent { message: String },
+
+    #[error("invalid message type: {message}")]
+    InvalidMessageType { message: String },
+
+    #[error("invalid recipient: {message}")]
+    InvalidRecipient { message: String },
+
+    #[error("invalid reaction type: {message}")]
+    InvalidReactionType { message: String },
+
+    #[error("invalid conversation type: {message}")]
+    InvalidConversationType { message: String },
+
+    #[error("cannot edit this message")]
+    CannotEditMessage,
+
+    #[error("cannot delete this message")]
+    CannotDeleteMessage,
+
+    #[error("cannot manage this chat room")]
+    CannotManageChatRoom,
+
+    #[error("reply is not in the same conversation")]
+    ReplyNotInSameContext,
+
     #[error("repository error: {0}")]
     RepositoryError(String),
 }

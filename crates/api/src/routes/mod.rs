@@ -1,6 +1,8 @@
 use actix_web::{web, HttpResponse};
 
+pub mod chatrooms;
 pub mod deals;
+pub mod messages;
 pub mod parties;
 pub mod payments;
 pub mod reviews;
@@ -10,12 +12,18 @@ pub mod verifications;
 pub mod admin;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.route(
+        "/api/v1/ws/messages",
+        web::get().to(crate::websocket::message_socket::ws_handler),
+    );
     cfg.service(
         web::scope("/api/v1")
             .wrap(crate::middleware::auth::Authentication)
             .configure(users::configure)
             .configure(parties::configure)
             .configure(deals::configure)
+            .configure(messages::configure)
+            .configure(chatrooms::configure)
             .configure(payments::configure)
             .configure(reviews::configure)
             .configure(verifications::configure)

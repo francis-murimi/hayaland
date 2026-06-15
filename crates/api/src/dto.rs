@@ -1,6 +1,10 @@
+use application::messages::dto::BroadcastTarget;
 use application::parties::dto::{PartyResult, PartySummaryResult, RoleResult, SearchPartiesResult};
 use application::roles::dto::RoleDto;
 use application::users::dto::{AuthenticateUserResult, ListUsersResult, UserDto};
+use domain::entities::{
+    ChatRoomMemberRole, ChatRoomType, MessageType, ReactionType, RecipientType,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
@@ -229,4 +233,109 @@ impl From<Vec<RoleResult>> for PartyRolesResponse {
 #[derive(Debug, Serialize)]
 pub struct MyPartiesResponse {
     pub parties: Vec<PartySummaryResult>,
+}
+
+// ============================================================================
+// Messaging DTOs
+// ============================================================================
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SendMessageRequest {
+    pub recipient_type: RecipientType,
+    pub recipient_user_id: Option<Uuid>,
+    pub recipient_party_id: Option<Uuid>,
+    pub recipient_deal_id: Option<Uuid>,
+    pub recipient_room_id: Option<Uuid>,
+    pub message_type: MessageType,
+    pub subject: Option<String>,
+    #[validate(length(min = 1, message = "content cannot be empty"))]
+    pub content: String,
+    #[serde(default)]
+    pub attachment_urls: Vec<String>,
+    pub reply_to_message_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct EditMessageRequest {
+    #[validate(length(min = 1, message = "content cannot be empty"))]
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactRequest {
+    pub reaction_type: ReactionType,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminBroadcastRequest {
+    pub target: BroadcastTarget,
+    pub subject: Option<String>,
+    #[validate(length(min = 1, message = "content cannot be empty"))]
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Validate, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ListConversationsQueryParams {
+    #[validate(range(min = 1, message = "page must be at least 1"))]
+    pub page: Option<i64>,
+    #[validate(range(min = 1, max = 100, message = "per_page must be between 1 and 100"))]
+    pub per_page: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ListMessagesQueryParams {
+    pub before_id: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnreadCountResponse {
+    pub count: i64,
+}
+
+// ============================================================================
+// ChatRoom DTOs
+// ============================================================================
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateChatRoomRequest {
+    #[validate(length(min = 3, max = 120, message = "name must be 3-120 characters"))]
+    pub name: String,
+    pub description: Option<String>,
+    pub room_type: ChatRoomType,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateChatRoomRequest {
+    #[validate(length(min = 3, max = 120, message = "name must be 3-120 characters"))]
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub room_type: Option<ChatRoomType>,
+}
+
+#[derive(Debug, Deserialize, Validate, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatRoomListQueryParams {
+    #[serde(rename = "type")]
+    pub room_type: Option<String>,
+    #[serde(default)]
+    pub include_deleted: bool,
+    #[validate(range(min = 1, message = "page must be at least 1"))]
+    pub page: Option<i64>,
+    #[validate(range(min = 1, max = 100, message = "per_page must be between 1 and 100"))]
+    pub per_page: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SetRoleRequest {
+    pub role: ChatRoomMemberRole,
 }

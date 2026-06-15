@@ -93,6 +93,45 @@ pub enum ApplicationError {
     #[error("account is already verified")]
     AlreadyVerified,
 
+    #[error("message not found")]
+    MessageNotFound,
+
+    #[error("conversation not found")]
+    ConversationNotFound,
+
+    #[error("chat room not found")]
+    ChatRoomNotFound,
+
+    #[error("chat room already exists")]
+    ChatRoomAlreadyExists,
+
+    #[error("chat room membership not found")]
+    ChatRoomMembershipNotFound,
+
+    #[error("already a member of this chat room")]
+    AlreadyChatRoomMember,
+
+    #[error("invalid message content: {0}")]
+    InvalidMessageContent(String),
+
+    #[error("invalid recipient: {0}")]
+    InvalidRecipient(String),
+
+    #[error("invalid reaction type: {0}")]
+    InvalidReactionType(String),
+
+    #[error("cannot edit this message")]
+    CannotEditMessage,
+
+    #[error("cannot delete this message")]
+    CannotDeleteMessage,
+
+    #[error("cannot manage this chat room")]
+    CannotManageChatRoom,
+
+    #[error("reply is not in the same conversation")]
+    ReplyNotInSameContext,
+
     #[error("infrastructure error: {0}")]
     Infrastructure(String),
 }
@@ -112,7 +151,12 @@ impl From<DomainError> for ApplicationError {
             | DomainError::InvalidPartyMembershipRole { message }
             | DomainError::InvalidSearchParameters { message }
             | DomainError::InvalidReviewRating { message }
-            | DomainError::InvalidReviewText { message } => {
+            | DomainError::InvalidReviewText { message }
+            | DomainError::InvalidChatRoomName { message }
+            | DomainError::InvalidChatRoomType { message }
+            | DomainError::InvalidChatRoomMemberRole { message }
+            | DomainError::InvalidMessageType { message }
+            | DomainError::InvalidConversationType { message } => {
                 ApplicationError::Validation(vec![message])
             }
             DomainError::ReviewNotFound
@@ -168,6 +212,26 @@ impl From<DomainError> for ApplicationError {
             }
             DomainError::Validation(messages) => ApplicationError::Validation(messages),
             DomainError::RepositoryError(msg) => ApplicationError::Infrastructure(msg),
+
+            DomainError::InvalidMessageContent { message } => {
+                ApplicationError::InvalidMessageContent(message)
+            }
+            DomainError::InvalidRecipient { message } => {
+                ApplicationError::InvalidRecipient(message)
+            }
+            DomainError::InvalidReactionType { message } => {
+                ApplicationError::InvalidReactionType(message)
+            }
+            DomainError::MessageNotFound => ApplicationError::MessageNotFound,
+            DomainError::ConversationNotFound => ApplicationError::ConversationNotFound,
+            DomainError::ChatRoomNotFound => ApplicationError::ChatRoomNotFound,
+            DomainError::ChatRoomAlreadyExists => ApplicationError::ChatRoomAlreadyExists,
+            DomainError::ChatRoomMembershipNotFound => ApplicationError::ChatRoomMembershipNotFound,
+            DomainError::AlreadyChatRoomMember => ApplicationError::AlreadyChatRoomMember,
+            DomainError::CannotEditMessage => ApplicationError::CannotEditMessage,
+            DomainError::CannotDeleteMessage => ApplicationError::CannotDeleteMessage,
+            DomainError::CannotManageChatRoom => ApplicationError::CannotManageChatRoom,
+            DomainError::ReplyNotInSameContext => ApplicationError::ReplyNotInSameContext,
         }
     }
 }
@@ -232,6 +296,21 @@ mod tests {
                 message: "bad".to_string(),
             },
             DomainError::ReviewPeriodExpired,
+            DomainError::InvalidChatRoomName {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidChatRoomType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidChatRoomMemberRole {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidMessageType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidConversationType {
+                message: "bad".to_string(),
+            },
         ];
 
         for case in cases {
@@ -285,6 +364,82 @@ mod tests {
                 ApplicationError::NotFound
             ));
         }
+    }
+
+    #[test]
+    fn message_domain_errors_map_to_message_application_errors() {
+        assert!(matches!(
+            ApplicationError::from(DomainError::MessageNotFound),
+            ApplicationError::MessageNotFound
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::ConversationNotFound),
+            ApplicationError::ConversationNotFound
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::ChatRoomNotFound),
+            ApplicationError::ChatRoomNotFound
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::ChatRoomMembershipNotFound),
+            ApplicationError::ChatRoomMembershipNotFound
+        ));
+    }
+
+    #[test]
+    fn chat_room_duplicate_domain_errors_map_to_application_errors() {
+        assert!(matches!(
+            ApplicationError::from(DomainError::ChatRoomAlreadyExists),
+            ApplicationError::ChatRoomAlreadyExists
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::AlreadyChatRoomMember),
+            ApplicationError::AlreadyChatRoomMember
+        ));
+    }
+
+    #[test]
+    fn action_domain_errors_map_to_application_errors() {
+        assert!(matches!(
+            ApplicationError::from(DomainError::CannotEditMessage),
+            ApplicationError::CannotEditMessage
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::CannotDeleteMessage),
+            ApplicationError::CannotDeleteMessage
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::CannotManageChatRoom),
+            ApplicationError::CannotManageChatRoom
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::ReplyNotInSameContext),
+            ApplicationError::ReplyNotInSameContext
+        ));
+    }
+
+    #[test]
+    fn content_domain_errors_map_to_application_validation_errors() {
+        let content: ApplicationError = DomainError::InvalidMessageContent {
+            message: "empty".to_string(),
+        }
+        .into();
+        assert!(matches!(
+            content,
+            ApplicationError::InvalidMessageContent(_)
+        ));
+
+        let recipient: ApplicationError = DomainError::InvalidRecipient {
+            message: "missing".to_string(),
+        }
+        .into();
+        assert!(matches!(recipient, ApplicationError::InvalidRecipient(_)));
+
+        let reaction: ApplicationError = DomainError::InvalidReactionType {
+            message: "unknown".to_string(),
+        }
+        .into();
+        assert!(matches!(reaction, ApplicationError::InvalidReactionType(_)));
     }
 
     #[test]

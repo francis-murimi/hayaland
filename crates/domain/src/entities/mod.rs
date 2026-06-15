@@ -1,6 +1,12 @@
 pub mod agreement;
+pub mod chat_room;
+pub mod chat_room_membership;
+pub mod conversation;
 pub mod deal;
 pub mod email_verification;
+pub mod message;
+pub mod message_reaction;
+pub mod message_read;
 pub mod milestone;
 pub mod party;
 pub mod party_role;
@@ -16,8 +22,14 @@ pub mod value_distribution;
 pub mod wallet;
 
 pub use agreement::*;
+pub use chat_room::*;
+pub use chat_room_membership::*;
+pub use conversation::*;
 pub use deal::*;
 pub use email_verification::*;
+pub use message::*;
+pub use message_reaction::*;
+pub use message_read::*;
 pub use milestone::*;
 pub use party::*;
 pub use party_role::*;

@@ -28,6 +28,8 @@ rand.workspace = true
 jsonwebtoken.workspace = true
 tracing-subscriber.workspace = true
 lettre.workspace = true
+aes-gcm.workspace = true
+base64.workspace = true
 
 [dev-dependencies]
 sqlx.workspace = true
