@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT reviewer_party_id as \"reviewer_party_id!\", reviewed_party_id as \"reviewed_party_id!\"\n            FROM reviews\n            WHERE deal_id = $1\n              AND reviewer_party_id = ANY($2)\n              AND reviewed_party_id = ANY($2)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "reviewer_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "reviewed_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewed_party_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6b3b3e38c3be1e6023d912d1830c0319eb749731f97596cd1725e3ba06fe0eb7"
+}

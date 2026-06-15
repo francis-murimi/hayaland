@@ -5,7 +5,7 @@ use crate::deals::validate_deal::{persist_validation, run_validation, status_is_
 use crate::errors::ApplicationError;
 use domain::entities::{AgreementStatus, DealStatus, ParticipationStatus, TermStatus};
 use domain::repositories::{
-    AgreementRepository, DealRepository, MilestoneRepository, PartyRepository,
+    AgreementRepository, DealRepository, MilestoneRepository, PartyRepository, ReviewRepository,
 };
 use domain::services::ValidationConfig;
 use std::sync::Arc;
@@ -19,6 +19,7 @@ pub struct ExecuteTransition {
     party_repo: Arc<dyn PartyRepository>,
     agreement_repo: Arc<dyn AgreementRepository>,
     milestone_repo: Option<Arc<dyn MilestoneRepository>>,
+    review_repo: Option<Arc<dyn ReviewRepository>>,
     validation_config: ValidationConfig,
 }
 
@@ -34,6 +35,7 @@ impl ExecuteTransition {
             party_repo,
             agreement_repo,
             milestone_repo: None,
+            review_repo: None,
             validation_config,
         }
     }
@@ -50,6 +52,25 @@ impl ExecuteTransition {
             party_repo,
             agreement_repo,
             milestone_repo: Some(milestone_repo),
+            review_repo: None,
+            validation_config,
+        }
+    }
+
+    pub fn new_with_reviews(
+        deal_repo: Arc<dyn DealRepository>,
+        party_repo: Arc<dyn PartyRepository>,
+        agreement_repo: Arc<dyn AgreementRepository>,
+        milestone_repo: Arc<dyn MilestoneRepository>,
+        review_repo: Arc<dyn ReviewRepository>,
+        validation_config: ValidationConfig,
+    ) -> Self {
+        Self {
+            deal_repo,
+            party_repo,
+            agreement_repo,
+            milestone_repo: Some(milestone_repo),
+            review_repo: Some(review_repo),
             validation_config,
         }
     }
@@ -161,6 +182,7 @@ impl ExecuteTransition {
                     });
                 }
                 self.ensure_all_milestones_verified(deal_id).await?;
+                self.ensure_all_reviews_submitted(deal_id).await?;
             }
             DealStatus::Cancelled => {
                 // Allow cancellation from most active states by any participant.
@@ -251,6 +273,36 @@ impl ExecuteTransition {
                 "all milestones must be verified before completing the deal".to_string(),
             ]));
         }
+        Ok(())
+    }
+
+    async fn ensure_all_reviews_submitted(&self, deal_id: Uuid) -> Result<(), ApplicationError> {
+        let review_repo = self.review_repo.as_ref().ok_or_else(|| {
+            ApplicationError::Infrastructure("review repository not configured".to_string())
+        })?;
+
+        let aggregate = self
+            .deal_repo
+            .find_aggregate_by_id(deal_id)
+            .await?
+            .ok_or(ApplicationError::DealNotFound)?;
+
+        let pairs: Vec<(Uuid, _)> = aggregate
+            .participations
+            .iter()
+            .map(|p| (p.party_id, p.role))
+            .collect();
+
+        let missing = review_repo
+            .find_missing_review_pairs(deal_id, &pairs)
+            .await?;
+
+        if !missing.is_empty() {
+            return Err(ApplicationError::Validation(vec![
+                "deal cannot be completed until all parties have reviewed each other".to_string(),
+            ]));
+        }
+
         Ok(())
     }
 

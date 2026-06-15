@@ -41,6 +41,18 @@ pub enum DomainError {
     #[error("invalid deal title: {message}")]
     InvalidDealTitle { message: String },
 
+    #[error("invalid review rating: {message}")]
+    InvalidReviewRating { message: String },
+
+    #[error("invalid review text: {message}")]
+    InvalidReviewText { message: String },
+
+    #[error("review not found")]
+    ReviewNotFound,
+
+    #[error("review period has expired")]
+    ReviewPeriodExpired,
+
     #[error("deal not found")]
     DealNotFound,
 
@@ -91,6 +103,9 @@ pub enum DomainError {
 
     #[error("this role is already assigned to the party")]
     DuplicatePartyRole,
+
+    #[error("a review already exists for this deal and party")]
+    DuplicateReview,
 
     #[error("party not found")]
     PartyNotFound,

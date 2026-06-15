@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO reviews (\n                id, deal_id, reviewer_party_id, reviewed_party_id, reviewed_role,\n                overall_rating, communication_rating, reliability_rating, quality_rating,\n                timeliness_rating, review_text, is_verified, is_public, platform_response, created_at\n            )\n            VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Text",
+        "Bool",
+        "Bool",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "274164822d8db5f600e8b7ee52ef30d6a2d401b4bdacd4ca6b678da1b7939317"
+}

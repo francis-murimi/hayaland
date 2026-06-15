@@ -29,7 +29,8 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::DuplicateEmail)
             | ApiError::Application(ApplicationError::DuplicateUsername)
             | ApiError::Application(ApplicationError::DuplicatePartyEmail)
-            | ApiError::Application(ApplicationError::DuplicatePartyRole) => StatusCode::CONFLICT,
+            | ApiError::Application(ApplicationError::DuplicatePartyRole)
+            | ApiError::Application(ApplicationError::DuplicateReview) => StatusCode::CONFLICT,
             ApiError::Application(ApplicationError::NotFound)
             | ApiError::Application(ApplicationError::PartyNotFound)
             | ApiError::Application(ApplicationError::RoleNotFound)
@@ -71,6 +72,7 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::DuplicateUsername) => "duplicate_username",
             ApiError::Application(ApplicationError::DuplicatePartyEmail) => "duplicate_party_email",
             ApiError::Application(ApplicationError::DuplicatePartyRole) => "duplicate_party_role",
+            ApiError::Application(ApplicationError::DuplicateReview) => "duplicate_review",
             ApiError::Application(ApplicationError::WeakPassword { .. }) => "weak_password",
             ApiError::Application(ApplicationError::NotFound) => "not_found",
             ApiError::Application(ApplicationError::PartyNotFound) => "party_not_found",

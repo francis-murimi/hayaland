@@ -31,6 +31,10 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
+use application::reviews::{
+    GetDealReviewStatus, GetReview, HideReview, ListAdminReviews, ListDealReviews,
+    ListPartyReviews, SubmitReview,
+};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -111,6 +115,13 @@ pub struct AppState {
     pub start_milestone: StartMilestone,
     pub complete_milestone: CompleteMilestone,
     pub verify_milestone: VerifyMilestone,
+    pub submit_review: SubmitReview,
+    pub list_deal_reviews: ListDealReviews,
+    pub list_party_reviews: ListPartyReviews,
+    pub get_review: GetReview,
+    pub get_deal_review_status: GetDealReviewStatus,
+    pub hide_review: HideReview,
+    pub list_admin_reviews: ListAdminReviews,
     pub token_validator: Arc<dyn TokenVerifier>,
 }
 

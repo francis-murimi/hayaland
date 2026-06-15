@@ -27,6 +27,9 @@ pub enum ApplicationError {
     #[error("this role is already assigned to the party")]
     DuplicatePartyRole,
 
+    #[error("a review already exists for this deal and party")]
+    DuplicateReview,
+
     #[error("party role has active deals and cannot be removed")]
     PartyRoleHasActiveDeals,
 
@@ -101,13 +104,26 @@ impl From<DomainError> for ApplicationError {
             | DomainError::InvalidVerificationStatus { message }
             | DomainError::InvalidDealRole { message }
             | DomainError::InvalidPartyMembershipRole { message }
-            | DomainError::InvalidSearchParameters { message } => {
+            | DomainError::InvalidSearchParameters { message }
+            | DomainError::InvalidReviewRating { message }
+            | DomainError::InvalidReviewText { message } => {
                 ApplicationError::Validation(vec![message])
+            }
+            DomainError::ReviewNotFound
+            | DomainError::TermNotFound
+            | DomainError::MilestoneNotFound
+            | DomainError::AgreementNotFound
+            | DomainError::TransactionNotFound
+            | DomainError::WalletNotFound
+            | DomainError::MatchNotFound => ApplicationError::NotFound,
+            DomainError::ReviewPeriodExpired => {
+                ApplicationError::Validation(vec!["review period has expired".to_string()])
             }
             DomainError::DuplicateEmail => ApplicationError::DuplicateEmail,
             DomainError::DuplicateUsername => ApplicationError::DuplicateUsername,
             DomainError::DuplicatePartyEmail => ApplicationError::DuplicatePartyEmail,
             DomainError::DuplicatePartyRole => ApplicationError::DuplicatePartyRole,
+            DomainError::DuplicateReview => ApplicationError::DuplicateReview,
             DomainError::PartyNotFound => ApplicationError::PartyNotFound,
             DomainError::RoleNotFound => ApplicationError::RoleNotFound,
             DomainError::PartyRoleHasActiveDeals => ApplicationError::PartyRoleHasActiveDeals,
@@ -123,12 +139,7 @@ impl From<DomainError> for ApplicationError {
             }
             DomainError::DealNotFound => ApplicationError::DealNotFound,
             DomainError::DealParticipationNotFound => ApplicationError::DealParticipationNotFound,
-            DomainError::TermNotFound
-            | DomainError::MilestoneNotFound
-            | DomainError::AgreementNotFound
-            | DomainError::TransactionNotFound
-            | DomainError::WalletNotFound
-            | DomainError::MatchNotFound => ApplicationError::NotFound,
+
             DomainError::InsufficientPermissions => ApplicationError::DealAccessDenied,
             DomainError::WinWinWinValidationFailed { violations } => {
                 ApplicationError::WinWinWinValidationFailed { violations }
@@ -192,6 +203,13 @@ mod tests {
             DomainError::InvalidValueDistribution {
                 message: "bad".to_string(),
             },
+            DomainError::InvalidReviewRating {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidReviewText {
+                message: "bad".to_string(),
+            },
+            DomainError::ReviewPeriodExpired,
         ];
 
         for case in cases {
@@ -221,6 +239,10 @@ mod tests {
             ApplicationError::from(DomainError::DuplicatePartyRole),
             ApplicationError::DuplicatePartyRole
         ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::DuplicateReview),
+            ApplicationError::DuplicateReview
+        ));
     }
 
     #[test]
@@ -232,6 +254,7 @@ mod tests {
             DomainError::TransactionNotFound,
             DomainError::WalletNotFound,
             DomainError::MatchNotFound,
+            DomainError::ReviewNotFound,
         ];
 
         for case in cases {

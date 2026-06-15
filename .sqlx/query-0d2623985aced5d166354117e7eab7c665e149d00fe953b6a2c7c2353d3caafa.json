@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM reviews\n            WHERE ($1::uuid IS NULL OR deal_id = $1)\n              AND ($2::uuid IS NULL OR reviewer_party_id = $2)\n              AND ($3::uuid IS NULL OR reviewed_party_id = $3)\n              AND ($4::bool IS NULL OR is_public = $4)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "0d2623985aced5d166354117e7eab7c665e149d00fe953b6a2c7c2353d3caafa"
+}

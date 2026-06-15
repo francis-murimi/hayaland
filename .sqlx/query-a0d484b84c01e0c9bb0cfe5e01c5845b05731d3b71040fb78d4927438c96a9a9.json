@@ -1,0 +1,201 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id as \"id!\",\n                deal_id as \"deal_id!\",\n                reviewer_party_id as \"reviewer_party_id!\",\n                reviewed_party_id as \"reviewed_party_id!\",\n                reviewed_role as \"reviewed_role!\",\n                overall_rating as \"overall_rating!\",\n                communication_rating as \"communication_rating: _\",\n                reliability_rating as \"reliability_rating: _\",\n                quality_rating as \"quality_rating: _\",\n                timeliness_rating as \"timeliness_rating: _\",\n                review_text,\n                is_verified as \"is_verified!\",\n                is_public as \"is_public!\",\n                platform_response,\n                created_at as \"created_at!\"\n            FROM reviews\n            WHERE ($1::uuid IS NULL OR deal_id = $1)\n              AND ($2::uuid IS NULL OR reviewer_party_id = $2)\n              AND ($3::uuid IS NULL OR reviewed_party_id = $3)\n              AND ($4::bool IS NULL OR is_public = $4)\n            ORDER BY created_at DESC\n            LIMIT $5\n            OFFSET $6\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "reviewer_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "reviewed_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewed_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "reviewed_role!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewed_role"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "overall_rating!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "overall_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "communication_rating: _",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "communication_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "reliability_rating: _",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reliability_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "quality_rating: _",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "quality_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "timeliness_rating: _",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "timeliness_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "review_text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "review_text"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "is_verified!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "is_verified"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "is_public!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "is_public"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "platform_response",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "platform_response"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "a0d484b84c01e0c9bb0cfe5e01c5845b05731d3b71040fb78d4927438c96a9a9"
+}

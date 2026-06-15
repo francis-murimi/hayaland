@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE reviews\n            SET is_public = false,\n                review_text = NULL,\n                platform_response = $1\n            WHERE id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5327df561f33b31907635f55db5f454731e2ef8b357eca0b403a7fd19438fcf6"
+}

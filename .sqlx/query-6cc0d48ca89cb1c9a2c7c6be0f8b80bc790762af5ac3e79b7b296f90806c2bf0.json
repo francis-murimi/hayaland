@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE reviews\n            SET overall_rating = $1,\n                communication_rating = $2,\n                reliability_rating = $3,\n                quality_rating = $4,\n                timeliness_rating = $5,\n                review_text = $6,\n                is_public = $7,\n                platform_response = $8\n            WHERE id = $9\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Text",
+        "Bool",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6cc0d48ca89cb1c9a2c7c6be0f8b80bc790762af5ac3e79b7b296f90806c2bf0"
+}

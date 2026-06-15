@@ -36,7 +36,8 @@ use application::users::list_users::ListUsers;
 use application::users::update_user::UpdateUser;
 use domain::repositories::{
     AgreementRepository, DealRepository, EmailVerificationRepository, MilestoneRepository,
-    PartyRepository, PasswordResetRepository, RoleRepository, UserRepository, WalletRepository,
+    PartyRepository, PasswordResetRepository, ReviewRepository, RoleRepository, UserRepository,
+    WalletRepository,
 };
 use infrastructure::{
     config, database,
@@ -45,7 +46,8 @@ use infrastructure::{
     repositories::{
         PostgresAgreementRepository, PostgresDealRepository, PostgresEmailVerificationRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPasswordResetRepository,
-        PostgresRoleRepository, PostgresUserRepository, PostgresWalletRepository,
+        PostgresReviewRepository, PostgresRoleRepository, PostgresUserRepository,
+        PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService},
     telemetry,
@@ -86,7 +88,8 @@ async fn main() -> anyhow::Result<()> {
     let wallet_repo: Arc<dyn WalletRepository> =
         Arc::new(PostgresWalletRepository::new(pool.clone()));
     let milestone_repo: Arc<dyn MilestoneRepository> =
-        Arc::new(PostgresMilestoneRepository::new(pool));
+        Arc::new(PostgresMilestoneRepository::new(pool.clone()));
+    let review_repo: Arc<dyn ReviewRepository> = Arc::new(PostgresReviewRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -174,13 +177,35 @@ async fn main() -> anyhow::Result<()> {
             party_repo.clone(),
             settings.validation.clone(),
         ),
-        execute_transition: ExecuteTransition::new_with_milestones(
+        execute_transition: ExecuteTransition::new_with_reviews(
             deal_repo.clone(),
             party_repo.clone(),
             agreement_repo.clone(),
             milestone_repo.clone(),
+            review_repo.clone(),
             settings.validation.clone(),
         ),
+        submit_review: application::reviews::SubmitReview::new(
+            review_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+            Arc::new(application::reviews::submit_review::NoOpTrustScoreRecalculation),
+        ),
+        list_deal_reviews: application::reviews::ListDealReviews::new(
+            deal_repo.clone(),
+            review_repo.clone(),
+        ),
+        list_party_reviews: application::reviews::ListPartyReviews::new(
+            party_repo.clone(),
+            review_repo.clone(),
+        ),
+        get_review: application::reviews::GetReview::new(deal_repo.clone(), review_repo.clone()),
+        get_deal_review_status: application::reviews::GetDealReviewStatus::new(
+            deal_repo.clone(),
+            review_repo.clone(),
+        ),
+        hide_review: application::reviews::HideReview::new(review_repo.clone()),
+        list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
         counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
         accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),

@@ -43,9 +43,9 @@ use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, DistributionModel,
-    Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Role,
-    RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
-    Username,
+    Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Review,
+    Role, RoleProfile, Signature, TransactionApproval, TransactionStatus,
+    TransactionType, User, Username,
 };
 use domain::entities::{Party, PartyType, UserPartyMembership};
 use domain::errors::DomainError;
@@ -53,7 +53,7 @@ use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
     AgreementRepository, DealAggregate, DealListResult, DealRepository, DealSearchCriteria,
     EmailVerificationRepository, MilestoneRepository, PartyRepository, PasswordResetRepository,
-    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    ReviewRepository, RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
@@ -1242,6 +1242,161 @@ impl MilestoneRepository for FakeMilestoneRepo {
     }
 }
 
+#[derive(Default)]
+struct FakeReviewRepo {
+    reviews: Mutex<Vec<Review>>,
+}
+
+#[async_trait]
+impl ReviewRepository for FakeReviewRepo {
+    async fn create(&self, review: &Review) -> Result<(), DomainError> {
+        self.reviews.lock().unwrap().push(review.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Review>, DomainError> {
+        Ok(self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.id == id)
+            .cloned())
+    }
+
+    async fn exists(
+        &self,
+        deal_id: Uuid,
+        reviewer_party_id: Uuid,
+        reviewed_party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        Ok(self.reviews.lock().unwrap().iter().any(|r| {
+            r.deal_id == deal_id
+                && r.reviewer_party_id == reviewer_party_id
+                && r.reviewed_party_id == reviewed_party_id
+        }))
+    }
+
+    async fn count_by_deal(&self, deal_id: Uuid) -> Result<i64, DomainError> {
+        Ok(self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.deal_id == deal_id)
+            .count() as i64)
+    }
+
+    async fn find_missing_review_pairs(
+        &self,
+        deal_id: Uuid,
+        participations: &[(Uuid, DealRole)],
+    ) -> Result<Vec<(Uuid, Uuid)>, DomainError> {
+        let existing: std::collections::HashSet<(Uuid, Uuid)> = self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.deal_id == deal_id)
+            .map(|r| (r.reviewer_party_id, r.reviewed_party_id))
+            .collect();
+
+        let mut missing = Vec::new();
+        for (reviewer, _) in participations {
+            for (reviewed, _) in participations {
+                if reviewer != reviewed && !existing.contains(&(*reviewer, *reviewed)) {
+                    missing.push((*reviewer, *reviewed));
+                }
+            }
+        }
+        Ok(missing)
+    }
+
+    async fn list(
+        &self,
+        criteria: &domain::repositories::ReviewSearchCriteria,
+    ) -> Result<domain::repositories::ReviewListResult, DomainError> {
+        let reviews: Vec<Review> = self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| criteria.deal_id.is_none_or(|d| r.deal_id == d))
+            .filter(|r| {
+                criteria
+                    .reviewer_party_id
+                    .is_none_or(|p| r.reviewer_party_id == p)
+            })
+            .filter(|r| {
+                criteria
+                    .reviewed_party_id
+                    .is_none_or(|p| r.reviewed_party_id == p)
+            })
+            .filter(|r| criteria.is_public.is_none_or(|pub_| r.is_public == pub_))
+            .cloned()
+            .collect();
+
+        let total = reviews.len() as i64;
+        let start = criteria.offset as usize;
+        let end = (criteria.offset + criteria.limit) as usize;
+        let paginated = reviews
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+
+        Ok(domain::repositories::ReviewListResult {
+            reviews: paginated,
+            total,
+            limit: criteria.limit,
+            offset: criteria.offset,
+        })
+    }
+
+    async fn count(
+        &self,
+        criteria: &domain::repositories::ReviewSearchCriteria,
+    ) -> Result<i64, DomainError> {
+        let count = self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| criteria.deal_id.is_none_or(|d| r.deal_id == d))
+            .filter(|r| {
+                criteria
+                    .reviewer_party_id
+                    .is_none_or(|p| r.reviewer_party_id == p)
+            })
+            .filter(|r| {
+                criteria
+                    .reviewed_party_id
+                    .is_none_or(|p| r.reviewed_party_id == p)
+            })
+            .filter(|r| criteria.is_public.is_none_or(|pub_| r.is_public == pub_))
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn update(&self, review: &Review) -> Result<(), DomainError> {
+        let mut reviews = self.reviews.lock().unwrap();
+        if let Some(r) = reviews.iter_mut().find(|r| r.id == review.id) {
+            *r = review.clone();
+        }
+        Ok(())
+    }
+
+    async fn hide(&self, id: Uuid, platform_response: Option<String>) -> Result<(), DomainError> {
+        let mut reviews = self.reviews.lock().unwrap();
+        if let Some(r) = reviews.iter_mut().find(|r| r.id == id) {
+            r.is_public = false;
+            r.review_text = None;
+            r.platform_response = platform_response;
+        }
+        Ok(())
+    }
+}
+
 struct TestFixtures {
     state: AppState,
     repo: Arc<FakeRepo>,
@@ -1307,6 +1462,7 @@ fn test_fixtures() -> TestFixtures {
     });
     let wallet_repo: Arc<dyn WalletRepository> = Arc::new(FakeWalletRepo::default());
     let milestone_repo: Arc<dyn MilestoneRepository> = Arc::new(FakeMilestoneRepo::default());
+    let review_repo: Arc<dyn ReviewRepository> = Arc::new(FakeReviewRepo::default());
     let token: Arc<FakeTokenService> = Arc::new(FakeTokenService {
         repo: repo.clone(),
         role_repo: role_repo.clone(),
@@ -1368,11 +1524,12 @@ fn test_fixtures() -> TestFixtures {
             party_repo.clone(),
             ValidationConfig::default(),
         ),
-        execute_transition: ExecuteTransition::new_with_milestones(
+        execute_transition: ExecuteTransition::new_with_reviews(
             deal_repo.clone(),
             party_repo.clone(),
             agreement_repo.clone(),
             milestone_repo.clone(),
+            review_repo.clone(),
             ValidationConfig::default(),
         ),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -1486,6 +1643,27 @@ fn test_fixtures() -> TestFixtures {
             milestone_repo.clone(),
             wallet_repo.clone(),
         ),
+        submit_review: application::reviews::SubmitReview::new(
+            review_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+            Arc::new(application::reviews::submit_review::NoOpTrustScoreRecalculation),
+        ),
+        list_deal_reviews: application::reviews::ListDealReviews::new(
+            deal_repo.clone(),
+            review_repo.clone(),
+        ),
+        list_party_reviews: application::reviews::ListPartyReviews::new(
+            party_repo.clone(),
+            review_repo.clone(),
+        ),
+        get_review: application::reviews::GetReview::new(deal_repo.clone(), review_repo.clone()),
+        get_deal_review_status: application::reviews::GetDealReviewStatus::new(
+            deal_repo.clone(),
+            review_repo.clone(),
+        ),
+        hide_review: application::reviews::HideReview::new(review_repo.clone()),
+        list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
         token_validator: token,
     };
 

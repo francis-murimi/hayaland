@@ -13,8 +13,9 @@ use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Email, EmailVerification,
-    Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Role, RoleProfile, Signature,
-    Transaction, TransactionApproval, TransactionStatus, TransactionType, User, Username,
+    Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Review, ReviewRating, Role,
+    RoleProfile, Signature, Transaction, TransactionApproval, TransactionStatus, TransactionType,
+    User, Username,
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
@@ -25,7 +26,8 @@ use domain::repositories::PartySearchCriteria;
 #[cfg(test)]
 use domain::repositories::{
     AgreementRepository, EmailVerificationRepository, MilestoneRepository, PartyRepository,
-    PasswordResetRepository, RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    PasswordResetRepository, ReviewListResult, ReviewRepository, ReviewSearchCriteria,
+    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 #[cfg(test)]
 use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
@@ -1255,4 +1257,179 @@ impl MilestoneRepository for FakeMilestoneRepo {
             .filter(|m| m.deal_id == deal_id && m.milestone_status.as_str() == status)
             .count() as i64)
     }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeReviewRepo {
+    pub reviews: Mutex<Vec<Review>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl ReviewRepository for FakeReviewRepo {
+    async fn create(&self, review: &Review) -> Result<(), DomainError> {
+        self.reviews.lock().unwrap().push(review.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Review>, DomainError> {
+        Ok(self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.id == id)
+            .cloned())
+    }
+
+    async fn exists(
+        &self,
+        deal_id: Uuid,
+        reviewer_party_id: Uuid,
+        reviewed_party_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        Ok(self.reviews.lock().unwrap().iter().any(|r| {
+            r.deal_id == deal_id
+                && r.reviewer_party_id == reviewer_party_id
+                && r.reviewed_party_id == reviewed_party_id
+        }))
+    }
+
+    async fn count_by_deal(&self, deal_id: Uuid) -> Result<i64, DomainError> {
+        Ok(self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.deal_id == deal_id)
+            .count() as i64)
+    }
+
+    async fn find_missing_review_pairs(
+        &self,
+        deal_id: Uuid,
+        participations: &[(Uuid, DealRole)],
+    ) -> Result<Vec<(Uuid, Uuid)>, DomainError> {
+        let existing: std::collections::HashSet<(Uuid, Uuid)> = self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.deal_id == deal_id)
+            .map(|r| (r.reviewer_party_id, r.reviewed_party_id))
+            .collect();
+
+        let mut missing = Vec::new();
+        for (reviewer, _) in participations {
+            for (reviewed, _) in participations {
+                if reviewer != reviewed && !existing.contains(&(*reviewer, *reviewed)) {
+                    missing.push((*reviewer, *reviewed));
+                }
+            }
+        }
+        Ok(missing)
+    }
+
+    async fn list(&self, criteria: &ReviewSearchCriteria) -> Result<ReviewListResult, DomainError> {
+        let reviews: Vec<Review> = self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| criteria.deal_id.is_none_or(|d| r.deal_id == d))
+            .filter(|r| {
+                criteria
+                    .reviewer_party_id
+                    .is_none_or(|p| r.reviewer_party_id == p)
+            })
+            .filter(|r| {
+                criteria
+                    .reviewed_party_id
+                    .is_none_or(|p| r.reviewed_party_id == p)
+            })
+            .filter(|r| criteria.is_public.is_none_or(|pub_| r.is_public == pub_))
+            .cloned()
+            .collect();
+
+        let total = reviews.len() as i64;
+        let start = criteria.offset as usize;
+        let end = (criteria.offset + criteria.limit) as usize;
+        let paginated = reviews
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+
+        Ok(ReviewListResult {
+            reviews: paginated,
+            total,
+            limit: criteria.limit,
+            offset: criteria.offset,
+        })
+    }
+
+    async fn count(&self, criteria: &ReviewSearchCriteria) -> Result<i64, DomainError> {
+        let count = self
+            .reviews
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| criteria.deal_id.is_none_or(|d| r.deal_id == d))
+            .filter(|r| {
+                criteria
+                    .reviewer_party_id
+                    .is_none_or(|p| r.reviewer_party_id == p)
+            })
+            .filter(|r| {
+                criteria
+                    .reviewed_party_id
+                    .is_none_or(|p| r.reviewed_party_id == p)
+            })
+            .filter(|r| criteria.is_public.is_none_or(|pub_| r.is_public == pub_))
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn update(&self, review: &Review) -> Result<(), DomainError> {
+        let mut reviews = self.reviews.lock().unwrap();
+        if let Some(r) = reviews.iter_mut().find(|r| r.id == review.id) {
+            *r = review.clone();
+        }
+        Ok(())
+    }
+
+    async fn hide(&self, id: Uuid, platform_response: Option<String>) -> Result<(), DomainError> {
+        let mut reviews = self.reviews.lock().unwrap();
+        if let Some(r) = reviews.iter_mut().find(|r| r.id == id) {
+            r.is_public = false;
+            r.review_text = None;
+            r.platform_response = platform_response;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+pub fn test_review(
+    deal_id: Uuid,
+    reviewer_party_id: Uuid,
+    reviewed_party_id: Uuid,
+    reviewed_role: DealRole,
+    overall: i32,
+) -> Review {
+    Review::new(
+        Uuid::now_v7(),
+        deal_id,
+        reviewer_party_id,
+        reviewed_party_id,
+        reviewed_role,
+        ReviewRating::new(overall).unwrap(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        true,
+    )
 }
