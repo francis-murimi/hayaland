@@ -38,6 +38,7 @@ use application::ports::{EncryptionService, NoOpTrustScoreRecalculation, Realtim
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
+use application::trust_scores::{GetTrustScore, RecalculateTrustScore};
 use application::users::authenticate_user::AuthenticateUser;
 use application::users::create_user::{CreateUser, PasswordHasher};
 use application::users::deactivate_user::DeactivateUser;
@@ -50,7 +51,7 @@ use domain::repositories::{
     AgreementRepository, ChatRoomRepository, DealRepository, DisputeRepository,
     EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
-    UserRepository, WalletRepository,
+    TrustScoreRepository, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use infrastructure::{
@@ -60,7 +61,7 @@ use infrastructure::{
         PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMessageRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
-        PostgresUserRepository, PostgresWalletRepository,
+        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
 };
@@ -126,7 +127,9 @@ pub async fn build_state(pool: PgPool) -> AppState {
     let chat_room_repo: Arc<dyn ChatRoomRepository> =
         Arc::new(PostgresChatRoomRepository::new(pool.clone()));
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
-        Arc::new(PostgresPartyVerificationRepository::new(pool));
+        Arc::new(PostgresPartyVerificationRepository::new(pool.clone()));
+    let trust_repo: Arc<dyn TrustScoreRepository> =
+        Arc::new(PostgresTrustScoreRepository::new(pool));
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher);
     let token_service: Arc<dyn TokenVerifier> = Arc::new(TestTokenService {
         secret: "test-secret".to_string(),
@@ -138,6 +141,12 @@ pub async fn build_state(pool: PgPool) -> AppState {
     let encryption_service: Arc<dyn EncryptionService> =
         Arc::new(MessageEncryptionService::from_base64(TEST_MESSAGE_KEY).unwrap());
     let realtime_publisher: Arc<dyn RealtimePublisher> = Arc::new(InMemoryRealtimePublisher::new());
+    let trust_config = domain::entities::trust_score::TrustScoreConfig::default();
+    let recalc_trust_score = Arc::new(RecalculateTrustScore::new(
+        trust_repo.clone(),
+        party_repo.clone(),
+        trust_config,
+    ));
 
     AppState {
         create_user: CreateUser::new(
@@ -202,7 +211,9 @@ pub async fn build_state(pool: PgPool) -> AppState {
             milestone_repo.clone(),
             review_repo.clone(),
             ValidationConfig::default(),
-        ),
+        )
+        .with_trust_score_repository(trust_repo.clone())
+        .with_trust_score_recalculation_port(Arc::new(NoOpTrustScoreRecalculation)),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
         counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
         accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -335,6 +346,8 @@ pub async fn build_state(pool: PgPool) -> AppState {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        get_trust_score: Some(GetTrustScore::new(trust_repo.clone())),
+        recalculate_trust_score: Some((*recalc_trust_score).clone()),
         raise_dispute: application::disputes::RaiseDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),

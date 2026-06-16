@@ -45,6 +45,8 @@ cargo run -p api
 ## Environment variables
 Copy `.env.example` to `.env` and adjust values. `DATABASE_URL` is used by sqlx macros and tests; the running API uses `APP_DATABASE__URL` when present.
 
+A default test `DATABASE_URL` is also provided in `.cargo/config.toml` so `cargo test` works without manually exporting the variable. You can override it by setting `DATABASE_URL` in your shell or `.env` file.
+
 ## Useful commands
 - `cargo fmt --check && cargo clippy -- -D warnings`
 - `cargo test`

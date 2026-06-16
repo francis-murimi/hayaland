@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO trust_scores (id, party_id, average_response_hours)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (party_id) DO UPDATE SET\n                average_response_hours = EXCLUDED.average_response_hours,\n                updated_at = now()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eacf91ecd198d953c233e1ed8c892bf8b8b38de668b1117920d5198940c797d5"
+}

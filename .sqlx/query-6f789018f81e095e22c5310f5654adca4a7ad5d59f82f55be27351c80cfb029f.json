@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                raised_by_party_id as \"raised_by_party_id!\",\n                against_party_id,\n                resolution_type,\n                resolution_outcome,\n                created_at as \"created_at!: OffsetDateTime\",\n                updated_at as \"updated_at!: OffsetDateTime\"\n            FROM disputes\n            WHERE raised_by_party_id = $1 OR against_party_id = $1\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "raised_by_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "disputes",
+            "name": "raised_by_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "against_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "disputes",
+            "name": "against_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "resolution_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "disputes",
+            "name": "resolution_type"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "resolution_outcome",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "disputes",
+            "name": "resolution_outcome"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at!: OffsetDateTime",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "disputes",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at!: OffsetDateTime",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "disputes",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6f789018f81e095e22c5310f5654adca4a7ad5d59f82f55be27351c80cfb029f"
+}

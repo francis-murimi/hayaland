@@ -1,7 +1,7 @@
 use crate::deals::timeout_config::DealTimeoutConfig;
 use crate::errors::ApplicationError;
 use domain::entities::{Deal, DealStatus};
-use domain::repositories::{DealRepository, MilestoneRepository};
+use domain::repositories::{DealRepository, MilestoneRepository, TrustScoreRepository};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tracing::{info, warn};
@@ -20,6 +20,7 @@ pub struct ProcessDealTimeoutsResult {
 pub struct ProcessDealTimeouts {
     deal_repo: Arc<dyn DealRepository>,
     milestone_repo: Arc<dyn MilestoneRepository>,
+    trust_repo: Option<Arc<dyn TrustScoreRepository>>,
     config: DealTimeoutConfig,
 }
 
@@ -32,8 +33,17 @@ impl ProcessDealTimeouts {
         Self {
             deal_repo,
             milestone_repo,
+            trust_repo: None,
             config,
         }
+    }
+
+    pub fn with_trust_score_repository(
+        mut self,
+        trust_repo: Arc<dyn TrustScoreRepository>,
+    ) -> Self {
+        self.trust_repo = Some(trust_repo);
+        self
     }
 
     pub async fn execute(
@@ -131,6 +141,19 @@ impl ProcessDealTimeouts {
                         })),
                     )
                     .await?;
+
+                if let Some(trust_repo) = self.trust_repo.as_ref() {
+                    let participations =
+                        self.deal_repo.find_participations_by_deal(deal.id).await?;
+                    for p in participations {
+                        trust_repo.increment_timeouts_count(p.party_id).await?;
+                        if target == DealStatus::Cancelled {
+                            trust_repo
+                                .increment_deals_cancelled_count(p.party_id)
+                                .await?;
+                        }
+                    }
+                }
 
                 info!(
                     deal_id = %deal.id,

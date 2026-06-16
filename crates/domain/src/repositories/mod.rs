@@ -10,6 +10,7 @@ pub mod party_verification_repository;
 pub mod password_reset_repository;
 pub mod review_repository;
 pub mod role_repository;
+pub mod trust_score_repository;
 pub mod user_repository;
 pub mod wallet_repository;
 
@@ -25,5 +26,6 @@ pub use party_verification_repository::*;
 pub use password_reset_repository::*;
 pub use review_repository::*;
 pub use role_repository::*;
+pub use trust_score_repository::*;
 pub use user_repository::*;
 pub use wallet_repository::*;

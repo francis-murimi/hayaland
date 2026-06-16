@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT MAX(created_at) as \"created_at\"\n            FROM (\n                SELECT created_at FROM messages WHERE sender_party_id = $1 OR recipient_party_id = $1\n                UNION ALL\n                SELECT created_at FROM deal_history WHERE actor_party_id = $1\n                UNION ALL\n                SELECT created_at FROM reviews WHERE reviewed_party_id = $1 OR reviewer_party_id = $1\n            ) activity\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "bbc275e563eafa7403177f0af0aa31b69af7d00dd7798c13f6e3e9b89d4062ba"
+}

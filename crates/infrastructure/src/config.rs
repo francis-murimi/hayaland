@@ -20,6 +20,8 @@ pub struct Settings {
     pub deal_timeout_worker: DealTimeoutWorkerSettings,
     #[serde(default)]
     pub messages: MessagesSettings,
+    #[serde(default)]
+    pub trust_score: TrustScoreSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -118,12 +120,144 @@ fn default_email_retry_max_delay_ms() -> u64 {
     5000
 }
 
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct TrustScoreSettings {
+    #[serde(default)]
+    pub weights: TrustScoreWeights,
+    #[serde(default)]
+    pub tiers: TrustTierSettings,
+    #[serde(default)]
+    pub decay: TrustDecaySettings,
+    #[serde(default)]
+    pub cold_start: TrustColdStartSettings,
+    #[serde(default)]
+    pub nightly_job: TrustNightlyJobSettings,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TrustScoreWeights {
+    #[serde(default = "default_weight_transaction_history")]
+    pub transaction_history: f64,
+    #[serde(default = "default_weight_review_ratings")]
+    pub review_ratings: f64,
+    #[serde(default = "default_weight_profile_completeness")]
+    pub profile_completeness: f64,
+    #[serde(default = "default_weight_verification_level")]
+    pub verification_level: f64,
+    #[serde(default = "default_weight_response_rate")]
+    pub response_rate: f64,
+    #[serde(default = "default_weight_dispute_history")]
+    pub dispute_history: f64,
+    #[serde(default = "default_weight_longevity")]
+    pub longevity: f64,
+    #[serde(default = "default_weight_community")]
+    pub community: f64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TrustTierSettings {
+    #[serde(default = "default_tier_bronze_max")]
+    pub bronze_max: i32,
+    #[serde(default = "default_tier_silver_max")]
+    pub silver_max: i32,
+    #[serde(default = "default_tier_gold_max")]
+    pub gold_max: i32,
+    #[serde(default = "default_tier_platinum_max")]
+    pub platinum_max: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TrustDecaySettings {
+    #[serde(default = "default_decay_inactivity_threshold_days")]
+    pub inactivity_threshold_days: i64,
+    #[serde(default = "default_decay_inactivity_monthly_penalty")]
+    pub inactivity_monthly_penalty: f64,
+    #[serde(default = "default_decay_penalty_halve_months")]
+    pub penalty_halve_months: i64,
+    #[serde(default = "default_decay_penalty_expire_months")]
+    pub penalty_expire_months: i64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TrustColdStartSettings {
+    #[serde(default = "default_cold_start_neutral_score")]
+    pub neutral_score: f64,
+    #[serde(default = "default_cold_start_review_threshold")]
+    pub review_threshold: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TrustNightlyJobSettings {
+    #[serde(default = "default_nightly_job_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_nightly_job_interval_seconds")]
+    pub interval_seconds: u64,
+    #[serde(default = "default_nightly_job_batch_size")]
+    pub batch_size: usize,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct MessagesSettings {
     #[serde(default)]
     pub encryption_key: SecretString,
     #[serde(default = "default_max_pinned_per_conversation")]
     pub max_pinned_per_conversation: i32,
+}
+
+impl Default for TrustScoreWeights {
+    fn default() -> Self {
+        Self {
+            transaction_history: default_weight_transaction_history(),
+            review_ratings: default_weight_review_ratings(),
+            profile_completeness: default_weight_profile_completeness(),
+            verification_level: default_weight_verification_level(),
+            response_rate: default_weight_response_rate(),
+            dispute_history: default_weight_dispute_history(),
+            longevity: default_weight_longevity(),
+            community: default_weight_community(),
+        }
+    }
+}
+
+impl Default for TrustTierSettings {
+    fn default() -> Self {
+        Self {
+            bronze_max: default_tier_bronze_max(),
+            silver_max: default_tier_silver_max(),
+            gold_max: default_tier_gold_max(),
+            platinum_max: default_tier_platinum_max(),
+        }
+    }
+}
+
+impl Default for TrustDecaySettings {
+    fn default() -> Self {
+        Self {
+            inactivity_threshold_days: default_decay_inactivity_threshold_days(),
+            inactivity_monthly_penalty: default_decay_inactivity_monthly_penalty(),
+            penalty_halve_months: default_decay_penalty_halve_months(),
+            penalty_expire_months: default_decay_penalty_expire_months(),
+        }
+    }
+}
+
+impl Default for TrustColdStartSettings {
+    fn default() -> Self {
+        Self {
+            neutral_score: default_cold_start_neutral_score(),
+            review_threshold: default_cold_start_review_threshold(),
+        }
+    }
+}
+
+impl Default for TrustNightlyJobSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_nightly_job_enabled(),
+            interval_seconds: default_nightly_job_interval_seconds(),
+            batch_size: default_nightly_job_batch_size(),
+        }
+    }
 }
 
 impl Default for MessagesSettings {
@@ -133,6 +267,74 @@ impl Default for MessagesSettings {
             max_pinned_per_conversation: default_max_pinned_per_conversation(),
         }
     }
+}
+
+fn default_weight_transaction_history() -> f64 {
+    0.25
+}
+fn default_weight_review_ratings() -> f64 {
+    0.20
+}
+fn default_weight_profile_completeness() -> f64 {
+    0.10
+}
+fn default_weight_verification_level() -> f64 {
+    0.15
+}
+fn default_weight_response_rate() -> f64 {
+    0.10
+}
+fn default_weight_dispute_history() -> f64 {
+    0.10
+}
+fn default_weight_longevity() -> f64 {
+    0.05
+}
+fn default_weight_community() -> f64 {
+    0.05
+}
+
+fn default_tier_bronze_max() -> i32 {
+    39
+}
+fn default_tier_silver_max() -> i32 {
+    59
+}
+fn default_tier_gold_max() -> i32 {
+    74
+}
+fn default_tier_platinum_max() -> i32 {
+    100
+}
+
+fn default_decay_inactivity_threshold_days() -> i64 {
+    180
+}
+fn default_decay_inactivity_monthly_penalty() -> f64 {
+    2.0
+}
+fn default_decay_penalty_halve_months() -> i64 {
+    12
+}
+fn default_decay_penalty_expire_months() -> i64 {
+    24
+}
+
+fn default_cold_start_neutral_score() -> f64 {
+    50.0
+}
+fn default_cold_start_review_threshold() -> i32 {
+    3
+}
+
+fn default_nightly_job_enabled() -> bool {
+    true
+}
+fn default_nightly_job_interval_seconds() -> u64 {
+    86400
+}
+fn default_nightly_job_batch_size() -> usize {
+    1000
 }
 
 fn default_max_pinned_per_conversation() -> i32 {
@@ -348,6 +550,7 @@ mod tests {
             deal_timeouts: Default::default(),
             deal_timeout_worker: Default::default(),
             messages: Default::default(),
+            trust_score: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();
@@ -381,6 +584,7 @@ mod tests {
             deal_timeouts: Default::default(),
             deal_timeout_worker: Default::default(),
             messages: Default::default(),
+            trust_score: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();
@@ -407,6 +611,43 @@ pub fn configuration() -> Result<Settings, ConfigError> {
         )
         .build()?
         .try_deserialize()
+}
+
+impl TrustScoreSettings {
+    pub fn to_domain_config(&self) -> domain::entities::trust_score::TrustScoreConfig {
+        use domain::entities::trust_score::{
+            TrustColdStartConfig, TrustDecayConfig, TrustScoreConfig, TrustScoreWeights,
+            TrustTierThresholds,
+        };
+
+        TrustScoreConfig {
+            weights: TrustScoreWeights {
+                transaction_history: self.weights.transaction_history,
+                review_ratings: self.weights.review_ratings,
+                profile_completeness: self.weights.profile_completeness,
+                verification_level: self.weights.verification_level,
+                response_rate: self.weights.response_rate,
+                dispute_history: self.weights.dispute_history,
+                longevity: self.weights.longevity,
+                community: self.weights.community,
+            },
+            tiers: TrustTierThresholds {
+                silver: self.tiers.bronze_max as f64 + 1.0,
+                gold: self.tiers.silver_max as f64 + 1.0,
+                platinum: self.tiers.gold_max as f64 + 1.0,
+            },
+            cold_start: TrustColdStartConfig {
+                global_average_review_score: self.cold_start.neutral_score / 20.0,
+                min_reviews_before_own_score_dominates: self.cold_start.review_threshold as i64,
+            },
+            decay: TrustDecayConfig {
+                inactivity_penalty_per_30_days: self.decay.inactivity_monthly_penalty,
+                max_inactivity_penalty: self.decay.inactivity_monthly_penalty
+                    * (self.decay.penalty_expire_months as f64 / 6.0).max(1.0),
+            },
+            profile_completeness: Default::default(),
+        }
+    }
 }
 
 impl Settings {

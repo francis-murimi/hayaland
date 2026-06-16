@@ -1,0 +1,244 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                party_id,\n                overall_score as \"overall_score!: f64\",\n                as_supplier_score,\n                as_consumer_score,\n                as_enhancer_score,\n                deals_completed_count as \"deals_completed_count!: i64\",\n                deals_cancelled_count as \"deals_cancelled_count!: i64\",\n                deals_disputed_count as \"deals_disputed_count!: i64\",\n                timeouts_count as \"timeouts_count!: i64\",\n                no_shows_count as \"no_shows_count!: i64\",\n                total_completed_value as \"total_completed_value!: f64\",\n                average_response_hours,\n                profile_completeness as \"profile_completeness!: f64\",\n                verification_level as \"verification_level!: i32\",\n                longevity_days as \"longevity_days!: i64\",\n                calculation_formula as \"calculation_formula!: serde_json::Value\",\n                last_calculated_at,\n                next_calculation_at\n            FROM trust_scores\n            WHERE party_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "overall_score!: f64",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "overall_score"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "as_supplier_score",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "as_supplier_score"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "as_consumer_score",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "as_consumer_score"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "as_enhancer_score",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "as_enhancer_score"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "deals_completed_count!: i64",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "deals_completed_count"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "deals_cancelled_count!: i64",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "deals_cancelled_count"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "deals_disputed_count!: i64",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "deals_disputed_count"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "timeouts_count!: i64",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "timeouts_count"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "no_shows_count!: i64",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "no_shows_count"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "total_completed_value!: f64",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "total_completed_value"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "average_response_hours",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "average_response_hours"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "profile_completeness!: f64",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "profile_completeness"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "verification_level!: i32",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "verification_level"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "longevity_days!: i64",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "longevity_days"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "calculation_formula!: serde_json::Value",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "calculation_formula"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "last_calculated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "last_calculated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "next_calculation_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "trust_scores",
+            "name": "next_calculation_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "00a8883fc6edb17e8d130f43f6e0320b1bcc68ad0c90762fed9607e468da0181"
+}

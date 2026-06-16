@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO trust_scores (\n                id, party_id, overall_score, deals_completed_count, deals_cancelled_count,\n                deals_disputed_count, timeouts_count, no_shows_count, total_completed_value,\n                profile_completeness, verification_level, longevity_days, calculation_formula,\n                created_at, updated_at\n            )\n            VALUES ($1, $2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '{}', now(), now())\n            ON CONFLICT (party_id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5035c1ab438a88c602da59a7af444778ee5dc9ef95c15edd511c37e3d9001cbf"
+}

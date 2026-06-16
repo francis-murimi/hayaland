@@ -1,0 +1,49 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                dp.role as \"role!\",\n                COUNT(*) FILTER (WHERE d.deal_status = 'COMPLETED') as \"completed!: i64\",\n                COUNT(*) FILTER (WHERE d.deal_status = 'CANCELLED') as \"cancelled!: i64\",\n                COALESCE(SUM(d.total_deal_value) FILTER (WHERE d.deal_status = 'COMPLETED'), 0.0) as \"value!: f64\"\n            FROM deal_participations dp\n            JOIN deals d ON d.id = dp.deal_id\n            WHERE dp.party_id = $1\n            GROUP BY dp.role\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deal_participations",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "completed!: i64",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "cancelled!: i64",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "value!: f64",
+        "type_info": "Numeric",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "bbde1a818cfb4cf0d2a012171a1b8dc626479c6ceb31b0fdb17d444b30c046be"
+}

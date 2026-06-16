@@ -19,6 +19,24 @@ impl TrustScoreRecalculationPort for NoOpTrustScoreRecalculation {
     }
 }
 
+/// Concrete implementation that delegates to the `RecalculateTrustScore` use case.
+pub struct TrustScoreRecalculationService {
+    recalc: std::sync::Arc<crate::trust_scores::RecalculateTrustScore>,
+}
+
+impl TrustScoreRecalculationService {
+    pub fn new(recalc: std::sync::Arc<crate::trust_scores::RecalculateTrustScore>) -> Self {
+        Self { recalc }
+    }
+}
+
+#[async_trait]
+impl TrustScoreRecalculationPort for TrustScoreRecalculationService {
+    async fn request_recalculation(&self, party_id: Uuid) -> Result<(), ApplicationError> {
+        self.recalc.execute(party_id).await.map(|_| ())
+    }
+}
+
 /// Events published to connected clients over the real-time delivery channel.
 #[derive(Debug, Clone)]
 pub enum MessageEvent {

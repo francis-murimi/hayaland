@@ -43,6 +43,7 @@ use application::reviews::{
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
+use application::trust_scores::{GetTrustScore, RecalculateTrustScore};
 use application::users::authenticate_user::AuthenticateUser;
 use application::users::create_user::CreateUser;
 use application::users::deactivate_user::DeactivateUser;
@@ -152,6 +153,8 @@ pub struct AppState {
     pub get_deal_review_status: GetDealReviewStatus,
     pub hide_review: HideReview,
     pub list_admin_reviews: ListAdminReviews,
+    pub get_trust_score: Option<GetTrustScore>,
+    pub recalculate_trust_score: Option<RecalculateTrustScore>,
     pub submit_verification: SubmitVerification,
     pub list_party_verifications: ListPartyVerifications,
     pub get_verification_status: GetVerificationStatus,

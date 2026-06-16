@@ -26,10 +26,11 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
-use application::ports::NoOpTrustScoreRecalculation;
+use application::ports::TrustScoreRecalculationService;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
+use application::trust_scores::{GetTrustScore, RecalculateAllTrustScores, RecalculateTrustScore};
 use application::users::authenticate_user::AuthenticateUser;
 use application::users::create_user::CreateUser;
 use application::users::deactivate_user::DeactivateUser;
@@ -51,7 +52,7 @@ use domain::repositories::{
     AgreementRepository, ChatRoomRepository, DealRepository, DisputeRepository,
     EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
-    UserRepository, WalletRepository,
+    TrustScoreRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
@@ -63,11 +64,11 @@ use infrastructure::{
         PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMessageRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
-        PostgresUserRepository, PostgresWalletRepository,
+        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
     telemetry,
-    workers::run_deal_timeout_worker,
+    workers::{run_deal_timeout_worker, run_trust_score_worker},
 };
 use secrecy::ExposeSecret;
 use std::net::TcpListener;
@@ -114,7 +115,9 @@ async fn main() -> anyhow::Result<()> {
     let chat_room_repo: Arc<dyn ChatRoomRepository> =
         Arc::new(PostgresChatRoomRepository::new(pool.clone()));
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
-        Arc::new(PostgresPartyVerificationRepository::new(pool));
+        Arc::new(PostgresPartyVerificationRepository::new(pool.clone()));
+    let trust_repo: Arc<dyn TrustScoreRepository> =
+        Arc::new(PostgresTrustScoreRepository::new(pool));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -124,6 +127,16 @@ async fn main() -> anyhow::Result<()> {
         MessageEncryptionService::from_base64(settings.messages.encryption_key.expose_secret())
             .context("failed to load message encryption service")?,
     );
+
+    let recalc_trust_score = Arc::new(RecalculateTrustScore::new(
+        trust_repo.clone(),
+        party_repo.clone(),
+        settings.trust_score.to_domain_config(),
+    ));
+    let trust_score_recalculation_port: Arc<dyn application::ports::TrustScoreRecalculationPort> =
+        Arc::new(TrustScoreRecalculationService::new(
+            recalc_trust_score.clone(),
+        ));
     let in_memory_publisher = Arc::new(InMemoryRealtimePublisher::new());
     let websocket_registry = SessionRegistry::new();
     let realtime_publisher: Arc<dyn RealtimePublisher> = Arc::new(WebSocketPublisher::new(
@@ -144,15 +157,30 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     if settings.deal_timeout_worker.enabled {
-        let timeout_worker = Arc::new(ProcessDealTimeouts::new(
-            deal_repo.clone(),
-            milestone_repo.clone(),
-            settings.deal_timeouts.clone().into(),
-        ));
+        let timeout_worker = Arc::new(
+            ProcessDealTimeouts::new(
+                deal_repo.clone(),
+                milestone_repo.clone(),
+                settings.deal_timeouts.clone().into(),
+            )
+            .with_trust_score_repository(trust_repo.clone()),
+        );
         tokio::spawn(run_deal_timeout_worker(
             timeout_worker,
             std::time::Duration::from_secs(settings.deal_timeout_worker.interval_seconds),
             settings.deal_timeout_worker.batch_size,
+        ));
+    }
+
+    if settings.trust_score.nightly_job.enabled {
+        let recalc_all = Arc::new(RecalculateAllTrustScores::new(
+            trust_repo.clone(),
+            recalc_trust_score.clone(),
+        ));
+        tokio::spawn(run_trust_score_worker(
+            recalc_all,
+            std::time::Duration::from_secs(settings.trust_score.nightly_job.interval_seconds),
+            settings.trust_score.nightly_job.batch_size,
         ));
     }
 
@@ -219,18 +247,20 @@ async fn main() -> anyhow::Result<()> {
             milestone_repo.clone(),
             review_repo.clone(),
             settings.validation.clone(),
-        ),
+        )
+        .with_trust_score_repository(trust_repo.clone())
+        .with_trust_score_recalculation_port(trust_score_recalculation_port.clone()),
         submit_review: application::reviews::SubmitReview::new(
             review_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
-            Arc::new(NoOpTrustScoreRecalculation),
+            trust_score_recalculation_port.clone(),
         ),
         raise_dispute: application::disputes::RaiseDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
-            Arc::new(NoOpTrustScoreRecalculation),
+            trust_score_recalculation_port.clone(),
         ),
         list_deal_disputes: application::disputes::ListDealDisputes::new(
             deal_repo.clone(),
@@ -252,7 +282,7 @@ async fn main() -> anyhow::Result<()> {
         resolve_dispute: application::disputes::ResolveDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
-            Arc::new(NoOpTrustScoreRecalculation),
+            trust_score_recalculation_port.clone(),
         ),
         reject_dispute: application::disputes::RejectDispute::new(
             dispute_repo.clone(),
@@ -274,6 +304,12 @@ async fn main() -> anyhow::Result<()> {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        get_trust_score: Some(GetTrustScore::new(trust_repo.clone())),
+        recalculate_trust_score: Some(RecalculateTrustScore::new(
+            trust_repo.clone(),
+            party_repo.clone(),
+            settings.trust_score.to_domain_config(),
+        )),
         submit_verification: application::verifications::SubmitVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
@@ -289,17 +325,17 @@ async fn main() -> anyhow::Result<()> {
         approve_verification: application::verifications::ApproveVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
-            Arc::new(NoOpTrustScoreRecalculation),
+            trust_score_recalculation_port.clone(),
         ),
         reject_verification: application::verifications::RejectVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
-            Arc::new(NoOpTrustScoreRecalculation),
+            trust_score_recalculation_port.clone(),
         ),
         revoke_verification: application::verifications::RevokeVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
-            Arc::new(NoOpTrustScoreRecalculation),
+            trust_score_recalculation_port.clone(),
         ),
         list_admin_verifications: application::verifications::ListAdminVerifications::new(
             party_verification_repo.clone(),

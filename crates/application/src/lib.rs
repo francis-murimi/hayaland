@@ -12,6 +12,7 @@ pub mod payments;
 pub mod ports;
 pub mod reviews;
 pub mod roles;
+pub mod trust_scores;
 pub mod users;
 pub mod verifications;
 

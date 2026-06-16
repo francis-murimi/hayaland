@@ -2,6 +2,7 @@ use crate::handlers::parties::{
     add_role, create_party, delete_party, get_party, list_my_parties, list_parties, list_roles,
     nearby, remove_role, search_parties, update_party,
 };
+use crate::handlers::trust_scores::{get_trust_score, recalculate_trust_score};
 use actix_web::web;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -28,5 +29,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/parties/{id}/roles/{role_type}")
             .route(web::delete().to(remove_role::remove_role)),
+    )
+    .service(
+        web::resource("/parties/{id}/trust").route(web::get().to(get_trust_score::get_trust_score)),
+    )
+    .service(
+        web::resource("/parties/{id}/trust/recalculate")
+            .route(web::post().to(recalculate_trust_score::recalculate_trust_score)),
     );
 }

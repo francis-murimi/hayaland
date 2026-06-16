@@ -2275,7 +2275,8 @@ fn test_fixtures() -> TestFixtures {
             milestone_repo.clone(),
             review_repo.clone(),
             ValidationConfig::default(),
-        ),
+        )
+        .with_trust_score_recalculation_port(Arc::new(NoOpTrustScoreRecalculation)),
         propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
         counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
         accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),
@@ -2408,6 +2409,8 @@ fn test_fixtures() -> TestFixtures {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        get_trust_score: None,
+        recalculate_trust_score: None,
         raise_dispute: application::disputes::RaiseDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),

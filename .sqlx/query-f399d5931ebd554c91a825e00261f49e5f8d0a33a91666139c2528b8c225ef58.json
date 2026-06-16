@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO trust_scores (\n                id, party_id, deals_completed_count, deals_cancelled_count, deals_disputed_count,\n                timeouts_count, no_shows_count, total_completed_value\n            )\n            VALUES ($1, $2, 1, 0, 0, 0, 0, $3)\n            ON CONFLICT (party_id) DO UPDATE SET\n                deals_completed_count = trust_scores.deals_completed_count + 1,\n                total_completed_value = trust_scores.total_completed_value + EXCLUDED.total_completed_value,\n                updated_at = now()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f399d5931ebd554c91a825e00261f49e5f8d0a33a91666139c2528b8c225ef58"
+}

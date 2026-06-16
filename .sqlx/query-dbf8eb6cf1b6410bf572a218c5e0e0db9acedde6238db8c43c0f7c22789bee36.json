@@ -1,0 +1,143 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                r.reviewed_role as \"reviewed_role!\",\n                r.reviewer_party_id as \"reviewer_party_id!\",\n                r.overall_rating as \"overall_rating!: i32\",\n                r.communication_rating,\n                r.reliability_rating,\n                r.quality_rating,\n                r.timeliness_rating,\n                COALESCE(d.total_deal_value, 0.0) as \"deal_value!: f64\",\n                r.created_at as \"created_at!: OffsetDateTime\",\n                r.is_public as \"is_public!: bool\",\n                p.trust_score as \"reviewer_trust_score!: f64\"\n            FROM reviews r\n            LEFT JOIN deals d ON d.id = r.deal_id\n            LEFT JOIN parties p ON p.id = r.reviewer_party_id\n            WHERE r.reviewed_party_id = $1\n              AND r.is_public = true\n            ORDER BY r.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "reviewed_role!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewed_role"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "reviewer_party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reviewer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "overall_rating!: i32",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "overall_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "communication_rating",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "communication_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "reliability_rating",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "reliability_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "quality_rating",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "quality_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "timeliness_rating",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "timeliness_rating"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "deal_value!: f64",
+        "type_info": "Numeric",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at!: OffsetDateTime",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "is_public!: bool",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "reviews",
+            "name": "is_public"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "reviewer_trust_score!: f64",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "parties",
+            "name": "trust_score"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      null,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "dbf8eb6cf1b6410bf572a218c5e0e0db9acedde6238db8c43c0f7c22789bee36"
+}

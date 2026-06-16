@@ -3,9 +3,11 @@ use crate::deals::create_deal::map_aggregate_to_result;
 use crate::deals::dto::{DealResult, ExecuteTransitionCommand};
 use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
+use crate::ports::TrustScoreRecalculationPort;
 use domain::entities::{AgreementStatus, DealStatus, ParticipationStatus, TermStatus};
 use domain::repositories::{
     AgreementRepository, DealRepository, MilestoneRepository, PartyRepository, ReviewRepository,
+    TrustScoreRepository,
 };
 use domain::services::ValidationConfig;
 use std::sync::Arc;
@@ -20,6 +22,8 @@ pub struct ExecuteTransition {
     agreement_repo: Arc<dyn AgreementRepository>,
     milestone_repo: Option<Arc<dyn MilestoneRepository>>,
     review_repo: Option<Arc<dyn ReviewRepository>>,
+    trust_repo: Option<Arc<dyn TrustScoreRepository>>,
+    recalc_port: Option<Arc<dyn TrustScoreRecalculationPort>>,
     validation_config: ValidationConfig,
 }
 
@@ -36,6 +40,8 @@ impl ExecuteTransition {
             agreement_repo,
             milestone_repo: None,
             review_repo: None,
+            trust_repo: None,
+            recalc_port: None,
             validation_config,
         }
     }
@@ -53,6 +59,8 @@ impl ExecuteTransition {
             agreement_repo,
             milestone_repo: Some(milestone_repo),
             review_repo: None,
+            trust_repo: None,
+            recalc_port: None,
             validation_config,
         }
     }
@@ -71,8 +79,26 @@ impl ExecuteTransition {
             agreement_repo,
             milestone_repo: Some(milestone_repo),
             review_repo: Some(review_repo),
+            trust_repo: None,
+            recalc_port: None,
             validation_config,
         }
+    }
+
+    pub fn with_trust_score_repository(
+        mut self,
+        trust_repo: Arc<dyn TrustScoreRepository>,
+    ) -> Self {
+        self.trust_repo = Some(trust_repo);
+        self
+    }
+
+    pub fn with_trust_score_recalculation_port(
+        mut self,
+        port: Arc<dyn TrustScoreRecalculationPort>,
+    ) -> Self {
+        self.recalc_port = Some(port);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(deal_id = %deal_id))]
@@ -230,6 +256,36 @@ impl ExecuteTransition {
                 cmd.reason.map(|r| serde_json::json!({ "reason": r })),
             )
             .await?;
+
+        if let Some(trust_repo) = self.trust_repo.as_ref() {
+            let value = deal
+                .total_deal_value
+                .and_then(|v| rust_decimal::prelude::ToPrimitive::to_f64(&v))
+                .unwrap_or(0.0);
+            for participation in &participations {
+                match cmd.new_status {
+                    DealStatus::Completed => {
+                        trust_repo
+                            .increment_deals_completed_count(participation.party_id, value)
+                            .await?;
+                    }
+                    DealStatus::Cancelled => {
+                        trust_repo
+                            .increment_deals_cancelled_count(participation.party_id)
+                            .await?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if cmd.new_status == DealStatus::Completed || cmd.new_status == DealStatus::Cancelled {
+            if let Some(port) = self.recalc_port.as_ref() {
+                for participation in &participations {
+                    let _ = port.request_recalculation(participation.party_id).await;
+                }
+            }
+        }
 
         info!(%deal_id, new_status = %cmd.new_status.as_str(), "executed deal transition");
         Ok(map_aggregate_to_result(

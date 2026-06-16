@@ -1,1 +1,12 @@
-party_verifications, messages, and disputes
+Still missing to fully cover the PDF:
+
+Marketplace & matching: standalone Resource / Need / Enhancement catalog, category tree management, triadic matching engine, compatibility scoring, discovery browsing.
+Party & Profile: PartyGroup governance/voting, KYC provider integrations, richer profile fields.
+Deal lifecycle: deal history endpoint, deal cloning, explicit participation accept/decline, public deal discovery.
+Negotiation & Value: revenue-share / cost-plus / barter / hybrid settlement paths, market benchmarks, dynamic pricing.
+Agreements: agreement preview/templates, DocuSign/e-sign integration.
+Execution: smart-contract layer, oracle feeds, conditional milestone triggers (time/oracle/external), conditional payments, automatic holdback release, force majeure.
+Payments: automatic escrow funding on COMMITTED, payment-provider webhooks, refunds/chargebacks, settlement saga, multi-currency.
+Notifications: notification service, preferences/templates, in-app center, SMS/push, subscription topics.
+Platform services: search (Elasticsearch), analytics/BI, media/document upload & OCR, admin audit log/moderation/platform config.
+Architecture: event bus (Kafka), domain event publishing, event sourcing, CQRS read models, saga orchestration, gRPC, GraphQL, webhooks, OAuth2/OIDC, ABAC, rate limiting, distributed tracing, caching.

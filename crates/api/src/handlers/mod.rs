@@ -17,6 +17,7 @@ pub mod resend_verification;
 pub mod reset_password;
 pub mod reviews;
 pub mod roles;
+pub mod trust_scores;
 pub mod update_user;
 pub mod verifications;
 pub mod verify_email;
