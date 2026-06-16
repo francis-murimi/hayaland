@@ -34,14 +34,14 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::DuplicatePartyEmail)
             | ApiError::Application(ApplicationError::DuplicatePartyRole)
             | ApiError::Application(ApplicationError::DuplicateReview)
-            | ApiError::Application(ApplicationError::DuplicateVerification) => {
-                StatusCode::CONFLICT
-            }
+            | ApiError::Application(ApplicationError::DuplicateVerification)
+            | ApiError::Application(ApplicationError::DisputeAlreadyExists) => StatusCode::CONFLICT,
             ApiError::Application(ApplicationError::NotFound)
             | ApiError::Application(ApplicationError::PartyNotFound)
             | ApiError::Application(ApplicationError::VerificationNotFound)
             | ApiError::Application(ApplicationError::RoleNotFound)
             | ApiError::Application(ApplicationError::DealNotFound)
+            | ApiError::Application(ApplicationError::DisputeNotFound)
             | ApiError::Application(ApplicationError::DealParticipationNotFound)
             | ApiError::Application(ApplicationError::MessageNotFound)
             | ApiError::Application(ApplicationError::ConversationNotFound)
@@ -70,7 +70,8 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::ReplyNotInSameContext) => {
                 StatusCode::CONFLICT
             }
-            ApiError::Application(ApplicationError::DealAccessDenied) => StatusCode::FORBIDDEN,
+            ApiError::Application(ApplicationError::DealAccessDenied)
+            | ApiError::Application(ApplicationError::DisputeAccessDenied) => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::EmailSendFailed)
             | ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -155,6 +156,11 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::DealParticipationNotFound) => {
                 "deal_participation_not_found"
             }
+            ApiError::Application(ApplicationError::DisputeNotFound) => "dispute_not_found",
+            ApiError::Application(ApplicationError::DisputeAlreadyExists) => {
+                "dispute_already_exists"
+            }
+            ApiError::Application(ApplicationError::DisputeAccessDenied) => "dispute_access_denied",
             ApiError::Application(ApplicationError::InvalidStateTransition { .. }) => {
                 "invalid_state_transition"
             }

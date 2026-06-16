@@ -1,6 +1,7 @@
 pub mod agreement_repository;
 pub mod chat_room_repository;
 pub mod deal_repository;
+pub mod dispute_repository;
 pub mod email_verification_repository;
 pub mod message_repository;
 pub mod milestone_repository;
@@ -15,6 +16,7 @@ pub mod wallet_repository;
 pub use agreement_repository::*;
 pub use chat_room_repository::*;
 pub use deal_repository::*;
+pub use dispute_repository::*;
 pub use email_verification_repository::*;
 pub use message_repository::*;
 pub use milestone_repository::*;

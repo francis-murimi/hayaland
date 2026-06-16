@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE disputes\n            SET dispute_status = CASE WHEN dispute_status = 'OPEN' THEN 'UNDER_REVIEW' ELSE dispute_status END,\n                updated_at = now()\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f5455fdac2cbbcab6f59741d013c035dd83d31b50bbe009d71d701aea9453696"
+}

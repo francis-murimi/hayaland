@@ -12,10 +12,10 @@ use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use async_trait::async_trait;
 #[cfg(test)]
 use domain::entities::{
-    Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Email, EmailVerification,
-    Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Review, ReviewRating, Role,
-    RoleProfile, Signature, Transaction, TransactionApproval, TransactionStatus, TransactionType,
-    User, Username,
+    Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Dispute, DisputeResponse,
+    DisputeStatus, Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken,
+    PlatformWallet, Review, ReviewRating, Role, RoleProfile, Signature, Transaction,
+    TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
 #[cfg(test)]
 use domain::entities::{Party, UserPartyMembership};
@@ -26,9 +26,10 @@ use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 #[cfg(test)]
 use domain::repositories::{
-    AgreementRepository, EmailVerificationRepository, MilestoneRepository, PartyRepository,
-    PartyVerificationRepository, PasswordResetRepository, ReviewListResult, ReviewRepository,
-    ReviewSearchCriteria, RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    AgreementRepository, DisputeFilters, DisputeListResult, DisputeRepository,
+    EmailVerificationRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, ReviewListResult, ReviewRepository, ReviewSearchCriteria,
+    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
 };
 #[cfg(test)]
 use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
@@ -39,6 +40,8 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
+#[cfg(test)]
+use time::OffsetDateTime;
 #[cfg(test)]
 use uuid::Uuid;
 
@@ -795,6 +798,234 @@ impl DealRepository for FakeDealRepo {
             .unwrap()
             .get(&deal_id)
             .cloned())
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeDisputeRepo {
+    pub disputes: Mutex<HashMap<Uuid, Dispute>>,
+    pub responses: Mutex<Vec<DisputeResponse>>,
+    pub disputed_counts: Mutex<HashMap<Uuid, i64>>,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl DisputeRepository for FakeDisputeRepo {
+    async fn create(&self, dispute: &Dispute) -> Result<(), DomainError> {
+        self.disputes
+            .lock()
+            .unwrap()
+            .insert(dispute.id, dispute.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Dispute>, DomainError> {
+        Ok(self.disputes.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn list_by_deal(
+        &self,
+        deal_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<DisputeListResult, DomainError> {
+        let disputes: Vec<Dispute> = self
+            .disputes
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|d| d.deal_id == deal_id)
+            .cloned()
+            .collect();
+        let total = disputes.len() as i64;
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        let disputes = disputes
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(DisputeListResult {
+            disputes,
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    async fn list_admin(&self, filters: &DisputeFilters) -> Result<DisputeListResult, DomainError> {
+        let disputes: Vec<Dispute> = self
+            .disputes
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|d| filters.status.is_none_or(|s| d.dispute_status == s))
+            .filter(|d| filters.deal_id.is_none_or(|id| d.deal_id == id))
+            .filter(|d| {
+                filters
+                    .raised_by_party_id
+                    .is_none_or(|id| d.raised_by_party_id == id)
+            })
+            .filter(|d| {
+                filters
+                    .against_party_id
+                    .is_none_or(|id| d.against_party_id == Some(id))
+            })
+            .cloned()
+            .collect();
+        let total = disputes.len() as i64;
+        let start = filters.offset as usize;
+        let end = (filters.offset + filters.limit) as usize;
+        let disputes = disputes
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(DisputeListResult {
+            disputes,
+            total,
+            limit: filters.limit,
+            offset: filters.offset,
+        })
+    }
+
+    async fn submit_evidence(
+        &self,
+        id: Uuid,
+        evidence_urls: Vec<String>,
+        notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        if let Some(d) = self.disputes.lock().unwrap().get_mut(&id) {
+            d.evidence_urls.extend(evidence_urls);
+            if let Some(n) = notes {
+                d.admin_notes = Some(n);
+            }
+            if d.dispute_status == DisputeStatus::Open {
+                d.dispute_status = DisputeStatus::UnderReview;
+            }
+            d.updated_at = OffsetDateTime::now_utc();
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn add_response(&self, response: &DisputeResponse) -> Result<(), DomainError> {
+        self.responses.lock().unwrap().push(response.clone());
+        Ok(())
+    }
+
+    async fn list_responses(&self, dispute_id: Uuid) -> Result<Vec<DisputeResponse>, DomainError> {
+        let mut responses: Vec<DisputeResponse> = self
+            .responses
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.dispute_id == dispute_id)
+            .cloned()
+            .collect();
+        responses.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(responses)
+    }
+
+    async fn escalate(
+        &self,
+        id: Uuid,
+        escalated_by_user_id: Uuid,
+        notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        if let Some(d) = self.disputes.lock().unwrap().get_mut(&id) {
+            d.escalate()?;
+            if let Some(n) = notes {
+                d.admin_notes = Some(n);
+            }
+            d.resolved_by_user_id = Some(escalated_by_user_id);
+            d.updated_at = OffsetDateTime::now_utc();
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn resolve(
+        &self,
+        id: Uuid,
+        resolved_by_user_id: Uuid,
+        resolution_type: domain::entities::ResolutionType,
+        resolution_outcome: domain::entities::ResolutionOutcome,
+        severity: domain::entities::DisputeSeverity,
+        resolution_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        if let Some(d) = self.disputes.lock().unwrap().get_mut(&id) {
+            d.resolve(
+                resolution_type,
+                resolution_outcome,
+                severity,
+                resolution_notes,
+                resolved_by_user_id,
+            )?;
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn reject(
+        &self,
+        id: Uuid,
+        resolved_by_user_id: Uuid,
+        reason: String,
+    ) -> Result<(), DomainError> {
+        if let Some(d) = self.disputes.lock().unwrap().get_mut(&id) {
+            d.reject(reason, resolved_by_user_id)?;
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn count_open_by_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .disputes
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|d| d.raised_by_party_id == party_id && !d.dispute_status.is_terminal())
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn count_open_against_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .disputes
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|d| d.against_party_id == Some(party_id) && !d.dispute_status.is_terminal())
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn increment_deals_disputed_count(&self, party_id: Uuid) -> Result<(), DomainError> {
+        let mut counts = self.disputed_counts.lock().unwrap();
+        *counts.entry(party_id).or_insert(0) += 1;
+        Ok(())
+    }
+
+    async fn update_status(
+        &self,
+        id: Uuid,
+        status: DisputeStatus,
+        updated_at: time::OffsetDateTime,
+    ) -> Result<(), DomainError> {
+        if let Some(d) = self.disputes.lock().unwrap().get_mut(&id) {
+            d.dispute_status = status;
+            d.updated_at = updated_at;
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
     }
 }
 

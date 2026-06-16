@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id as \"id!\",\n                dispute_id as \"dispute_id!\",\n                party_id as \"party_id!\",\n                user_id as \"user_id!\",\n                message as \"message!\",\n                created_at as \"created_at!\"\n            FROM dispute_responses\n            WHERE dispute_id = $1\n            ORDER BY created_at ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dispute_responses",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "dispute_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dispute_responses",
+            "name": "dispute_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "party_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dispute_responses",
+            "name": "party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "user_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dispute_responses",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "message!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dispute_responses",
+            "name": "message"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "dispute_responses",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "641e8080acc717e76e71fab775e8741872da462f527bb0817e986b93a68f9137"
+}

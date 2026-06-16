@@ -11,6 +11,7 @@ use application::deals::{
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
     ValidateDeal, WithdrawTerm,
 };
+use application::disputes;
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
 use application::errors::ApplicationError;
@@ -30,6 +31,7 @@ use application::payments::{
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
 use application::ports::{EncryptionService, NoOpTrustScoreRecalculation, RealtimePublisher};
+use application::reviews as application_reviews;
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -40,6 +42,7 @@ use application::users::get_user::GetUser;
 use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
+use application::verifications;
 use application::{
     chatrooms::{
         CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
@@ -51,7 +54,6 @@ use application::{
     },
 };
 use async_trait::async_trait;
-
 use domain::repositories::{
     AgreementRepository, ChatRoomRepository, DealRepository, DisputeRepository,
     EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
@@ -307,88 +309,79 @@ async fn build_state(pool: PgPool) -> AppState {
             milestone_repo.clone(),
             wallet_repo.clone(),
         ),
-        submit_review: application::reviews::SubmitReview::new(
+        submit_review: application_reviews::SubmitReview::new(
             review_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
-        list_deal_reviews: application::reviews::ListDealReviews::new(
+        list_deal_reviews: application_reviews::ListDealReviews::new(
             deal_repo.clone(),
             review_repo.clone(),
         ),
-        list_party_reviews: application::reviews::ListPartyReviews::new(
+        list_party_reviews: application_reviews::ListPartyReviews::new(
             party_repo.clone(),
             review_repo.clone(),
         ),
-        get_review: application::reviews::GetReview::new(deal_repo.clone(), review_repo.clone()),
-        get_deal_review_status: application::reviews::GetDealReviewStatus::new(
+        get_review: application_reviews::GetReview::new(deal_repo.clone(), review_repo.clone()),
+        get_deal_review_status: application_reviews::GetDealReviewStatus::new(
             deal_repo.clone(),
             review_repo.clone(),
         ),
-        hide_review: application::reviews::HideReview::new(review_repo.clone()),
-        list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
-        raise_dispute: application::disputes::RaiseDispute::new(
+        hide_review: application_reviews::HideReview::new(review_repo.clone()),
+        list_admin_reviews: application_reviews::ListAdminReviews::new(review_repo.clone()),
+        raise_dispute: disputes::RaiseDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
-        list_deal_disputes: application::disputes::ListDealDisputes::new(
+        list_deal_disputes: disputes::ListDealDisputes::new(
             deal_repo.clone(),
             dispute_repo.clone(),
         ),
-        get_dispute: application::disputes::GetDispute::new(
+        get_dispute: disputes::GetDispute::new(deal_repo.clone(), dispute_repo.clone()),
+        submit_evidence: disputes::SubmitEvidence::new(deal_repo.clone(), dispute_repo.clone()),
+        respond_to_dispute: disputes::RespondToDispute::new(
             deal_repo.clone(),
             dispute_repo.clone(),
         ),
-        submit_evidence: application::disputes::SubmitEvidence::new(
-            deal_repo.clone(),
-            dispute_repo.clone(),
-        ),
-        respond_to_dispute: application::disputes::RespondToDispute::new(
-            deal_repo.clone(),
-            dispute_repo.clone(),
-        ),
-        escalate_dispute: application::disputes::EscalateDispute::new(dispute_repo.clone()),
-        resolve_dispute: application::disputes::ResolveDispute::new(
+        escalate_dispute: disputes::EscalateDispute::new(dispute_repo.clone()),
+        resolve_dispute: disputes::ResolveDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
-        reject_dispute: application::disputes::RejectDispute::new(
-            dispute_repo.clone(),
-            deal_repo.clone(),
-        ),
-        list_admin_disputes: application::disputes::ListAdminDisputes::new(dispute_repo.clone()),
-        submit_verification: application::verifications::SubmitVerification::new(
+        reject_dispute: disputes::RejectDispute::new(dispute_repo.clone(), deal_repo.clone()),
+        list_admin_disputes: disputes::ListAdminDisputes::new(dispute_repo.clone()),
+        submit_verification: verifications::SubmitVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
         ),
-        list_party_verifications: application::verifications::ListPartyVerifications::new(
+        list_party_verifications: verifications::ListPartyVerifications::new(
             party_verification_repo.clone(),
             party_repo.clone(),
         ),
-        get_verification_status: application::verifications::GetVerificationStatus::new(
+        get_verification_status: verifications::GetVerificationStatus::new(
             party_verification_repo.clone(),
             party_repo.clone(),
         ),
-        approve_verification: application::verifications::ApproveVerification::new(
+        approve_verification: verifications::ApproveVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
-        reject_verification: application::verifications::RejectVerification::new(
+        reject_verification: verifications::RejectVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
-        revoke_verification: application::verifications::RevokeVerification::new(
+        revoke_verification: verifications::RevokeVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
-        list_admin_verifications: application::verifications::ListAdminVerifications::new(
+        list_admin_verifications: verifications::ListAdminVerifications::new(
             party_verification_repo.clone(),
         ),
         send_message: SendMessage::new(
@@ -423,7 +416,6 @@ async fn build_state(pool: PgPool) -> AppState {
             chat_room_repo.clone(),
             encryption_service.clone(),
         ),
-        list_conversations: ListConversations::new(message_repo.clone()),
         mark_read: MarkRead::new(
             message_repo.clone(),
             party_repo.clone(),
@@ -431,6 +423,7 @@ async fn build_state(pool: PgPool) -> AppState {
             chat_room_repo.clone(),
             realtime_publisher.clone(),
         ),
+        list_conversations: ListConversations::new(message_repo.clone()),
         react: ToggleReaction::new(
             message_repo.clone(),
             party_repo.clone(),
@@ -516,7 +509,8 @@ async fn setup_executing_deal(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid, Uuid) {
     let consumer_party = Uuid::now_v7();
     let category_id = Uuid::now_v7();
 
-    sqlx::query!("INSERT INTO categories (id, category_name, category_code, category_type) VALUES ($1, $2, $3, $4)",
+    sqlx::query!(
+        "INSERT INTO categories (id, category_name, category_code, category_type) VALUES ($1, $2, $3, $4)",
         category_id, "Test", "TEST", "DOMAIN"
     )
     .execute(pool)
@@ -660,14 +654,14 @@ async fn setup_executing_deal(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid, Uuid) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn create_review_returns_201(pool: PgPool) {
+async fn create_dispute_returns_201(pool: PgPool) {
     let state = build_state(pool.clone()).await;
     let (deal_id, supplier_user, _, supplier_party, consumer_party) =
         setup_executing_deal(&pool).await;
     let token = auth_token(
         &state.token_validator,
         supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
     )
     .await;
 
@@ -677,15 +671,15 @@ async fn create_review_returns_201(pool: PgPool) {
             .configure(routes::configure),
     )
     .await;
-
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .insert_header(("X-Party-ID", supplier_party.to_string()))
         .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "Great partner"
+            "againstPartyId": consumer_party,
+            "disputeType": "NON_DELIVERY",
+            "description": "Items were not delivered.",
+            "evidenceUrls": ["https://example.com/evidence1.png"]
         }))
         .to_request();
 
@@ -693,20 +687,28 @@ async fn create_review_returns_201(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["overallRating"], 4);
-    assert_eq!(body["reviewerPartyId"], supplier_party.to_string());
-    assert_eq!(body["reviewedPartyId"], consumer_party.to_string());
+    assert_eq!(body["dealId"], deal_id.to_string());
+    assert_eq!(body["raisedByPartyId"], supplier_party.to_string());
+    assert_eq!(body["raisedByUserId"], supplier_user.to_string());
+    assert_eq!(body["againstPartyId"], consumer_party.to_string());
+    assert_eq!(body["disputeType"], "NON_DELIVERY");
+    assert_eq!(body["disputeStatus"], "OPEN");
+    assert_eq!(body["description"], "Items were not delivered.");
+    assert_eq!(
+        body["evidenceUrls"],
+        serde_json::json!(["https://example.com/evidence1.png"])
+    );
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn duplicate_review_returns_conflict(pool: PgPool) {
+async fn create_duplicate_dispute_returns_conflict(pool: PgPool) {
     let state = build_state(pool.clone()).await;
     let (deal_id, supplier_user, _, supplier_party, consumer_party) =
         setup_executing_deal(&pool).await;
     let token = auth_token(
         &state.token_validator,
         supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
     )
     .await;
 
@@ -716,15 +718,16 @@ async fn duplicate_review_returns_conflict(pool: PgPool) {
             .configure(routes::configure),
     )
     .await;
-
     let body = serde_json::json!({
-        "reviewedPartyId": consumer_party,
-        "overallRating": 4
+        "againstPartyId": consumer_party,
+        "disputeType": "QUALITY_ISSUE",
+        "description": "Quality issue.",
+        "evidenceUrls": []
     });
 
     for i in 0..2 {
         let req = test::TestRequest::post()
-            .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
+            .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
             .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
             .insert_header(("X-Party-ID", supplier_party.to_string()))
             .set_json(&body)
@@ -739,11 +742,10 @@ async fn duplicate_review_returns_conflict(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn non_participant_cannot_list_deal_reviews(pool: PgPool) {
+async fn non_participant_cannot_create_dispute(pool: PgPool) {
     let state = build_state(pool.clone()).await;
-    let (deal_id, _, _consumer_user, _, _) = setup_executing_deal(&pool).await;
+    let (deal_id, _, _, _, _) = setup_executing_deal(&pool).await;
 
-    // Create an unrelated user/party.
     let outsider_user = Uuid::now_v7();
     let outsider_party = Uuid::now_v7();
     sqlx::query!(
@@ -788,7 +790,7 @@ async fn non_participant_cannot_list_deal_reviews(pool: PgPool) {
     let token = auth_token(
         &state.token_validator,
         outsider_user,
-        vec!["reviews:read".to_string()],
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
     )
     .await;
 
@@ -798,25 +800,29 @@ async fn non_participant_cannot_list_deal_reviews(pool: PgPool) {
             .configure(routes::configure),
     )
     .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .insert_header(("X-Party-ID", outsider_party.to_string()))
+        .set_json(serde_json::json!({
+            "disputeType": "NON_PAYMENT",
+            "description": "I want in.",
+            "evidenceUrls": []
+        }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn admin_can_hide_review(pool: PgPool) {
+async fn get_dispute_and_list_deal_disputes(pool: PgPool) {
     let state = build_state(pool.clone()).await;
     let (deal_id, supplier_user, _, supplier_party, consumer_party) =
         setup_executing_deal(&pool).await;
-    let user_token = auth_token(
+    let token = auth_token(
         &state.token_validator,
         supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
     )
     .await;
 
@@ -828,19 +834,154 @@ async fn admin_can_hide_review(pool: PgPool) {
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .insert_header(("X-Party-ID", supplier_party.to_string()))
         .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "needs moderation"
+            "againstPartyId": consumer_party,
+            "disputeType": "NON_DELIVERY",
+            "description": "Late.",
+            "evidenceUrls": []
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    let review_id = body["id"].as_str().unwrap();
+    let dispute_id = body["id"].as_str().unwrap();
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/disputes/{dispute_id}"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["id"], dispute_id);
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["disputes"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn submit_evidence_and_respond(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (deal_id, supplier_user, consumer_user, supplier_party, consumer_party) =
+        setup_executing_deal(&pool).await;
+    let supplier_token = auth_token(
+        &state.token_validator,
+        supplier_user,
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
+    )
+    .await;
+    let consumer_token = auth_token(
+        &state.token_validator,
+        consumer_user,
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
+        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .set_json(serde_json::json!({
+            "againstPartyId": consumer_party,
+            "disputeType": "QUALITY_ISSUE",
+            "description": "Bad quality.",
+            "evidenceUrls": []
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let dispute_id = body["id"].as_str().unwrap();
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/disputes/{dispute_id}/evidence"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
+        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .set_json(serde_json::json!({
+            "evidenceUrls": ["https://example.com/more.png"],
+            "notes": "more proof"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["evidenceUrls"]
+        .as_array()
+        .unwrap()
+        .contains(&serde_json::json!("https://example.com/more.png")));
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/disputes/{dispute_id}/responses"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {consumer_token}")))
+        .insert_header(("X-Party-ID", consumer_party.to_string()))
+        .set_json(serde_json::json!({
+            "message": "We disagree with the claim."
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["responses"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        body["responses"][0]["message"],
+        "We disagree with the claim."
+    );
+    assert_eq!(body["responses"][0]["partyId"], consumer_party.to_string());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_resolve_dispute(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
+        setup_executing_deal(&pool).await;
+    let supplier_token = auth_token(
+        &state.token_validator,
+        supplier_user,
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
+        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .set_json(serde_json::json!({
+            "againstPartyId": consumer_party,
+            "disputeType": "NON_PAYMENT",
+            "description": "Not paid.",
+            "evidenceUrls": []
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let dispute_id = body["id"].as_str().unwrap();
 
     let admin_user = Uuid::now_v7();
     sqlx::query!(
@@ -858,141 +999,48 @@ async fn admin_can_hide_review(pool: PgPool) {
     let admin_token = auth_token(
         &state.token_validator,
         admin_user,
-        vec!["admin:reviews".to_string()],
+        vec!["admin:disputes".to_string()],
     )
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/admin/reviews/{review_id}/hide"))
+        .uri(&format!("/api/v1/admin/disputes/{dispute_id}/resolve"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
         .set_json(serde_json::json!({
-            "platformResponse": "removed by admin"
+            "resolutionType": "AMICABLE",
+            "resolutionOutcome": "IN_FAVOR_OF_RAISED",
+            "severity": "HIGH",
+            "resolutionNotes": "Refund issued.",
+            "nextDealStatus": "EXECUTING"
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/reviews/{review_id}"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["isPublic"], false);
-    assert!(body["reviewText"].is_null());
-    assert_eq!(body["platformResponse"], "removed by admin");
+    assert_eq!(body["disputeStatus"], "RESOLVED");
+    assert_eq!(body["resolutionType"], "AMICABLE");
+    assert_eq!(body["severity"], "HIGH");
+    assert_eq!(body["resolvedByUserId"], admin_user.to_string());
+
+    let deal_status = sqlx::query_scalar!(
+        r#"SELECT deal_status as "status!" FROM deals WHERE id = $1"#,
+        deal_id
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(deal_status, "EXECUTING");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn list_party_reviews_via_api(pool: PgPool) {
+async fn admin_reject_dispute(pool: PgPool) {
     let state = build_state(pool.clone()).await;
     let (deal_id, supplier_user, _, supplier_party, consumer_party) =
         setup_executing_deal(&pool).await;
-    let token = auth_token(
+    let supplier_token = auth_token(
         &state.token_validator,
         supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
-    )
-    .await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(Data::new(state))
-            .configure(routes::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "good"
-        }))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::CREATED);
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/parties/{consumer_party}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["total"], 1);
-    assert_eq!(body["reviews"].as_array().unwrap().len(), 1);
-}
-
-#[sqlx::test(migrations = "../../migrations")]
-async fn get_deal_review_status_via_api(pool: PgPool) {
-    let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
-        setup_executing_deal(&pool).await;
-    let token = auth_token(
-        &state.token_validator,
-        supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
-    )
-    .await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(Data::new(state))
-            .configure(routes::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews/status"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["missingPairs"].as_array().unwrap().len(), 2);
-    assert_eq!(body["totalRequired"], 2);
-
-    let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "good"
-        }))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::CREATED);
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews/status"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["missingPairs"].as_array().unwrap().len(), 1);
-    assert_eq!(body["totalReceived"], 1);
-}
-
-#[sqlx::test(migrations = "../../migrations")]
-async fn admin_list_reviews_via_api(pool: PgPool) {
-    let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
-        setup_executing_deal(&pool).await;
-    let user_token = auth_token(
-        &state.token_validator,
-        supplier_user,
-        vec!["reviews:read".to_string(), "reviews:write".to_string()],
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
     )
     .await;
 
@@ -1004,24 +1052,27 @@ async fn admin_list_reviews_via_api(pool: PgPool) {
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/reviews"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
         .insert_header(("X-Party-ID", supplier_party.to_string()))
         .set_json(serde_json::json!({
-            "reviewedPartyId": consumer_party,
-            "overallRating": 4,
-            "reviewText": "admin list me"
+            "againstPartyId": consumer_party,
+            "disputeType": "OTHER",
+            "description": "Random claim.",
+            "evidenceUrls": []
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let dispute_id = body["id"].as_str().unwrap();
 
     let admin_user = Uuid::now_v7();
     sqlx::query!(
         "INSERT INTO users (id, email, username, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
         admin_user,
-        "admin-list@example.com",
-        "adminlist",
+        "admin2@example.com",
+        "admin2",
         "hashed:password123",
         time::OffsetDateTime::now_utc(),
         time::OffsetDateTime::now_utc()
@@ -1032,102 +1083,34 @@ async fn admin_list_reviews_via_api(pool: PgPool) {
     let admin_token = auth_token(
         &state.token_validator,
         admin_user,
-        vec!["admin:reviews".to_string()],
+        vec!["admin:disputes".to_string()],
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/api/v1/admin/reviews")
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/admin/disputes/{dispute_id}/reject"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
+        .set_json(serde_json::json!({
+            "reason": "Insufficient evidence.",
+            "nextDealStatus": "EXECUTING"
+        }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["total"], 1);
-    assert_eq!(body["reviews"].as_array().unwrap().len(), 1);
+    assert_eq!(body["disputeStatus"], "REJECTED");
+    assert_eq!(body["resolutionNotes"], "Insufficient evidence.");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn get_deal_via_api(pool: PgPool) {
+async fn admin_escalate_dispute(pool: PgPool) {
     let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, _) = setup_executing_deal(&pool).await;
-    let token = auth_token(
-        &state.token_validator,
-        supplier_user,
-        vec!["deals:read".to_string()],
-    )
-    .await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(Data::new(state))
-            .configure(routes::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["id"], deal_id.to_string());
-}
-
-#[sqlx::test(migrations = "../../migrations")]
-async fn list_deals_via_api(pool: PgPool) {
-    let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, _, supplier_party, _) = setup_executing_deal(&pool).await;
-    let token = auth_token(
-        &state.token_validator,
-        supplier_user,
-        vec!["deals:read".to_string()],
-    )
-    .await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(Data::new(state))
-            .configure(routes::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri("/api/v1/deals")
-        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["total"], 1);
-    assert_eq!(body["deals"].as_array().unwrap().len(), 1);
-    assert_eq!(body["deals"][0]["id"], deal_id.to_string());
-}
-
-#[sqlx::test(migrations = "../../migrations")]
-async fn milestone_lifecycle_via_api(pool: PgPool) {
-    let state = build_state(pool.clone()).await;
-    let (deal_id, supplier_user, consumer_user, supplier_party, consumer_party) =
+    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
         setup_executing_deal(&pool).await;
     let supplier_token = auth_token(
         &state.token_validator,
         supplier_user,
-        vec![
-            "milestones:read".to_string(),
-            "milestones:write".to_string(),
-        ],
-    )
-    .await;
-    let consumer_token = auth_token(
-        &state.token_validator,
-        consumer_user,
-        vec![
-            "milestones:read".to_string(),
-            "milestones:write".to_string(),
-        ],
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
     )
     .await;
 
@@ -1139,109 +1122,165 @@ async fn milestone_lifecycle_via_api(pool: PgPool) {
     .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/milestones"))
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
         .insert_header(("X-Party-ID", supplier_party.to_string()))
         .set_json(serde_json::json!({
-            "milestone_name": "First delivery",
-            "description": "Deliver first batch",
-            "assigned_to_party_id": supplier_party,
-            "verified_by_party_id": consumer_party,
-            "due_date": "2026-12-31",
-            "completion_criteria": "Batch delivered",
-            "payment_trigger_amount": null,
-            "display_order": 1
+            "againstPartyId": consumer_party,
+            "disputeType": "FRAUD",
+            "description": "Fraud suspected.",
+            "evidenceUrls": []
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    let milestone_id = body["id"].as_str().unwrap();
-    assert_eq!(body["milestoneStatus"], "PENDING");
+    let dispute_id = body["id"].as_str().unwrap();
 
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/milestones"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["total"], 1);
+    let admin_user = Uuid::now_v7();
+    sqlx::query!(
+        "INSERT INTO users (id, email, username, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        admin_user,
+        "admin3@example.com",
+        "admin3",
+        "hashed:password123",
+        time::OffsetDateTime::now_utc(),
+        time::OffsetDateTime::now_utc()
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let admin_token = auth_token(
+        &state.token_validator,
+        admin_user,
+        vec!["admin:disputes".to_string()],
+    )
+    .await;
 
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/milestones/progress"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["totalMilestones"], 1);
-    assert_eq!(body["completedMilestones"], 0);
-
-    let req = test::TestRequest::put()
-        .uri(&format!(
-            "/api/v1/deals/{deal_id}/milestones/{milestone_id}"
-        ))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/admin/disputes/{dispute_id}/escalate"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
         .set_json(serde_json::json!({
-            "milestone_name": "First delivery updated"
+            "notes": "Escalating to senior admin."
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["milestoneName"], "First delivery updated");
+    assert_eq!(body["disputeStatus"], "ESCALATED");
+    assert_eq!(body["adminNotes"], "Escalating to senior admin.");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_list_disputes(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
+        setup_executing_deal(&pool).await;
+    let supplier_token = auth_token(
+        &state.token_validator,
+        supplier_user,
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!(
-            "/api/v1/deals/{deal_id}/milestones/{milestone_id}/start"
-        ))
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
         .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
         .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .set_json(serde_json::json!({}))
+        .set_json(serde_json::json!({
+            "againstPartyId": consumer_party,
+            "disputeType": "NON_DELIVERY",
+            "description": "Missing package.",
+            "evidenceUrls": []
+        }))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["milestoneStatus"], "IN_PROGRESS");
+    assert_eq!(resp.status(), StatusCode::CREATED);
 
-    let req = test::TestRequest::post()
-        .uri(&format!(
-            "/api/v1/deals/{deal_id}/milestones/{milestone_id}/complete"
-        ))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
-        .insert_header(("X-Party-ID", supplier_party.to_string()))
-        .set_json(serde_json::json!({"comment": "Done"}))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["milestoneStatus"], "COMPLETED");
+    let admin_user = Uuid::now_v7();
+    sqlx::query!(
+        "INSERT INTO users (id, email, username, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        admin_user,
+        "admin4@example.com",
+        "admin4",
+        "hashed:password123",
+        time::OffsetDateTime::now_utc(),
+        time::OffsetDateTime::now_utc()
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let admin_token = auth_token(
+        &state.token_validator,
+        admin_user,
+        vec!["admin:disputes".to_string()],
+    )
+    .await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/v1/deals/{deal_id}/milestones"))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {consumer_token}")))
-        .insert_header(("X-Party-ID", consumer_party.to_string()))
+        .uri("/api/v1/admin/disputes")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["disputes"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn non_admin_cannot_resolve_dispute(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (deal_id, supplier_user, _, supplier_party, consumer_party) =
+        setup_executing_deal(&pool).await;
+    let supplier_token = auth_token(
+        &state.token_validator,
+        supplier_user,
+        vec!["disputes:read".to_string(), "disputes:write".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
 
     let req = test::TestRequest::post()
-        .uri(&format!(
-            "/api/v1/deals/{deal_id}/milestones/{milestone_id}/verify"
-        ))
-        .insert_header((header::AUTHORIZATION, format!("Bearer {consumer_token}")))
-        .insert_header(("X-Party-ID", consumer_party.to_string()))
-        .set_json(serde_json::json!({"comment": "Verified"}))
+        .uri(&format!("/api/v1/deals/{deal_id}/disputes"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
+        .insert_header(("X-Party-ID", supplier_party.to_string()))
+        .set_json(serde_json::json!({
+            "againstPartyId": consumer_party,
+            "disputeType": "NON_DELIVERY",
+            "description": "Missing package.",
+            "evidenceUrls": []
+        }))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    if resp.status() != StatusCode::OK {
-        let body = test::read_body(resp).await;
-        panic!("verify failed: {:?}", String::from_utf8_lossy(&body));
-    }
+    assert_eq!(resp.status(), StatusCode::CREATED);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["milestoneStatus"], "VERIFIED");
+    let dispute_id = body["id"].as_str().unwrap();
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/admin/disputes/{dispute_id}/resolve"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {supplier_token}")))
+        .set_json(serde_json::json!({
+            "resolutionType": "MEDIATED",
+            "resolutionOutcome": "IN_FAVOR_OF_RAISED",
+            "severity": "MEDIUM",
+            "resolutionNotes": ".",
+            "nextDealStatus": "EXECUTING"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }

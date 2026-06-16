@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE disputes\n            SET dispute_status = 'ESCALATED',\n                admin_notes = COALESCE($1, admin_notes),\n                resolved_by_user_id = $2,\n                updated_at = now()\n            WHERE id = $3\n              AND dispute_status NOT IN ('RESOLVED', 'REJECTED')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8e72fa7d1d8ad8dff668e5c4f2ad9d9b070e41bed12f57689c4c50e549d3e72e"
+}

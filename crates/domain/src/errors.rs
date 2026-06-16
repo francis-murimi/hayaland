@@ -194,6 +194,24 @@ pub enum DomainError {
     #[error("reply is not in the same conversation")]
     ReplyNotInSameContext,
 
+    #[error("dispute not found")]
+    DisputeNotFound,
+
+    #[error("an open dispute already exists for this deal and party")]
+    DisputeAlreadyExists,
+
+    #[error("invalid dispute type: {message}")]
+    InvalidDisputeType { message: String },
+
+    #[error("invalid dispute status: {message}")]
+    InvalidDisputeStatus { message: String },
+
+    #[error("invalid dispute resolution: {message}")]
+    InvalidDisputeResolution { message: String },
+
+    #[error("dispute access denied")]
+    DisputeAccessDenied,
+
     #[error("repository error: {0}")]
     RepositoryError(String),
 }

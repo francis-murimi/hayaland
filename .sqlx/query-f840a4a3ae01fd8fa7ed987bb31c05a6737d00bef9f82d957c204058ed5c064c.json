@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM disputes\n            WHERE against_party_id = $1\n              AND dispute_status NOT IN ('RESOLVED', 'REJECTED')\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f840a4a3ae01fd8fa7ed987bb31c05a6737d00bef9f82d957c204058ed5c064c"
+}

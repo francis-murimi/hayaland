@@ -48,9 +48,10 @@ use application::{
     ports::{EncryptionService, RealtimePublisher},
 };
 use domain::repositories::{
-    AgreementRepository, ChatRoomRepository, DealRepository, EmailVerificationRepository,
-    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
-    PasswordResetRepository, ReviewRepository, RoleRepository, UserRepository, WalletRepository,
+    AgreementRepository, ChatRoomRepository, DealRepository, DisputeRepository,
+    EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
+    PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
+    UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
@@ -59,7 +60,7 @@ use infrastructure::{
     realtime::InMemoryRealtimePublisher,
     repositories::{
         PostgresAgreementRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresEmailVerificationRepository, PostgresMessageRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMessageRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
         PostgresUserRepository, PostgresWalletRepository,
@@ -106,6 +107,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PostgresMilestoneRepository::new(pool.clone()));
     let review_repo: Arc<dyn ReviewRepository> =
         Arc::new(PostgresReviewRepository::new(pool.clone()));
+    let dispute_repo: Arc<dyn DisputeRepository> =
+        Arc::new(PostgresDisputeRepository::new(pool.clone()));
     let message_repo: Arc<dyn MessageRepository> =
         Arc::new(PostgresMessageRepository::new(pool.clone()));
     let chat_room_repo: Arc<dyn ChatRoomRepository> =
@@ -223,6 +226,39 @@ async fn main() -> anyhow::Result<()> {
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
         ),
+        raise_dispute: application::disputes::RaiseDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        list_deal_disputes: application::disputes::ListDealDisputes::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        get_dispute: application::disputes::GetDispute::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        submit_evidence: application::disputes::SubmitEvidence::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        respond_to_dispute: application::disputes::RespondToDispute::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        escalate_dispute: application::disputes::EscalateDispute::new(dispute_repo.clone()),
+        resolve_dispute: application::disputes::ResolveDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        reject_dispute: application::disputes::RejectDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+        ),
+        list_admin_disputes: application::disputes::ListAdminDisputes::new(dispute_repo.clone()),
         list_deal_reviews: application::reviews::ListDealReviews::new(
             deal_repo.clone(),
             review_repo.clone(),

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM disputes\n            WHERE ($1::text IS NULL OR dispute_status = $1)\n              AND ($2::uuid IS NULL OR deal_id = $2)\n              AND ($3::uuid IS NULL OR raised_by_party_id = $3)\n              AND ($4::uuid IS NULL OR against_party_id = $4)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "7445c9f8d942b77d83e891f21b0d361c61c59764e1d5e55f6a777a7cc5ca8c85"
+}

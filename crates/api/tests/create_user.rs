@@ -54,10 +54,10 @@ use application::{
 };
 use async_trait::async_trait;
 use domain::entities::{
-    Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, DistributionModel,
-    Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken, PlatformWallet, Review,
-    Role, RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
-    Username,
+    Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, Dispute,
+    DisputeResponse, DisputeStatus, DistributionModel, Email, EmailVerification, Milestone,
+    PasswordHash, PasswordResetToken, PlatformWallet, Review, Role, RoleProfile, Signature,
+    TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
 use domain::entities::{
     ChatRoom, ChatRoomMemberRole, ChatRoomMembership, Conversation, Message, MessageReaction,
@@ -68,10 +68,11 @@ use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
     AgreementRepository, ChatRoomListQuery, ChatRoomRepository, DealAggregate, DealListResult,
-    DealRepository, DealSearchCriteria, EmailVerificationRepository, MessageListQuery,
-    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
-    PasswordResetRepository, ReviewRepository, RoleRepository, TransactionFilters, UserRepository,
-    VerificationListFilters, VerificationListResult, WalletRepository,
+    DealRepository, DealSearchCriteria, DisputeFilters, DisputeListResult, DisputeRepository,
+    EmailVerificationRepository, MessageListQuery, MessageRepository, MilestoneRepository,
+    PartyRepository, PartyVerificationRepository, PasswordResetRepository, ReviewRepository,
+    RoleRepository, TransactionFilters, UserRepository, VerificationListFilters,
+    VerificationListResult, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
@@ -1417,6 +1418,237 @@ impl ReviewRepository for FakeReviewRepo {
 }
 
 #[derive(Default)]
+struct FakeDisputeRepo {
+    disputes: Mutex<Vec<Dispute>>,
+    responses: Mutex<Vec<DisputeResponse>>,
+}
+
+#[async_trait]
+impl DisputeRepository for FakeDisputeRepo {
+    async fn create(&self, dispute: &Dispute) -> Result<(), DomainError> {
+        self.disputes.lock().unwrap().push(dispute.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Dispute>, DomainError> {
+        Ok(self
+            .disputes
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|d| d.id == id)
+            .cloned())
+    }
+
+    async fn list_by_deal(
+        &self,
+        deal_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<DisputeListResult, DomainError> {
+        let disputes: Vec<Dispute> = self
+            .disputes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|d| d.deal_id == deal_id)
+            .cloned()
+            .collect();
+        let total = disputes.len() as i64;
+        let start = offset as usize;
+        let end = (offset + limit) as usize;
+        let paginated = disputes
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(DisputeListResult {
+            disputes: paginated,
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    async fn list_admin(&self, filters: &DisputeFilters) -> Result<DisputeListResult, DomainError> {
+        let disputes: Vec<Dispute> = self
+            .disputes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|d| filters.status.is_none_or(|s| d.dispute_status == s))
+            .filter(|d| filters.deal_id.is_none_or(|id| d.deal_id == id))
+            .filter(|d| {
+                filters
+                    .raised_by_party_id
+                    .is_none_or(|id| d.raised_by_party_id == id)
+            })
+            .filter(|d| {
+                filters
+                    .against_party_id
+                    .is_none_or(|id| d.against_party_id == Some(id))
+            })
+            .cloned()
+            .collect();
+        let total = disputes.len() as i64;
+        let start = filters.offset as usize;
+        let end = (filters.offset + filters.limit) as usize;
+        let paginated = disputes
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(DisputeListResult {
+            disputes: paginated,
+            total,
+            limit: filters.limit,
+            offset: filters.offset,
+        })
+    }
+
+    async fn submit_evidence(
+        &self,
+        id: Uuid,
+        evidence_urls: Vec<String>,
+        notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut disputes = self.disputes.lock().unwrap();
+        if let Some(d) = disputes.iter_mut().find(|d| d.id == id) {
+            d.evidence_urls.extend(evidence_urls);
+            if let Some(n) = notes {
+                d.admin_notes = Some(n);
+            }
+            if d.dispute_status == DisputeStatus::Open {
+                d.dispute_status = DisputeStatus::UnderReview;
+            }
+            d.updated_at = OffsetDateTime::now_utc();
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn add_response(&self, response: &DisputeResponse) -> Result<(), DomainError> {
+        self.responses.lock().unwrap().push(response.clone());
+        Ok(())
+    }
+
+    async fn list_responses(&self, dispute_id: Uuid) -> Result<Vec<DisputeResponse>, DomainError> {
+        let mut responses: Vec<DisputeResponse> = self
+            .responses
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.dispute_id == dispute_id)
+            .cloned()
+            .collect();
+        responses.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(responses)
+    }
+
+    async fn escalate(
+        &self,
+        id: Uuid,
+        escalated_by_user_id: Uuid,
+        notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut disputes = self.disputes.lock().unwrap();
+        if let Some(d) = disputes.iter_mut().find(|d| d.id == id) {
+            d.escalate()?;
+            if let Some(n) = notes {
+                d.admin_notes = Some(n);
+            }
+            d.resolved_by_user_id = Some(escalated_by_user_id);
+            d.updated_at = OffsetDateTime::now_utc();
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn resolve(
+        &self,
+        id: Uuid,
+        resolved_by_user_id: Uuid,
+        resolution_type: domain::entities::ResolutionType,
+        resolution_outcome: domain::entities::ResolutionOutcome,
+        severity: domain::entities::DisputeSeverity,
+        resolution_notes: Option<String>,
+    ) -> Result<(), DomainError> {
+        let mut disputes = self.disputes.lock().unwrap();
+        if let Some(d) = disputes.iter_mut().find(|d| d.id == id) {
+            d.resolve(
+                resolution_type,
+                resolution_outcome,
+                severity,
+                resolution_notes,
+                resolved_by_user_id,
+            )?;
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn reject(
+        &self,
+        id: Uuid,
+        resolved_by_user_id: Uuid,
+        reason: String,
+    ) -> Result<(), DomainError> {
+        let mut disputes = self.disputes.lock().unwrap();
+        if let Some(d) = disputes.iter_mut().find(|d| d.id == id) {
+            d.reject(reason, resolved_by_user_id)?;
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+
+    async fn count_open_by_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .disputes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|d| d.raised_by_party_id == party_id && !d.dispute_status.is_terminal())
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn count_open_against_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .disputes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|d| d.against_party_id == Some(party_id) && !d.dispute_status.is_terminal())
+            .count() as i64;
+        Ok(count)
+    }
+
+    async fn increment_deals_disputed_count(&self, _party_id: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+
+    async fn update_status(
+        &self,
+        id: Uuid,
+        status: DisputeStatus,
+        updated_at: OffsetDateTime,
+    ) -> Result<(), DomainError> {
+        let mut disputes = self.disputes.lock().unwrap();
+        if let Some(d) = disputes.iter_mut().find(|d| d.id == id) {
+            d.dispute_status = status;
+            d.updated_at = updated_at;
+            Ok(())
+        } else {
+            Err(DomainError::DisputeNotFound)
+        }
+    }
+}
+
+#[derive(Default)]
 struct FakePartyVerificationRepo {
     verifications: Mutex<Vec<PartyVerification>>,
 }
@@ -1967,6 +2199,7 @@ fn test_fixtures() -> TestFixtures {
     let wallet_repo: Arc<dyn WalletRepository> = Arc::new(FakeWalletRepo::default());
     let milestone_repo: Arc<dyn MilestoneRepository> = Arc::new(FakeMilestoneRepo::default());
     let review_repo: Arc<dyn ReviewRepository> = Arc::new(FakeReviewRepo::default());
+    let dispute_repo: Arc<dyn DisputeRepository> = Arc::new(FakeDisputeRepo::default());
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(FakePartyVerificationRepo::default());
     let message_repo: Arc<dyn MessageRepository> = Arc::new(FakeMessageRepo::default());
@@ -2175,6 +2408,39 @@ fn test_fixtures() -> TestFixtures {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        raise_dispute: application::disputes::RaiseDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        list_deal_disputes: application::disputes::ListDealDisputes::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        get_dispute: application::disputes::GetDispute::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        submit_evidence: application::disputes::SubmitEvidence::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        respond_to_dispute: application::disputes::RespondToDispute::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        escalate_dispute: application::disputes::EscalateDispute::new(dispute_repo.clone()),
+        resolve_dispute: application::disputes::ResolveDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        reject_dispute: application::disputes::RejectDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+        ),
+        list_admin_disputes: application::disputes::ListAdminDisputes::new(dispute_repo.clone()),
         submit_verification: application::verifications::SubmitVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),

@@ -15,6 +15,10 @@ use application::deals::{
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
     ValidateDeal, WithdrawTerm,
 };
+use application::disputes::{
+    EscalateDispute, GetDispute, ListAdminDisputes, ListDealDisputes, RaiseDispute, RejectDispute,
+    ResolveDispute, RespondToDispute, SubmitEvidence,
+};
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
 use application::milestones::{
@@ -92,6 +96,15 @@ pub struct AppState {
     pub remove_party_role: RemovePartyRole,
     pub list_party_roles: ListPartyRoles,
     pub create_deal: CreateDeal,
+    pub raise_dispute: RaiseDispute,
+    pub list_deal_disputes: ListDealDisputes,
+    pub get_dispute: GetDispute,
+    pub submit_evidence: SubmitEvidence,
+    pub respond_to_dispute: RespondToDispute,
+    pub escalate_dispute: EscalateDispute,
+    pub resolve_dispute: ResolveDispute,
+    pub reject_dispute: RejectDispute,
+    pub list_admin_disputes: ListAdminDisputes,
     pub get_deal: GetDeal,
     pub list_deals: ListDeals,
     pub update_deal: UpdateDeal,

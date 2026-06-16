@@ -60,6 +60,15 @@ pub enum ApplicationError {
     #[error("deal access denied")]
     DealAccessDenied,
 
+    #[error("dispute not found")]
+    DisputeNotFound,
+
+    #[error("a dispute already exists for this deal and party")]
+    DisputeAlreadyExists,
+
+    #[error("dispute access denied")]
+    DisputeAccessDenied,
+
     #[error("weak password: {message}")]
     WeakPassword { message: String },
 
@@ -207,6 +216,14 @@ impl From<DomainError> for ApplicationError {
             DomainError::DealParticipationNotFound => ApplicationError::DealParticipationNotFound,
 
             DomainError::InsufficientPermissions => ApplicationError::DealAccessDenied,
+            DomainError::DisputeNotFound => ApplicationError::DisputeNotFound,
+            DomainError::DisputeAlreadyExists => ApplicationError::DisputeAlreadyExists,
+            DomainError::DisputeAccessDenied => ApplicationError::DisputeAccessDenied,
+            DomainError::InvalidDisputeType { message }
+            | DomainError::InvalidDisputeStatus { message }
+            | DomainError::InvalidDisputeResolution { message } => {
+                ApplicationError::Validation(vec![message])
+            }
             DomainError::WinWinWinValidationFailed { violations } => {
                 ApplicationError::WinWinWinValidationFailed { violations }
             }

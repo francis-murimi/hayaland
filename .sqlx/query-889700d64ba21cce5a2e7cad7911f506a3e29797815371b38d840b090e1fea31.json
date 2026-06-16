@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE disputes\n            SET dispute_status = 'REJECTED',\n                resolution_notes = $1,\n                resolved_by_user_id = $2,\n                resolved_at = now(),\n                updated_at = now()\n            WHERE id = $3\n              AND dispute_status NOT IN ('RESOLVED', 'REJECTED')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "889700d64ba21cce5a2e7cad7911f506a3e29797815371b38d840b090e1fea31"
+}

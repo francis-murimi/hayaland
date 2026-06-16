@@ -1,6 +1,7 @@
 pub mod postgres_agreement_repository;
 pub mod postgres_chat_room_repository;
 pub mod postgres_deal_repository;
+pub mod postgres_dispute_repository;
 pub mod postgres_email_verification_repository;
 pub mod postgres_message_repository;
 pub mod postgres_milestone_repository;
@@ -18,6 +19,7 @@ mod tests;
 pub use postgres_agreement_repository::PostgresAgreementRepository;
 pub use postgres_chat_room_repository::PostgresChatRoomRepository;
 pub use postgres_deal_repository::PostgresDealRepository;
+pub use postgres_dispute_repository::PostgresDisputeRepository;
 pub use postgres_email_verification_repository::PostgresEmailVerificationRepository;
 pub use postgres_message_repository::PostgresMessageRepository;
 pub use postgres_milestone_repository::PostgresMilestoneRepository;

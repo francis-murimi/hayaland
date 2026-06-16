@@ -1,6 +1,7 @@
 pub mod agreements;
 pub mod chatrooms;
 pub mod deals;
+pub mod disputes;
 pub mod email;
 pub mod errors;
 pub mod messages;

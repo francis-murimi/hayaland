@@ -131,11 +131,22 @@ pub struct DealSummaryResult {
 }
 
 /// Query parameters for listing deals visible to the caller.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ListDealsQuery {
     pub status: Option<DealStatus>,
     pub limit: i64,
     pub offset: i64,
+}
+
+impl Default for ListDealsQuery {
+    fn default() -> Self {
+        Self {
+            status: None,
+            limit: 20,
+            offset: 0,
+        }
+    }
 }
 
 /// Command to propose a new term.

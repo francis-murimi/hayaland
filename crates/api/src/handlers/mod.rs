@@ -4,6 +4,7 @@ pub mod chatrooms;
 pub mod create_user;
 pub mod deactivate_user;
 pub mod deals;
+pub mod disputes;
 pub mod forgot_password;
 pub mod get_user;
 pub mod list_users;

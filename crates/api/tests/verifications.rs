@@ -52,16 +52,17 @@ use application::{
 };
 use async_trait::async_trait;
 use domain::repositories::{
-    AgreementRepository, ChatRoomRepository, DealRepository, EmailVerificationRepository,
-    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
-    PasswordResetRepository, ReviewRepository, RoleRepository, UserRepository, WalletRepository,
+    AgreementRepository, ChatRoomRepository, DealRepository, DisputeRepository,
+    EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
+    PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
+    UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use infrastructure::{
     realtime::InMemoryRealtimePublisher,
     repositories::{
         PostgresAgreementRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresEmailVerificationRepository, PostgresMessageRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMessageRepository,
         PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
         PostgresUserRepository, PostgresWalletRepository,
@@ -109,6 +110,8 @@ async fn build_state(pool: PgPool) -> AppState {
         Arc::new(PostgresMilestoneRepository::new(pool.clone()));
     let review_repo: Arc<dyn ReviewRepository> =
         Arc::new(PostgresReviewRepository::new(pool.clone()));
+    let dispute_repo: Arc<dyn DisputeRepository> =
+        Arc::new(PostgresDisputeRepository::new(pool.clone()));
     let message_repo: Arc<dyn MessageRepository> =
         Arc::new(PostgresMessageRepository::new(pool.clone()));
     let chat_room_repo: Arc<dyn ChatRoomRepository> =
@@ -323,6 +326,39 @@ async fn build_state(pool: PgPool) -> AppState {
         ),
         hide_review: application::reviews::HideReview::new(review_repo.clone()),
         list_admin_reviews: application::reviews::ListAdminReviews::new(review_repo.clone()),
+        raise_dispute: application::disputes::RaiseDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        list_deal_disputes: application::disputes::ListDealDisputes::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        get_dispute: application::disputes::GetDispute::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        submit_evidence: application::disputes::SubmitEvidence::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        respond_to_dispute: application::disputes::RespondToDispute::new(
+            deal_repo.clone(),
+            dispute_repo.clone(),
+        ),
+        escalate_dispute: application::disputes::EscalateDispute::new(dispute_repo.clone()),
+        resolve_dispute: application::disputes::ResolveDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+            Arc::new(NoOpTrustScoreRecalculation),
+        ),
+        reject_dispute: application::disputes::RejectDispute::new(
+            dispute_repo.clone(),
+            deal_repo.clone(),
+        ),
+        list_admin_disputes: application::disputes::ListAdminDisputes::new(dispute_repo.clone()),
         submit_verification: application::verifications::SubmitVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
@@ -992,4 +1028,121 @@ async fn admin_queue_lists_pending_verifications(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["total"], 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_revoke_verification_via_api(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+    let admin_id = setup_admin(&pool).await;
+
+    let user_token = auth_token(
+        &state.token_validator,
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+    let admin_token = auth_token(
+        &state.token_validator,
+        admin_id,
+        vec!["admin:verifications".to_string()],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .set_json(serde_json::json!({
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id.png"]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let verification_id = body["id"].as_str().unwrap();
+
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/v1/admin/verifications/{verification_id}/approve"
+        ))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/v1/admin/verifications/{verification_id}/revoke"
+        ))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))
+        .set_json(serde_json::json!({
+            "reason": "Fraudulent document.",
+            "reviewNotes": "Revoked after audit."
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "REVOKED");
+    assert_eq!(body["rejectionReason"], "Fraudulent document.");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_party_verifications_via_api(pool: PgPool) {
+    let state = build_state(pool.clone()).await;
+    let (user_id, party_id, _) = setup_party_with_member(&pool).await;
+
+    let user_token = auth_token(
+        &state.token_validator,
+        user_id,
+        vec![
+            "verifications:read".to_string(),
+            "verifications:write".to_string(),
+        ],
+    )
+    .await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .set_json(serde_json::json!({
+            "verificationType": "GOVERNMENT_ID",
+            "evidenceUrls": ["id.png"]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/v1/parties/{party_id}/verifications"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {user_token}")))
+        .insert_header(("X-Party-ID", party_id.to_string()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["partyId"], party_id.to_string());
 }
