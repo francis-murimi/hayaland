@@ -6,6 +6,7 @@ pub mod email;
 pub mod errors;
 pub mod messages;
 pub mod milestones;
+pub mod notifications;
 pub mod parties;
 pub mod password_reset;
 pub mod payments;

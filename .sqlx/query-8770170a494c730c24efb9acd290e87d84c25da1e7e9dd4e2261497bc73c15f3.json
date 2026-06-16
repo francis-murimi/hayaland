@@ -1,0 +1,149 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, name, notification_type, channel, locale,\n                   subject_template, body_template, variables_schema as \"variables_schema!: sqlx::types::Json<serde_json::Value>\",\n                   is_active, created_at, updated_at\n            FROM notification_templates\n            ORDER BY created_at DESC\n            LIMIT $1 OFFSET $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "notification_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "notification_type"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "locale",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "locale"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "subject_template",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "subject_template"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "body_template",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "body_template"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "variables_schema!: sqlx::types::Json<serde_json::Value>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "variables_schema"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notification_templates",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8770170a494c730c24efb9acd290e87d84c25da1e7e9dd4e2261497bc73c15f3"
+}

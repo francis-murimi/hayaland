@@ -62,6 +62,27 @@ pub enum WsEvent {
     RoomDeleted {
         room_id: Uuid,
     },
+    NotificationNew {
+        notification_id: Uuid,
+        user_id: Option<Uuid>,
+        party_id: Option<Uuid>,
+        notification_type: String,
+        title: String,
+        body: String,
+        #[serde(with = "time::serde::iso8601")]
+        created_at: time::OffsetDateTime,
+    },
+    NotificationRead {
+        notification_id: Uuid,
+        user_id: Uuid,
+        #[serde(with = "time::serde::iso8601")]
+        read_at: time::OffsetDateTime,
+    },
+    UnreadCountChanged {
+        user_id: Option<Uuid>,
+        party_id: Option<Uuid>,
+        count: i64,
+    },
 }
 
 impl From<MessageEvent> for WsEvent {
@@ -178,6 +199,14 @@ impl SessionRegistry {
             addr.do_send(PushEvent(event.clone()));
         }
     }
+
+    /// Send an event to a specific user if connected.
+    pub fn notify_user(&self, user_id: Uuid, event: WsEvent) {
+        let sessions = self.sessions.lock().unwrap();
+        if let Some(addr) = sessions.get(&user_id) {
+            addr.do_send(PushEvent(event));
+        }
+    }
 }
 
 /// A connected WebSocket client.
@@ -286,5 +315,60 @@ impl RealtimePublisher for WebSocketPublisher {
         self.inner.publish(event.clone()).await?;
         self.registry.broadcast(event.into());
         Ok(())
+    }
+}
+
+#[async_trait]
+impl infrastructure::realtime::NotificationRegistry for SessionRegistry {
+    async fn notify(&self, event: application::ports::NotificationEvent) {
+        match event {
+            application::ports::NotificationEvent::NotificationNew {
+                notification_id,
+                user_id,
+                party_id,
+            } => {
+                let ws_event = WsEvent::NotificationNew {
+                    notification_id,
+                    user_id,
+                    party_id,
+                    notification_type: "NOTIFICATION_NEW".to_string(),
+                    title: "New notification".to_string(),
+                    body: "You have a new notification".to_string(),
+                    created_at: time::OffsetDateTime::now_utc(),
+                };
+                if let Some(uid) = user_id {
+                    self.notify_user(uid, ws_event);
+                } else {
+                    self.broadcast(ws_event);
+                }
+            }
+            application::ports::NotificationEvent::NotificationRead {
+                notification_id,
+                user_id,
+            } => {
+                let ws_event = WsEvent::NotificationRead {
+                    notification_id,
+                    user_id,
+                    read_at: time::OffsetDateTime::now_utc(),
+                };
+                self.notify_user(user_id, ws_event);
+            }
+            application::ports::NotificationEvent::UnreadCountChanged {
+                user_id,
+                party_id,
+                count,
+            } => {
+                let ws_event = WsEvent::UnreadCountChanged {
+                    user_id,
+                    party_id,
+                    count,
+                };
+                if let Some(uid) = user_id {
+                    self.notify_user(uid, ws_event);
+                } else {
+                    self.broadcast(ws_event);
+                }
+            }
+        }
     }
 }

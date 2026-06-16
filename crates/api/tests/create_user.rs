@@ -53,9 +53,11 @@ use application::{
     },
 };
 use async_trait::async_trait;
+use domain::entities::notification_preference::NotificationPreference;
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, Dispute,
     DisputeResponse, DisputeStatus, DistributionModel, Email, EmailVerification, Milestone,
+    Notification, NotificationChannel, NotificationStatus, NotificationTemplate, NotificationType,
     PasswordHash, PasswordResetToken, PlatformWallet, Review, Role, RoleProfile, Signature,
     TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
@@ -68,10 +70,12 @@ use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
     AgreementRepository, ChatRoomListQuery, ChatRoomRepository, DealAggregate, DealListResult,
-    DealRepository, DealSearchCriteria, DisputeFilters, DisputeListResult, DisputeRepository,
-    EmailVerificationRepository, MessageListQuery, MessageRepository, MilestoneRepository,
-    PartyRepository, PartyVerificationRepository, PasswordResetRepository, ReviewRepository,
-    RoleRepository, TransactionFilters, UserRepository, VerificationListFilters,
+    DealRepository, DealSearchCriteria, DeliveryResult, DisputeFilters, DisputeListResult,
+    DisputeRepository, EmailVerificationRepository, MessageListQuery, MessageRepository,
+    MilestoneRepository, NotificationFilters, NotificationListResult,
+    NotificationPreferenceRepository, NotificationRepository, NotificationTemplateRepository,
+    Pagination, PartyRepository, PartyVerificationRepository, PasswordResetRepository,
+    ReviewRepository, RoleRepository, TransactionFilters, UserRepository, VerificationListFilters,
     VerificationListResult, WalletRepository,
 };
 use domain::services::ValidationConfig;
@@ -532,6 +536,327 @@ impl PartyRepository for FakePartyRepo {
             .unwrap()
             .iter()
             .any(|m| m.user_id == user_id && m.party_id == party_id && m.is_active))
+    }
+
+    async fn list_members_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Vec<UserPartyMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.party_id == party_id)
+            .cloned()
+            .collect())
+    }
+}
+
+#[derive(Default)]
+struct FakeNotificationRepo {
+    notifications: Mutex<Vec<Notification>>,
+}
+
+#[async_trait]
+impl NotificationRepository for FakeNotificationRepo {
+    async fn create(&self, notification: &Notification) -> Result<(), DomainError> {
+        self.notifications
+            .lock()
+            .unwrap()
+            .push(notification.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Notification>, DomainError> {
+        Ok(self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|n| n.id == id)
+            .cloned())
+    }
+
+    async fn list_for_recipient(
+        &self,
+        user_id: Option<Uuid>,
+        party_id: Option<Uuid>,
+        filters: NotificationFilters,
+        pagination: Pagination,
+    ) -> Result<NotificationListResult, DomainError> {
+        let all: Vec<Notification> = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| {
+                (user_id.is_none() || n.user_id == user_id)
+                    && (party_id.is_none() || n.party_id == party_id)
+                    && filters
+                        .notification_type
+                        .map_or(true, |t| n.notification_type == t)
+                    && filters.is_read.map_or(true, |r| n.read_at.is_some() == r)
+                    && filters
+                        .is_actioned
+                        .map_or(true, |a| n.actioned_at.is_some() == a)
+                    && filters.priority.map_or(true, |p| n.priority == p)
+            })
+            .cloned()
+            .collect();
+        let unread_count = all.iter().filter(|n| n.read_at.is_none()).count() as i64;
+        let total = all.len() as i64;
+        let items = all
+            .into_iter()
+            .skip(pagination.offset.max(0) as usize)
+            .take(pagination.limit.max(1) as usize)
+            .collect();
+        Ok(NotificationListResult {
+            items,
+            total,
+            unread_count,
+        })
+    }
+
+    async fn count_unread_for_recipient(
+        &self,
+        user_id: Option<Uuid>,
+        party_id: Option<Uuid>,
+    ) -> Result<i64, DomainError> {
+        Ok(self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| {
+                n.read_at.is_none()
+                    && (user_id.is_none() || n.user_id == user_id)
+                    && (party_id.is_none() || n.party_id == party_id)
+            })
+            .count() as i64)
+    }
+
+    async fn mark_read(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        party_id: Option<Uuid>,
+        read_at: OffsetDateTime,
+    ) -> Result<bool, DomainError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        if let Some(n) = notifications
+            .iter_mut()
+            .find(|n| n.id == id && (n.user_id == Some(user_id) || n.party_id == party_id))
+        {
+            n.read_at = Some(read_at);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn mark_all_read(
+        &self,
+        user_id: Option<Uuid>,
+        party_id: Option<Uuid>,
+        before: Option<OffsetDateTime>,
+        notification_type: Option<NotificationType>,
+    ) -> Result<u64, DomainError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        let now = OffsetDateTime::now_utc();
+        let mut count = 0u64;
+        for n in notifications.iter_mut() {
+            if n.read_at.is_some() {
+                continue;
+            }
+            if user_id.is_some() && n.user_id != user_id {
+                continue;
+            }
+            if party_id.is_some() && n.party_id != party_id {
+                continue;
+            }
+            if let Some(t) = before {
+                if n.created_at > t {
+                    continue;
+                }
+            }
+            if let Some(nt) = notification_type {
+                if n.notification_type != nt {
+                    continue;
+                }
+            }
+            n.read_at = Some(now);
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    async fn mark_actioned(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        party_id: Option<Uuid>,
+        actioned_at: OffsetDateTime,
+    ) -> Result<bool, DomainError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        if let Some(n) = notifications
+            .iter_mut()
+            .find(|n| n.id == id && (n.user_id == Some(user_id) || n.party_id == party_id))
+        {
+            n.actioned_at = Some(actioned_at);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn delete(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        party_id: Option<Uuid>,
+    ) -> Result<bool, DomainError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        let pos = notifications
+            .iter()
+            .position(|n| n.id == id && (n.user_id == Some(user_id) || n.party_id == party_id));
+        if let Some(pos) = pos {
+            notifications.remove(pos);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn update_status(&self, id: Uuid, status: NotificationStatus) -> Result<(), DomainError> {
+        if let Some(n) = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|n| n.id == id)
+        {
+            n.status = status;
+        }
+        Ok(())
+    }
+
+    async fn record_delivery(
+        &self,
+        _notification_id: Uuid,
+        _channel: NotificationChannel,
+        _result: DeliveryResult,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+
+    async fn list_pending(
+        &self,
+        _batch_size: usize,
+        _older_than: Option<OffsetDateTime>,
+    ) -> Result<Vec<Notification>, DomainError> {
+        Ok(self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.status == NotificationStatus::Pending)
+            .cloned()
+            .collect())
+    }
+}
+
+#[derive(Default)]
+struct FakeNotificationPreferenceRepo {
+    preferences: Mutex<HashMap<Uuid, NotificationPreference>>,
+}
+
+#[async_trait]
+impl NotificationPreferenceRepository for FakeNotificationPreferenceRepo {
+    async fn get(&self, user_id: Uuid) -> Result<NotificationPreference, DomainError> {
+        Ok(self
+            .preferences
+            .lock()
+            .unwrap()
+            .get(&user_id)
+            .cloned()
+            .unwrap_or_else(|| NotificationPreference::new(user_id)))
+    }
+
+    async fn save(&self, preference: &NotificationPreference) -> Result<(), DomainError> {
+        self.preferences
+            .lock()
+            .unwrap()
+            .insert(preference.user_id, preference.clone());
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct FakeNotificationTemplateRepo {
+    templates: Mutex<Vec<NotificationTemplate>>,
+}
+
+#[async_trait]
+impl NotificationTemplateRepository for FakeNotificationTemplateRepo {
+    async fn create(&self, template: &NotificationTemplate) -> Result<(), DomainError> {
+        self.templates.lock().unwrap().push(template.clone());
+        Ok(())
+    }
+
+    async fn update(&self, template: &NotificationTemplate) -> Result<(), DomainError> {
+        let mut templates = self.templates.lock().unwrap();
+        if let Some(pos) = templates.iter().position(|t| t.id == template.id) {
+            templates[pos] = template.clone();
+        }
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<NotificationTemplate>, DomainError> {
+        Ok(self
+            .templates
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.id == id)
+            .cloned())
+    }
+
+    async fn find_active(
+        &self,
+        notification_type: NotificationType,
+        channel: NotificationChannel,
+        locale: &str,
+    ) -> Result<Option<NotificationTemplate>, DomainError> {
+        Ok(self
+            .templates
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| {
+                t.notification_type == notification_type
+                    && t.channel == channel
+                    && t.locale == locale
+                    && t.is_active
+            })
+            .cloned())
+    }
+
+    async fn list(&self, pagination: Pagination) -> Result<Vec<NotificationTemplate>, DomainError> {
+        Ok(self
+            .templates
+            .lock()
+            .unwrap()
+            .iter()
+            .skip(pagination.offset.max(0) as usize)
+            .take(pagination.limit.max(1) as usize)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut templates = self.templates.lock().unwrap();
+        if let Some(pos) = templates.iter().position(|t| t.id == id) {
+            templates.remove(pos);
+        }
+        Ok(())
     }
 }
 
@@ -2204,6 +2529,33 @@ fn test_fixtures() -> TestFixtures {
         Arc::new(FakePartyVerificationRepo::default());
     let message_repo: Arc<dyn MessageRepository> = Arc::new(FakeMessageRepo::default());
     let chat_room_repo: Arc<dyn ChatRoomRepository> = Arc::new(FakeChatRoomRepo::default());
+    let notification_repo: Arc<dyn NotificationRepository> =
+        Arc::new(FakeNotificationRepo::default());
+    let notification_pref_repo: Arc<dyn NotificationPreferenceRepository> =
+        Arc::new(FakeNotificationPreferenceRepo::default());
+    let notification_template_repo: Arc<dyn NotificationTemplateRepository> =
+        Arc::new(FakeNotificationTemplateRepo::default());
+    let notification_realtime_publisher: Arc<
+        dyn application::ports::NotificationRealtimePublisher,
+    > = Arc::new(application::ports::NoOpNotificationRealtimePublisher);
+    let push_sender: Arc<dyn application::ports::PushNotificationSender> =
+        Arc::new(infrastructure::notifications::NoOpPushSender::new());
+    let sms_sender: Arc<dyn application::ports::SmsSender> =
+        Arc::new(infrastructure::notifications::NoOpSmsSender::new());
+    let send_notification: Arc<application::notifications::SendNotification> =
+        Arc::new(application::notifications::SendNotification::new(
+            notification_repo.clone(),
+            notification_pref_repo.clone(),
+            notification_template_repo.clone(),
+            repo.clone(),
+            party_repo.clone(),
+            deal_repo.clone(),
+            queue.clone(),
+            notification_realtime_publisher.clone(),
+            push_sender,
+            sms_sender,
+            "en".to_string(),
+        ));
     let encryption_service: Arc<dyn EncryptionService> = Arc::new(FakeEncryptionService);
     let realtime_publisher: Arc<dyn RealtimePublisher> =
         Arc::new(application::ports::NoOpRealtimePublisher);
@@ -2554,6 +2906,53 @@ fn test_fixtures() -> TestFixtures {
         join_chat_room: JoinChatRoom::new(chat_room_repo.clone(), party_repo.clone()),
         leave_chat_room: LeaveChatRoom::new(chat_room_repo.clone()),
         manage_chat_room_membership: ManageChatRoomMembership::new(chat_room_repo.clone()),
+        list_notifications: application::notifications::ListNotifications::new(
+            notification_repo.clone(),
+        ),
+        get_notification: application::notifications::GetNotification::new(
+            notification_repo.clone(),
+        ),
+        mark_notification_read: application::notifications::MarkNotificationRead::new(
+            notification_repo.clone(),
+            notification_realtime_publisher.clone(),
+        ),
+        mark_all_notifications_read: application::notifications::MarkAllNotificationsRead::new(
+            notification_repo.clone(),
+            notification_realtime_publisher.clone(),
+        ),
+        delete_notification: application::notifications::DeleteNotification::new(
+            notification_repo.clone(),
+        ),
+        get_unread_notification_count: application::notifications::GetUnreadCount::new(
+            notification_repo.clone(),
+        ),
+        get_notification_preferences: application::notifications::GetNotificationPreferences::new(
+            notification_pref_repo.clone(),
+        ),
+        update_notification_preferences:
+            application::notifications::UpdateNotificationPreferences::new(
+                notification_pref_repo.clone(),
+            ),
+        admin_send_notification: application::notifications::AdminSendNotification::new(
+            send_notification.clone(),
+        ),
+        admin_list_templates: application::notifications::AdminListTemplates::new(
+            notification_template_repo.clone(),
+        ),
+        admin_create_template: application::notifications::AdminCreateTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        admin_get_template: application::notifications::AdminGetTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        admin_update_template: application::notifications::AdminUpdateTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        admin_delete_template: application::notifications::AdminDeleteTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        send_notification,
+        notification_realtime_publisher,
         encryption_service,
         realtime_publisher,
         message_repository: message_repo,

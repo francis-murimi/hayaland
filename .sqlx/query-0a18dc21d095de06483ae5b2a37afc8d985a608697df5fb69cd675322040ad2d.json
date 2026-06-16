@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE notifications\n            SET read_at = $1, status = 'DELIVERED', updated_at = $1\n            WHERE (\n                (user_id IS NOT DISTINCT FROM $2)\n                OR (party_id IS NOT DISTINCT FROM $3)\n            )\n            AND read_at IS NULL\n            AND ($4::TIMESTAMPTZ IS NULL OR created_at <= $4)\n            AND ($5::TEXT IS NULL OR notification_type = $5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0a18dc21d095de06483ae5b2a37afc8d985a608697df5fb69cd675322040ad2d"
+}

@@ -4,6 +4,7 @@ pub mod chatrooms;
 pub mod deals;
 pub mod disputes;
 pub mod messages;
+pub mod notifications;
 pub mod parties;
 pub mod payments;
 pub mod reviews;
@@ -25,6 +26,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(deals::configure)
             .configure(disputes::configure)
             .configure(messages::configure)
+            .configure(notifications::configure)
             .configure(chatrooms::configure)
             .configure(payments::configure)
             .configure(reviews::configure)

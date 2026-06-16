@@ -1,0 +1,251 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, user_id, party_id, notification_type, title, body, channels,\n                   priority, status, read_at, actioned_at, expires_at, action_url,\n                   actions as \"actions!: sqlx::types::Json<Vec<NotificationActionRow>>\",\n                   related_entity_type, related_entity_id, metadata as \"metadata!: sqlx::types::Json<serde_json::Value>\",\n                   created_at, updated_at\n            FROM notifications\n            WHERE (\n                (user_id IS NOT DISTINCT FROM $1)\n                OR (party_id IS NOT DISTINCT FROM $2)\n            )\n            AND ($3::TEXT IS NULL OR notification_type = $3)\n            AND ($4::BOOLEAN IS NULL OR (read_at IS NOT NULL) = $4)\n            AND ($5::BOOLEAN IS NULL OR (actioned_at IS NOT NULL) = $5)\n            AND ($6::TEXT IS NULL OR priority = $6)\n            ORDER BY created_at DESC\n            LIMIT $7 OFFSET $8\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "notification_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "notification_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "body",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "body"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "channels",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "channels"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "priority",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "priority"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "read_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "read_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "actioned_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "actioned_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "action_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "action_url"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "actions!: sqlx::types::Json<Vec<NotificationActionRow>>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "actions"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "related_entity_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "related_entity_type"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "related_entity_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "related_entity_id"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "metadata!: sqlx::types::Json<serde_json::Value>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "metadata"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bool",
+        "Bool",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6f0c7c60209b627b82077aa694f59d34f460b3165273ca98ca1fd296a78b6f80"
+}

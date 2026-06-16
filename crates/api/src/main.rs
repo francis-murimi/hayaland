@@ -58,11 +58,16 @@ use infrastructure::{
     config, database,
     email::{run_worker, InMemoryEmailQueue, SmtpEmailSender},
     migrations,
-    realtime::InMemoryRealtimePublisher,
+    notifications::{
+        run_notification_worker, NoOpPushSender, NoOpSmsSender, NotificationWorkerConfig,
+    },
+    realtime::{InMemoryRealtimePublisher, NotificationWebSocketPublisher},
     repositories::{
         PostgresAgreementRepository, PostgresChatRoomRepository, PostgresDealRepository,
         PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMessageRepository,
-        PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
+        PostgresMilestoneRepository, PostgresNotificationPreferenceRepository,
+        PostgresNotificationRepository, PostgresNotificationTemplateRepository,
+        PostgresPartyRepository, PostgresPartyVerificationRepository,
         PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
         PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
     },
@@ -117,7 +122,13 @@ async fn main() -> anyhow::Result<()> {
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(PostgresPartyVerificationRepository::new(pool.clone()));
     let trust_repo: Arc<dyn TrustScoreRepository> =
-        Arc::new(PostgresTrustScoreRepository::new(pool));
+        Arc::new(PostgresTrustScoreRepository::new(pool.clone()));
+    let notification_repo: Arc<dyn domain::repositories::NotificationRepository> =
+        Arc::new(PostgresNotificationRepository::new(pool.clone()));
+    let notification_pref_repo: Arc<dyn domain::repositories::NotificationPreferenceRepository> =
+        Arc::new(PostgresNotificationPreferenceRepository::new(pool.clone()));
+    let notification_template_repo: Arc<dyn domain::repositories::NotificationTemplateRepository> =
+        Arc::new(PostgresNotificationTemplateRepository::new(pool.clone()));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -143,6 +154,14 @@ async fn main() -> anyhow::Result<()> {
         in_memory_publisher,
         websocket_registry.clone(),
     ));
+    let notification_realtime_publisher: Arc<
+        dyn application::ports::NotificationRealtimePublisher,
+    > = Arc::new(NotificationWebSocketPublisher::new(
+        websocket_registry.clone(),
+    ));
+    let push_sender: Arc<dyn application::ports::PushNotificationSender> =
+        Arc::new(NoOpPushSender::new());
+    let sms_sender: Arc<dyn application::ports::SmsSender> = Arc::new(NoOpSmsSender::new());
     let email_sender =
         Arc::new(SmtpEmailSender::new(&settings.email).context("failed to create email sender")?);
 
@@ -155,6 +174,38 @@ async fn main() -> anyhow::Result<()> {
         settings.email.email_retry_base_delay_ms,
         settings.email.email_retry_max_delay_ms,
     ));
+
+    let send_notification = Arc::new(application::notifications::SendNotification::new(
+        notification_repo.clone(),
+        notification_pref_repo.clone(),
+        notification_template_repo.clone(),
+        repo.clone(),
+        party_repo.clone(),
+        deal_repo.clone(),
+        email_queue.clone(),
+        notification_realtime_publisher.clone(),
+        push_sender.clone(),
+        sms_sender.clone(),
+        settings.notifications.default_locale.clone(),
+    ));
+
+    if settings.notifications.worker_enabled {
+        tokio::spawn(run_notification_worker(
+            notification_repo.clone(),
+            email_queue.clone(),
+            push_sender.clone(),
+            sms_sender.clone(),
+            notification_realtime_publisher.clone(),
+            NotificationWorkerConfig {
+                enabled: true,
+                interval_seconds: settings.notifications.worker_interval_seconds,
+                batch_size: settings.notifications.worker_batch_size,
+                max_retries: settings.notifications.push_max_retries,
+                retry_base_delay_ms: settings.notifications.push_retry_base_delay_ms,
+                retry_max_delay_ms: settings.notifications.push_retry_max_delay_ms,
+            },
+        ));
+    }
 
     if settings.deal_timeout_worker.enabled {
         let timeout_worker = Arc::new(
@@ -531,8 +582,55 @@ async fn main() -> anyhow::Result<()> {
         join_chat_room: JoinChatRoom::new(chat_room_repo.clone(), party_repo.clone()),
         leave_chat_room: LeaveChatRoom::new(chat_room_repo.clone()),
         manage_chat_room_membership: ManageChatRoomMembership::new(chat_room_repo.clone()),
+        list_notifications: application::notifications::ListNotifications::new(
+            notification_repo.clone(),
+        ),
+        get_notification: application::notifications::GetNotification::new(
+            notification_repo.clone(),
+        ),
+        mark_notification_read: application::notifications::MarkNotificationRead::new(
+            notification_repo.clone(),
+            notification_realtime_publisher.clone(),
+        ),
+        mark_all_notifications_read: application::notifications::MarkAllNotificationsRead::new(
+            notification_repo.clone(),
+            notification_realtime_publisher.clone(),
+        ),
+        delete_notification: application::notifications::DeleteNotification::new(
+            notification_repo.clone(),
+        ),
+        get_unread_notification_count: application::notifications::GetUnreadCount::new(
+            notification_repo.clone(),
+        ),
+        get_notification_preferences: application::notifications::GetNotificationPreferences::new(
+            notification_pref_repo.clone(),
+        ),
+        update_notification_preferences:
+            application::notifications::UpdateNotificationPreferences::new(
+                notification_pref_repo.clone(),
+            ),
+        admin_send_notification: application::notifications::AdminSendNotification::new(
+            send_notification.clone(),
+        ),
+        admin_list_templates: application::notifications::AdminListTemplates::new(
+            notification_template_repo.clone(),
+        ),
+        admin_create_template: application::notifications::AdminCreateTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        admin_get_template: application::notifications::AdminGetTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        admin_update_template: application::notifications::AdminUpdateTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        admin_delete_template: application::notifications::AdminDeleteTemplate::new(
+            notification_template_repo.clone(),
+        ),
+        send_notification,
         encryption_service,
         realtime_publisher,
+        notification_realtime_publisher,
         message_repository: message_repo,
         chat_room_repository: chat_room_repo,
         websocket_registry,

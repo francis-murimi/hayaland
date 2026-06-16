@@ -562,6 +562,20 @@ impl PartyRepository for FakePartyRepo {
             .iter()
             .any(|m| m.user_id == user_id && m.party_id == party_id && m.is_active))
     }
+
+    async fn list_members_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Vec<UserPartyMembership>, DomainError> {
+        Ok(self
+            .memberships
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.party_id == party_id && m.is_active)
+            .cloned()
+            .collect())
+    }
 }
 
 #[cfg(test)]

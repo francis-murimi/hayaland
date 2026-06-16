@@ -35,7 +35,10 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::DuplicatePartyRole)
             | ApiError::Application(ApplicationError::DuplicateReview)
             | ApiError::Application(ApplicationError::DuplicateVerification)
-            | ApiError::Application(ApplicationError::DisputeAlreadyExists) => StatusCode::CONFLICT,
+            | ApiError::Application(ApplicationError::DisputeAlreadyExists)
+            | ApiError::Application(ApplicationError::DuplicateNotificationTemplate) => {
+                StatusCode::CONFLICT
+            }
             ApiError::Application(ApplicationError::NotFound)
             | ApiError::Application(ApplicationError::PartyNotFound)
             | ApiError::Application(ApplicationError::VerificationNotFound)
@@ -46,7 +49,9 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::MessageNotFound)
             | ApiError::Application(ApplicationError::ConversationNotFound)
             | ApiError::Application(ApplicationError::ChatRoomNotFound)
-            | ApiError::Application(ApplicationError::ChatRoomMembershipNotFound) => {
+            | ApiError::Application(ApplicationError::ChatRoomMembershipNotFound)
+            | ApiError::Application(ApplicationError::NotificationNotFound)
+            | ApiError::Application(ApplicationError::NotificationTemplateNotFound) => {
                 StatusCode::NOT_FOUND
             }
             ApiError::Application(ApplicationError::InvalidCredentials)
@@ -73,6 +78,8 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::DealAccessDenied)
             | ApiError::Application(ApplicationError::DisputeAccessDenied) => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::EmailSendFailed)
+            | ApiError::Application(ApplicationError::PushSendFailed)
+            | ApiError::Application(ApplicationError::SmsSendFailed)
             | ApiError::Application(ApplicationError::Infrastructure(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -172,6 +179,17 @@ impl ResponseError for ApiError {
             }
             ApiError::Application(ApplicationError::DealAccessDenied) => "deal_access_denied",
             ApiError::Application(ApplicationError::Infrastructure(_)) => "internal_error",
+            ApiError::Application(ApplicationError::NotificationNotFound) => {
+                "notification_not_found"
+            }
+            ApiError::Application(ApplicationError::NotificationTemplateNotFound) => {
+                "notification_template_not_found"
+            }
+            ApiError::Application(ApplicationError::DuplicateNotificationTemplate) => {
+                "duplicate_notification_template"
+            }
+            ApiError::Application(ApplicationError::PushSendFailed) => "push_send_failed",
+            ApiError::Application(ApplicationError::SmsSendFailed) => "sms_send_failed",
             ApiError::Validation(_) => "validation_error",
             ApiError::Forbidden => "forbidden",
         };

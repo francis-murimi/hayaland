@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM notifications\n            WHERE (\n                (user_id IS NOT DISTINCT FROM $1)\n                OR (party_id IS NOT DISTINCT FROM $2)\n            )\n            AND ($3::TEXT IS NULL OR notification_type = $3)\n            AND ($4::BOOLEAN IS NULL OR (read_at IS NOT NULL) = $4)\n            AND ($5::BOOLEAN IS NULL OR (actioned_at IS NOT NULL) = $5)\n            AND ($6::TEXT IS NULL OR priority = $6)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bool",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "d330313a08c57f4ddbd4679d5255e1a07a745dfd626fd1669092788858ce774a"
+}

@@ -21,6 +21,8 @@ pub struct Settings {
     #[serde(default)]
     pub messages: MessagesSettings,
     #[serde(default)]
+    pub notifications: NotificationSettings,
+    #[serde(default)]
     pub trust_score: TrustScoreSettings,
 }
 
@@ -118,6 +120,40 @@ fn default_email_retry_base_delay_ms() -> u64 {
 
 fn default_email_retry_max_delay_ms() -> u64 {
     5000
+}
+
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct NotificationSettings {
+    #[serde(default = "default_locale")]
+    pub default_locale: String,
+    #[serde(default = "default_notification_worker_enabled")]
+    pub worker_enabled: bool,
+    #[serde(default = "default_notification_worker_interval_seconds")]
+    pub worker_interval_seconds: u64,
+    #[serde(default = "default_notification_worker_batch_size")]
+    pub worker_batch_size: usize,
+    #[serde(default = "default_email_max_retries")]
+    pub push_max_retries: u32,
+    #[serde(default = "default_email_retry_base_delay_ms")]
+    pub push_retry_base_delay_ms: u64,
+    #[serde(default = "default_email_retry_max_delay_ms")]
+    pub push_retry_max_delay_ms: u64,
+}
+
+fn default_locale() -> String {
+    "en".to_string()
+}
+
+fn default_notification_worker_enabled() -> bool {
+    true
+}
+
+fn default_notification_worker_interval_seconds() -> u64 {
+    30
+}
+
+fn default_notification_worker_batch_size() -> usize {
+    100
 }
 
 #[derive(Debug, Default, Deserialize, Clone)]
@@ -550,6 +586,7 @@ mod tests {
             deal_timeouts: Default::default(),
             deal_timeout_worker: Default::default(),
             messages: Default::default(),
+            notifications: Default::default(),
             trust_score: Default::default(),
         };
 
@@ -584,6 +621,7 @@ mod tests {
             deal_timeouts: Default::default(),
             deal_timeout_worker: Default::default(),
             messages: Default::default(),
+            notifications: Default::default(),
             trust_score: Default::default(),
         };
 

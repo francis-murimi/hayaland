@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE notifications\n            SET actioned_at = $1, updated_at = $1\n            WHERE id = $2\n              AND (\n                  (user_id = $3)\n                  OR (party_id IS NOT DISTINCT FROM $4)\n              )\n              AND actioned_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "34ca63cd2982a3a18e877c0ad21dc6a2ff2a5a5b52894fe7bdf630b5ffd7a14c"
+}

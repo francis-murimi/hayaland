@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM notifications\n            WHERE id = $1\n              AND (\n                  (user_id = $2)\n                  OR (party_id IS NOT DISTINCT FROM $3)\n              )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d26db9ea218e57ba3e66f3fc54fb0b0ef1f9a11f70153a36396985379719c0b0"
+}

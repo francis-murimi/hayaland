@@ -606,6 +606,37 @@ impl PartyRepository for PostgresPartyRepository {
 
         Ok(exists)
     }
+
+    async fn list_members_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Vec<UserPartyMembership>, DomainError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT id, user_id, party_id, member_role, is_active, created_at
+            FROM user_party_memberships
+            WHERE party_id = $1 AND is_active = true
+            ORDER BY created_at
+            "#,
+            party_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        rows.into_iter()
+            .map(|r| {
+                Ok(UserPartyMembership {
+                    id: r.id,
+                    user_id: r.user_id,
+                    party_id: r.party_id,
+                    member_role: PartyMembershipRole::try_from(r.member_role.as_str())?,
+                    is_active: r.is_active,
+                    created_at: r.created_at,
+                })
+            })
+            .collect()
+    }
 }
 
 #[derive(sqlx::FromRow)]

@@ -194,6 +194,27 @@ pub enum DomainError {
     #[error("reply is not in the same conversation")]
     ReplyNotInSameContext,
 
+    #[error("invalid notification type: {message}")]
+    InvalidNotificationType { message: String },
+
+    #[error("invalid notification channel: {message}")]
+    InvalidNotificationChannel { message: String },
+
+    #[error("invalid notification status: {message}")]
+    InvalidNotificationStatus { message: String },
+
+    #[error("invalid notification priority: {message}")]
+    InvalidNotificationPriority { message: String },
+
+    #[error("notification not found")]
+    NotificationNotFound,
+
+    #[error("notification template not found")]
+    NotificationTemplateNotFound,
+
+    #[error("a notification template with this name already exists")]
+    DuplicateNotificationTemplate,
+
     #[error("dispute not found")]
     DisputeNotFound,
 

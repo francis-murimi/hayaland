@@ -101,4 +101,10 @@ pub trait PartyRepository: Send + Sync {
         user_id: Uuid,
         party_id: Uuid,
     ) -> Result<bool, DomainError>;
+
+    /// List active memberships for a party.
+    async fn list_members_for_party(
+        &self,
+        party_id: Uuid,
+    ) -> Result<Vec<UserPartyMembership>, DomainError>;
 }

@@ -23,6 +23,13 @@ use application::milestones::{
     CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
     StartMilestone, UpdateMilestone, VerifyMilestone,
 };
+use application::notifications::GetUnreadCount as NotificationGetUnreadCount;
+use application::notifications::{
+    AdminCreateTemplate, AdminDeleteTemplate, AdminGetTemplate, AdminListTemplates,
+    AdminSendNotification, AdminUpdateTemplate, DeleteNotification, GetNotification,
+    GetNotificationPreferences, ListNotifications, MarkAllNotificationsRead, MarkNotificationRead,
+    SendNotification, UpdateNotificationPreferences,
+};
 use application::parties::{
     AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
     SearchParties, SoftDeleteParty, UpdateParty,
@@ -129,7 +136,26 @@ pub async fn build_state(pool: PgPool) -> AppState {
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(PostgresPartyVerificationRepository::new(pool.clone()));
     let trust_repo: Arc<dyn TrustScoreRepository> =
-        Arc::new(PostgresTrustScoreRepository::new(pool));
+        Arc::new(PostgresTrustScoreRepository::new(pool.clone()));
+    let notification_repo: Arc<dyn domain::repositories::NotificationRepository> =
+        Arc::new(infrastructure::repositories::PostgresNotificationRepository::new(pool.clone()));
+    let notification_pref_repo: Arc<dyn domain::repositories::NotificationPreferenceRepository> =
+        Arc::new(
+            infrastructure::repositories::PostgresNotificationPreferenceRepository::new(
+                pool.clone(),
+            ),
+        );
+    let notification_template_repo: Arc<dyn domain::repositories::NotificationTemplateRepository> =
+        Arc::new(
+            infrastructure::repositories::PostgresNotificationTemplateRepository::new(pool.clone()),
+        );
+    let notification_realtime_publisher: Arc<
+        dyn application::ports::NotificationRealtimePublisher,
+    > = Arc::new(application::ports::NoOpNotificationRealtimePublisher);
+    let push_sender: Arc<dyn application::ports::PushNotificationSender> =
+        Arc::new(infrastructure::notifications::NoOpPushSender::new());
+    let sms_sender: Arc<dyn application::ports::SmsSender> =
+        Arc::new(infrastructure::notifications::NoOpSmsSender::new());
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher);
     let token_service: Arc<dyn TokenVerifier> = Arc::new(TestTokenService {
         secret: "test-secret".to_string(),
@@ -146,6 +172,19 @@ pub async fn build_state(pool: PgPool) -> AppState {
         trust_repo.clone(),
         party_repo.clone(),
         trust_config,
+    ));
+    let send_notification = Arc::new(SendNotification::new(
+        notification_repo.clone(),
+        notification_pref_repo.clone(),
+        notification_template_repo.clone(),
+        repo.clone(),
+        party_repo.clone(),
+        deal_repo.clone(),
+        Arc::new(FakeEmailQueue),
+        notification_realtime_publisher.clone(),
+        push_sender,
+        sms_sender,
+        "en".to_string(),
     ));
 
     AppState {
@@ -491,6 +530,32 @@ pub async fn build_state(pool: PgPool) -> AppState {
         join_chat_room: JoinChatRoom::new(chat_room_repo.clone(), party_repo.clone()),
         leave_chat_room: LeaveChatRoom::new(chat_room_repo.clone()),
         manage_chat_room_membership: ManageChatRoomMembership::new(chat_room_repo.clone()),
+        list_notifications: ListNotifications::new(notification_repo.clone()),
+        get_notification: GetNotification::new(notification_repo.clone()),
+        mark_notification_read: MarkNotificationRead::new(
+            notification_repo.clone(),
+            notification_realtime_publisher.clone(),
+        ),
+        mark_all_notifications_read: MarkAllNotificationsRead::new(
+            notification_repo.clone(),
+            notification_realtime_publisher.clone(),
+        ),
+        delete_notification: DeleteNotification::new(notification_repo.clone()),
+        get_unread_notification_count: NotificationGetUnreadCount::new(notification_repo.clone()),
+        get_notification_preferences: GetNotificationPreferences::new(
+            notification_pref_repo.clone(),
+        ),
+        update_notification_preferences: UpdateNotificationPreferences::new(
+            notification_pref_repo.clone(),
+        ),
+        admin_send_notification: AdminSendNotification::new(send_notification.clone()),
+        admin_list_templates: AdminListTemplates::new(notification_template_repo.clone()),
+        admin_create_template: AdminCreateTemplate::new(notification_template_repo.clone()),
+        admin_get_template: AdminGetTemplate::new(notification_template_repo.clone()),
+        admin_update_template: AdminUpdateTemplate::new(notification_template_repo.clone()),
+        admin_delete_template: AdminDeleteTemplate::new(notification_template_repo.clone()),
+        send_notification,
+        notification_realtime_publisher,
         encryption_service,
         realtime_publisher,
         message_repository: message_repo,

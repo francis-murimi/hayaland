@@ -141,6 +141,21 @@ pub enum ApplicationError {
     #[error("reply is not in the same conversation")]
     ReplyNotInSameContext,
 
+    #[error("notification not found")]
+    NotificationNotFound,
+
+    #[error("notification template not found")]
+    NotificationTemplateNotFound,
+
+    #[error("a notification template with this name already exists")]
+    DuplicateNotificationTemplate,
+
+    #[error("failed to send push notification")]
+    PushSendFailed,
+
+    #[error("failed to send sms")]
+    SmsSendFailed,
+
     #[error("infrastructure error: {0}")]
     Infrastructure(String),
 }
@@ -249,6 +264,19 @@ impl From<DomainError> for ApplicationError {
             DomainError::CannotDeleteMessage => ApplicationError::CannotDeleteMessage,
             DomainError::CannotManageChatRoom => ApplicationError::CannotManageChatRoom,
             DomainError::ReplyNotInSameContext => ApplicationError::ReplyNotInSameContext,
+            DomainError::InvalidNotificationType { message }
+            | DomainError::InvalidNotificationChannel { message }
+            | DomainError::InvalidNotificationStatus { message }
+            | DomainError::InvalidNotificationPriority { message } => {
+                ApplicationError::Validation(vec![message])
+            }
+            DomainError::NotificationNotFound => ApplicationError::NotificationNotFound,
+            DomainError::NotificationTemplateNotFound => {
+                ApplicationError::NotificationTemplateNotFound
+            }
+            DomainError::DuplicateNotificationTemplate => {
+                ApplicationError::DuplicateNotificationTemplate
+            }
         }
     }
 }

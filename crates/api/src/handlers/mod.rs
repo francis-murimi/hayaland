@@ -11,6 +11,7 @@ pub mod list_users;
 pub mod login;
 pub mod messages;
 pub mod milestones;
+pub mod notifications;
 pub mod parties;
 pub mod payments;
 pub mod resend_verification;

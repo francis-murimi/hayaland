@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE notification_templates\n            SET name = $1,\n                notification_type = $2,\n                channel = $3,\n                locale = $4,\n                subject_template = $5,\n                body_template = $6,\n                variables_schema = $7,\n                is_active = $8,\n                updated_at = $9\n            WHERE id = $10\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Bool",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3e9bcb681d0cc5ddd6327db7507a0134380a87834fd3f9d32287756bd2127ee4"
+}

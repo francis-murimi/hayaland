@@ -339,3 +339,21 @@ pub struct ChatRoomListQueryParams {
 pub struct SetRoleRequest {
     pub role: ChatRoomMemberRole,
 }
+
+// ============================================================================
+// Notification DTOs
+// ============================================================================
+
+#[derive(Debug, Deserialize, Validate, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationListQueryRequest {
+    #[serde(rename = "type")]
+    pub notification_type: Option<domain::entities::NotificationType>,
+    pub is_read: Option<bool>,
+    pub is_actioned: Option<bool>,
+    pub priority: Option<domain::entities::NotificationPriority>,
+    #[validate(range(min = 1, message = "limit must be at least 1"))]
+    pub limit: Option<i64>,
+    #[validate(range(min = 0, message = "offset must be at least 0"))]
+    pub offset: Option<i64>,
+}
