@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM enhancements\n            WHERE enhancement_type_id = $1\n              AND is_active = true\n              AND platform_hidden = false\n              AND deal_id IS NULL\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "6f9953b0067590615dc054336ab8c0ca81fbaeb24192ec10c68d71eceaeffd93"
+}

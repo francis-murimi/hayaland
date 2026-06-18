@@ -2567,3 +2567,637 @@ impl ChatRoomRepository for FakeChatRoomRepo {
             .collect())
     }
 }
+
+#[cfg(test)]
+use domain::entities::{Enhancement, Need, Resource};
+#[cfg(test)]
+use domain::repositories::{
+    AdminFlags, CatalogItemStatus, CatalogItemType, CatalogListResult, CatalogRepository,
+    CatalogSearchCriteria, CategoryItemCounts,
+};
+
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeCatalogRepository {
+    pub resources: Mutex<HashMap<Uuid, Resource>>,
+    pub needs: Mutex<HashMap<Uuid, Need>>,
+    pub enhancements: Mutex<HashMap<Uuid, Enhancement>>,
+}
+
+#[cfg(test)]
+impl FakeCatalogRepository {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl CatalogRepository for FakeCatalogRepository {
+    // Resources
+    async fn create_resource(&self, resource: &Resource) -> Result<(), DomainError> {
+        self.resources
+            .lock()
+            .unwrap()
+            .insert(resource.id, resource.clone());
+        Ok(())
+    }
+
+    async fn update_resource(&self, resource: &Resource) -> Result<(), DomainError> {
+        let mut resources = self.resources.lock().unwrap();
+        if !resources.contains_key(&resource.id) {
+            return Err(DomainError::ResourceNotFound);
+        }
+        resources.insert(resource.id, resource.clone());
+        Ok(())
+    }
+
+    async fn delete_resource(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut resources = self.resources.lock().unwrap();
+        match resources.get(&id) {
+            Some(r) if r.deal_count > 0 => Err(DomainError::CatalogItemHasActiveDeals),
+            Some(_) => {
+                resources.remove(&id);
+                Ok(())
+            }
+            None => Err(DomainError::ResourceNotFound),
+        }
+    }
+
+    async fn find_resource_by_id(&self, id: Uuid) -> Result<Option<Resource>, DomainError> {
+        Ok(self.resources.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn list_resources(
+        &self,
+        criteria: &CatalogSearchCriteria,
+    ) -> Result<CatalogListResult<Resource>, DomainError> {
+        let resources: Vec<Resource> = self.resources.lock().unwrap().values().cloned().collect();
+        let filtered = filter_items(resources, criteria);
+        let total = filtered.len() as i64;
+        let start = criteria.offset as usize;
+        let end = (criteria.offset + criteria.limit) as usize;
+        let items = filtered
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(CatalogListResult {
+            items,
+            total,
+            limit: criteria.limit,
+            offset: criteria.offset,
+        })
+    }
+
+    async fn count_resources_for_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .resources
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.supplier_party_id == party_id)
+            .count() as i64;
+        Ok(count)
+    }
+
+    // Needs
+    async fn create_need(&self, need: &Need) -> Result<(), DomainError> {
+        self.needs.lock().unwrap().insert(need.id, need.clone());
+        Ok(())
+    }
+
+    async fn update_need(&self, need: &Need) -> Result<(), DomainError> {
+        let mut needs = self.needs.lock().unwrap();
+        if !needs.contains_key(&need.id) {
+            return Err(DomainError::NeedNotFound);
+        }
+        needs.insert(need.id, need.clone());
+        Ok(())
+    }
+
+    async fn delete_need(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut needs = self.needs.lock().unwrap();
+        match needs.get(&id) {
+            Some(n) if n.deal_count > 0 => Err(DomainError::CatalogItemHasActiveDeals),
+            Some(_) => {
+                needs.remove(&id);
+                Ok(())
+            }
+            None => Err(DomainError::NeedNotFound),
+        }
+    }
+
+    async fn find_need_by_id(&self, id: Uuid) -> Result<Option<Need>, DomainError> {
+        Ok(self.needs.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn list_needs(
+        &self,
+        criteria: &CatalogSearchCriteria,
+    ) -> Result<CatalogListResult<Need>, DomainError> {
+        let needs: Vec<Need> = self.needs.lock().unwrap().values().cloned().collect();
+        let filtered = filter_items(needs, criteria);
+        let total = filtered.len() as i64;
+        let start = criteria.offset as usize;
+        let end = (criteria.offset + criteria.limit) as usize;
+        let items = filtered
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(CatalogListResult {
+            items,
+            total,
+            limit: criteria.limit,
+            offset: criteria.offset,
+        })
+    }
+
+    async fn count_needs_for_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .needs
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|n| n.consumer_party_id == party_id)
+            .count() as i64;
+        Ok(count)
+    }
+
+    // Enhancements
+    async fn create_enhancement(&self, enhancement: &Enhancement) -> Result<(), DomainError> {
+        self.enhancements
+            .lock()
+            .unwrap()
+            .insert(enhancement.id, enhancement.clone());
+        Ok(())
+    }
+
+    async fn update_enhancement(&self, enhancement: &Enhancement) -> Result<(), DomainError> {
+        let mut enhancements = self.enhancements.lock().unwrap();
+        if !enhancements.contains_key(&enhancement.id) {
+            return Err(DomainError::EnhancementNotFound);
+        }
+        enhancements.insert(enhancement.id, enhancement.clone());
+        Ok(())
+    }
+
+    async fn delete_enhancement(&self, id: Uuid) -> Result<(), DomainError> {
+        let mut enhancements = self.enhancements.lock().unwrap();
+        match enhancements.get(&id) {
+            Some(e) if e.deal_count > 0 => Err(DomainError::CatalogItemHasActiveDeals),
+            Some(_) => {
+                enhancements.remove(&id);
+                Ok(())
+            }
+            None => Err(DomainError::EnhancementNotFound),
+        }
+    }
+
+    async fn find_enhancement_by_id(&self, id: Uuid) -> Result<Option<Enhancement>, DomainError> {
+        Ok(self.enhancements.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn list_enhancements(
+        &self,
+        criteria: &CatalogSearchCriteria,
+    ) -> Result<CatalogListResult<Enhancement>, DomainError> {
+        let enhancements: Vec<Enhancement> = self
+            .enhancements
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
+        let filtered = filter_items(enhancements, criteria);
+        let total = filtered.len() as i64;
+        let start = criteria.offset as usize;
+        let end = (criteria.offset + criteria.limit) as usize;
+        let items = filtered
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        Ok(CatalogListResult {
+            items,
+            total,
+            limit: criteria.limit,
+            offset: criteria.offset,
+        })
+    }
+
+    async fn count_enhancements_for_party(&self, party_id: Uuid) -> Result<i64, DomainError> {
+        let count = self
+            .enhancements
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.enhancer_party_id == party_id)
+            .count() as i64;
+        Ok(count)
+    }
+
+    // Admin flags
+    async fn update_resource_admin_flags(
+        &self,
+        id: Uuid,
+        flags: AdminFlags,
+    ) -> Result<(), DomainError> {
+        let mut resources = self.resources.lock().unwrap();
+        let resource = resources
+            .get_mut(&id)
+            .ok_or(DomainError::ResourceNotFound)?;
+        apply_admin_flags(resource, flags);
+        Ok(())
+    }
+
+    async fn update_need_admin_flags(
+        &self,
+        id: Uuid,
+        flags: AdminFlags,
+    ) -> Result<(), DomainError> {
+        let mut needs = self.needs.lock().unwrap();
+        let need = needs.get_mut(&id).ok_or(DomainError::NeedNotFound)?;
+        apply_admin_flags(need, flags);
+        Ok(())
+    }
+
+    async fn update_enhancement_admin_flags(
+        &self,
+        id: Uuid,
+        flags: AdminFlags,
+    ) -> Result<(), DomainError> {
+        let mut enhancements = self.enhancements.lock().unwrap();
+        let enhancement = enhancements
+            .get_mut(&id)
+            .ok_or(DomainError::EnhancementNotFound)?;
+        apply_admin_flags(enhancement, flags);
+        Ok(())
+    }
+
+    // Deal binding helpers
+    async fn increment_deal_count(
+        &self,
+        item_type: CatalogItemType,
+        id: Uuid,
+    ) -> Result<(), DomainError> {
+        match item_type {
+            CatalogItemType::Resource => {
+                if let Some(r) = self.resources.lock().unwrap().get_mut(&id) {
+                    r.deal_count += 1;
+                }
+            }
+            CatalogItemType::Need => {
+                if let Some(n) = self.needs.lock().unwrap().get_mut(&id) {
+                    n.deal_count += 1;
+                }
+            }
+            CatalogItemType::Enhancement => {
+                if let Some(e) = self.enhancements.lock().unwrap().get_mut(&id) {
+                    e.deal_count += 1;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn find_resources_by_deal(&self, deal_id: Uuid) -> Result<Vec<Resource>, DomainError> {
+        let mut resources: Vec<Resource> = self
+            .resources
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.deal_id == Some(deal_id))
+            .cloned()
+            .collect();
+        resources.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(resources)
+    }
+
+    async fn find_needs_by_deal(&self, deal_id: Uuid) -> Result<Vec<Need>, DomainError> {
+        let mut needs: Vec<Need> = self
+            .needs
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|n| n.deal_id == Some(deal_id))
+            .cloned()
+            .collect();
+        needs.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(needs)
+    }
+
+    async fn find_enhancements_by_deal(
+        &self,
+        deal_id: Uuid,
+    ) -> Result<Vec<Enhancement>, DomainError> {
+        let mut enhancements: Vec<Enhancement> = self
+            .enhancements
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.deal_id == Some(deal_id))
+            .cloned()
+            .collect();
+        enhancements.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(enhancements)
+    }
+
+    // Category counts
+    async fn count_active_items_by_category(
+        &self,
+        category_id: Uuid,
+    ) -> Result<CategoryItemCounts, DomainError> {
+        let resources = self.resources.lock().unwrap();
+        let resource_count = resources
+            .values()
+            .filter(|r| r.resource_type_id == category_id && r.is_active && !r.platform_hidden)
+            .count() as i64;
+        drop(resources);
+
+        let needs = self.needs.lock().unwrap();
+        let need_count = needs
+            .values()
+            .filter(|n| n.need_category_id == category_id && n.is_active && !n.platform_hidden)
+            .count() as i64;
+        drop(needs);
+
+        let enhancements = self.enhancements.lock().unwrap();
+        let enhancement_count = enhancements
+            .values()
+            .filter(|e| e.enhancement_type_id == category_id && e.is_active && !e.platform_hidden)
+            .count() as i64;
+
+        Ok(CategoryItemCounts {
+            resource_count,
+            need_count,
+            enhancement_count,
+        })
+    }
+}
+
+#[cfg(test)]
+fn filter_items<T: CatalogItem>(items: Vec<T>, criteria: &CatalogSearchCriteria) -> Vec<T> {
+    items
+        .into_iter()
+        .filter(|item| {
+            if let Some(pid) = criteria.party_id {
+                if item.owner_party_id() != pid {
+                    return false;
+                }
+            }
+            if let Some(query) = &criteria.query {
+                if !item.matches_text(query) {
+                    return false;
+                }
+            }
+            if !criteria.include_hidden && item.is_platform_hidden() {
+                // Still visible if caller is the owner and party_id matches.
+                if criteria.party_id != Some(item.owner_party_id()) {
+                    return false;
+                }
+            }
+            if !criteria.include_inactive && !item.is_active() {
+                if criteria.party_id != Some(item.owner_party_id()) {
+                    return false;
+                }
+            }
+            if let Some(status) = criteria.status {
+                match status {
+                    CatalogItemStatus::Active => {
+                        if !item.is_active() {
+                            return false;
+                        }
+                    }
+                    CatalogItemStatus::Inactive => {
+                        if item.is_active() {
+                            return false;
+                        }
+                    }
+                    CatalogItemStatus::All => {}
+                }
+            }
+            if criteria.verified_only && !item.is_verified() {
+                return false;
+            }
+            if criteria.featured_only && !item.is_featured() {
+                return false;
+            }
+            true
+        })
+        .collect()
+}
+
+#[cfg(test)]
+trait CatalogItem {
+    fn owner_party_id(&self) -> Uuid;
+    fn matches_text(&self, query: &str) -> bool;
+    fn is_platform_hidden(&self) -> bool;
+    fn is_active(&self) -> bool;
+    fn is_verified(&self) -> bool;
+    fn is_featured(&self) -> bool;
+}
+
+#[cfg(test)]
+impl CatalogItem for Resource {
+    fn owner_party_id(&self) -> Uuid {
+        self.supplier_party_id
+    }
+    fn matches_text(&self, query: &str) -> bool {
+        self.resource_name
+            .to_lowercase()
+            .contains(&query.to_lowercase())
+            || self
+                .description
+                .as_ref()
+                .map(|d| d.to_lowercase().contains(&query.to_lowercase()))
+                .unwrap_or(false)
+    }
+    fn is_platform_hidden(&self) -> bool {
+        self.platform_hidden
+    }
+    fn is_active(&self) -> bool {
+        self.is_active
+    }
+    fn is_verified(&self) -> bool {
+        self.verified_by_platform
+    }
+    fn is_featured(&self) -> bool {
+        self.platform_featured
+    }
+}
+
+#[cfg(test)]
+impl CatalogItem for Need {
+    fn owner_party_id(&self) -> Uuid {
+        self.consumer_party_id
+    }
+    fn matches_text(&self, query: &str) -> bool {
+        self.need_description
+            .to_lowercase()
+            .contains(&query.to_lowercase())
+            || self
+                .quality_requirements
+                .as_ref()
+                .map(|q| q.to_lowercase().contains(&query.to_lowercase()))
+                .unwrap_or(false)
+    }
+    fn is_platform_hidden(&self) -> bool {
+        self.platform_hidden
+    }
+    fn is_active(&self) -> bool {
+        self.is_active
+    }
+    fn is_verified(&self) -> bool {
+        false
+    }
+    fn is_featured(&self) -> bool {
+        self.platform_featured
+    }
+}
+
+#[cfg(test)]
+impl CatalogItem for Enhancement {
+    fn owner_party_id(&self) -> Uuid {
+        self.enhancer_party_id
+    }
+    fn matches_text(&self, query: &str) -> bool {
+        self.enhancement_name
+            .to_lowercase()
+            .contains(&query.to_lowercase())
+            || self
+                .description
+                .as_ref()
+                .map(|d| d.to_lowercase().contains(&query.to_lowercase()))
+                .unwrap_or(false)
+    }
+    fn is_platform_hidden(&self) -> bool {
+        self.platform_hidden
+    }
+    fn is_active(&self) -> bool {
+        self.is_active
+    }
+    fn is_verified(&self) -> bool {
+        false
+    }
+    fn is_featured(&self) -> bool {
+        self.platform_featured
+    }
+}
+
+#[cfg(test)]
+fn apply_admin_flags<T: AdminFlagsTarget>(target: &mut T, flags: AdminFlags) {
+    if let Some(hidden) = flags.platform_hidden {
+        target.set_platform_hidden(hidden);
+    }
+    if let Some(featured) = flags.platform_featured {
+        target.set_platform_featured(featured);
+    }
+    if let Some(notes) = flags.admin_notes {
+        target.set_admin_notes(notes);
+    }
+    if let Some(reviewed_by) = flags.admin_reviewed_by {
+        target.set_admin_reviewed(reviewed_by);
+    }
+}
+
+#[cfg(test)]
+trait AdminFlagsTarget {
+    fn set_platform_hidden(&mut self, value: bool);
+    fn set_platform_featured(&mut self, value: bool);
+    fn set_admin_notes(&mut self, value: String);
+    fn set_admin_reviewed(&mut self, reviewer_id: Uuid);
+}
+
+#[cfg(test)]
+impl AdminFlagsTarget for Resource {
+    fn set_platform_hidden(&mut self, value: bool) {
+        self.platform_hidden = value;
+    }
+    fn set_platform_featured(&mut self, value: bool) {
+        self.platform_featured = value;
+    }
+    fn set_admin_notes(&mut self, value: String) {
+        self.admin_notes = Some(value);
+    }
+    fn set_admin_reviewed(&mut self, reviewer_id: Uuid) {
+        self.admin_reviewed_by = Some(reviewer_id);
+        self.admin_reviewed_at = Some(OffsetDateTime::now_utc());
+    }
+}
+
+#[cfg(test)]
+impl AdminFlagsTarget for Need {
+    fn set_platform_hidden(&mut self, value: bool) {
+        self.platform_hidden = value;
+    }
+    fn set_platform_featured(&mut self, value: bool) {
+        self.platform_featured = value;
+    }
+    fn set_admin_notes(&mut self, value: String) {
+        self.admin_notes = Some(value);
+    }
+    fn set_admin_reviewed(&mut self, reviewer_id: Uuid) {
+        self.admin_reviewed_by = Some(reviewer_id);
+        self.admin_reviewed_at = Some(OffsetDateTime::now_utc());
+    }
+}
+
+#[cfg(test)]
+impl AdminFlagsTarget for Enhancement {
+    fn set_platform_hidden(&mut self, value: bool) {
+        self.platform_hidden = value;
+    }
+    fn set_platform_featured(&mut self, value: bool) {
+        self.platform_featured = value;
+    }
+    fn set_admin_notes(&mut self, value: String) {
+        self.admin_notes = Some(value);
+    }
+    fn set_admin_reviewed(&mut self, reviewer_id: Uuid) {
+        self.admin_reviewed_by = Some(reviewer_id);
+        self.admin_reviewed_at = Some(OffsetDateTime::now_utc());
+    }
+}
+
+#[cfg(test)]
+pub fn test_resource(supplier_party_id: Uuid, resource_type_id: Uuid, name: &str) -> Resource {
+    Resource::new(
+        Uuid::now_v7(),
+        supplier_party_id,
+        resource_type_id,
+        name.to_string(),
+        Decimal::from(10),
+        "units".to_string(),
+    )
+    .unwrap()
+}
+
+#[cfg(test)]
+pub fn test_need(consumer_party_id: Uuid, need_category_id: Uuid, description: &str) -> Need {
+    Need::new(
+        Uuid::now_v7(),
+        consumer_party_id,
+        need_category_id,
+        description.to_string(),
+        Decimal::from(100),
+        "units".to_string(),
+    )
+    .unwrap()
+}
+
+#[cfg(test)]
+pub fn test_enhancement(
+    enhancer_party_id: Uuid,
+    enhancement_type_id: Uuid,
+    name: &str,
+) -> Enhancement {
+    Enhancement::new(
+        Uuid::now_v7(),
+        enhancer_party_id,
+        enhancement_type_id,
+        name.to_string(),
+    )
+    .unwrap()
+}

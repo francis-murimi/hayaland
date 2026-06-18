@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO needs (\n                id, deal_id, catalog_item_id, consumer_party_id, need_category_id,\n                need_description, required_quantity, quantity_unit, quality_requirements,\n                required_by_date, max_budget, budget_currency, estimated_fulfillment_value,\n                acceptable_variants, priority, location_geo, metadata,\n                is_active, deal_count, platform_hidden, platform_featured,\n                admin_notes, admin_reviewed_at, admin_reviewed_by,\n                created_at, updated_at\n            ) VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,\n                $11, $12, $13, $14, $15,\n                CASE\n                    WHEN $16::float8 IS NOT NULL AND $17::float8 IS NOT NULL\n                    THEN ST_SetSRID(ST_MakePoint($17, $16), 4326)::geography\n                    ELSE NULL\n                END,\n                $18, $19, $20, $21, $22, $23, $24, $25, $26, $27\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Numeric",
+        "Text",
+        "Text",
+        "Date",
+        "Numeric",
+        "Text",
+        "Numeric",
+        "Text",
+        "Text",
+        "Float8",
+        "Float8",
+        "Jsonb",
+        "Bool",
+        "Int4",
+        "Bool",
+        "Bool",
+        "Text",
+        "Timestamptz",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c170f4a94cada877f96ad3f11e25c74b17b73843c7fbbec1beb1fea555949df1"
+}

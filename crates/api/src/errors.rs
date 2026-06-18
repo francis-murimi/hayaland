@@ -51,9 +51,10 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::ChatRoomNotFound)
             | ApiError::Application(ApplicationError::ChatRoomMembershipNotFound)
             | ApiError::Application(ApplicationError::NotificationNotFound)
-            | ApiError::Application(ApplicationError::NotificationTemplateNotFound) => {
-                StatusCode::NOT_FOUND
-            }
+            | ApiError::Application(ApplicationError::NotificationTemplateNotFound)
+            | ApiError::Application(ApplicationError::ResourceNotFound)
+            | ApiError::Application(ApplicationError::NeedNotFound)
+            | ApiError::Application(ApplicationError::EnhancementNotFound) => StatusCode::NOT_FOUND,
             ApiError::Application(ApplicationError::InvalidCredentials)
             | ApiError::Application(ApplicationError::AccountInactive)
             | ApiError::Application(ApplicationError::Unauthorized) => StatusCode::UNAUTHORIZED,
@@ -72,11 +73,13 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::WinWinWinValidationFailed { .. })
             | ApiError::Application(ApplicationError::ChatRoomAlreadyExists)
             | ApiError::Application(ApplicationError::AlreadyChatRoomMember)
-            | ApiError::Application(ApplicationError::ReplyNotInSameContext) => {
+            | ApiError::Application(ApplicationError::ReplyNotInSameContext)
+            | ApiError::Application(ApplicationError::CatalogItemHasActiveDeals) => {
                 StatusCode::CONFLICT
             }
             ApiError::Application(ApplicationError::DealAccessDenied)
-            | ApiError::Application(ApplicationError::DisputeAccessDenied) => StatusCode::FORBIDDEN,
+            | ApiError::Application(ApplicationError::DisputeAccessDenied)
+            | ApiError::Application(ApplicationError::CatalogAccessDenied) => StatusCode::FORBIDDEN,
             ApiError::Application(ApplicationError::EmailSendFailed)
             | ApiError::Application(ApplicationError::PushSendFailed)
             | ApiError::Application(ApplicationError::SmsSendFailed)
@@ -184,6 +187,13 @@ impl ResponseError for ApiError {
             }
             ApiError::Application(ApplicationError::NotificationTemplateNotFound) => {
                 "notification_template_not_found"
+            }
+            ApiError::Application(ApplicationError::ResourceNotFound) => "resource_not_found",
+            ApiError::Application(ApplicationError::NeedNotFound) => "need_not_found",
+            ApiError::Application(ApplicationError::EnhancementNotFound) => "enhancement_not_found",
+            ApiError::Application(ApplicationError::CatalogAccessDenied) => "catalog_access_denied",
+            ApiError::Application(ApplicationError::CatalogItemHasActiveDeals) => {
+                "catalog_item_has_active_deals"
             }
             ApiError::Application(ApplicationError::DuplicateNotificationTemplate) => {
                 "duplicate_notification_template"

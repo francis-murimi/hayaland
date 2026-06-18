@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 /// Routes that are intentionally accessible without authentication.
+/// Prefixes ending with `*` match any path that starts with the prefix.
 const PUBLIC_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v1/health"),
     ("POST", "/api/v1/auth/login"),
@@ -19,6 +20,12 @@ const PUBLIC_ROUTES: &[(&str, &str)] = &[
     ("POST", "/api/v1/auth/resend-verification"),
     ("POST", "/api/v1/auth/forgot-password"),
     ("POST", "/api/v1/auth/reset-password"),
+    // Catalogue public read paths
+    ("GET", "/api/v1/resources*"),
+    ("GET", "/api/v1/needs*"),
+    ("GET", "/api/v1/enhancements*"),
+    ("GET", "/api/v1/discovery*"),
+    ("GET", "/api/v1/catalog/categories*"),
 ];
 
 /// Middleware that validates a `Bearer` JWT for protected routes and inserts the
@@ -71,10 +78,7 @@ where
         let method = req.method().as_str().to_owned();
         let path = req.path().to_owned();
 
-        if PUBLIC_ROUTES
-            .iter()
-            .any(|(m, p)| m == &method && p == &path)
-        {
+        if is_public_route(&method, &path) {
             let fut = self.service.call(req);
             return Box::pin(async move {
                 let res = fut.await?;
@@ -196,4 +200,52 @@ pub fn require_owner_or_admin(
     }
     warn!(user_id = %ctx.user_id, resource_id = %resource_id, "request rejected: not owner or admin");
     Err(crate::errors::ApiError::Forbidden)
+}
+
+/// Returns true if the given method/path is configured as publicly accessible.
+fn is_public_route(method: &str, path: &str) -> bool {
+    PUBLIC_ROUTES.iter().any(|(m, p)| {
+        if m != &method {
+            return false;
+        }
+        if let Some(prefix) = p.strip_suffix('*') {
+            path.starts_with(prefix)
+        } else {
+            p == &path
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_public_route_matches() {
+        assert!(is_public_route("GET", "/api/v1/health"));
+        assert!(!is_public_route("POST", "/api/v1/health"));
+    }
+
+    #[test]
+    fn prefix_public_route_matches_catalogue() {
+        assert!(is_public_route("GET", "/api/v1/resources"));
+        assert!(is_public_route("GET", "/api/v1/resources/123"));
+        assert!(is_public_route("GET", "/api/v1/resources/search"));
+        assert!(is_public_route("GET", "/api/v1/needs/123"));
+        assert!(is_public_route("GET", "/api/v1/enhancements/123"));
+        assert!(is_public_route("GET", "/api/v1/discovery/domains"));
+    }
+
+    #[test]
+    fn non_get_catalogue_routes_require_auth() {
+        assert!(!is_public_route("POST", "/api/v1/resources"));
+        assert!(!is_public_route("PUT", "/api/v1/resources/123"));
+        assert!(!is_public_route("DELETE", "/api/v1/resources/123"));
+    }
+
+    #[test]
+    fn unknown_routes_are_not_public() {
+        assert!(!is_public_route("GET", "/api/v1/deals"));
+        assert!(!is_public_route("GET", "/api/v1/admin/users"));
+    }
 }

@@ -53,5 +53,14 @@ jobs:
       - name: Run tests
         run: cargo test
 
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage report
+        run: cargo llvm-cov --workspace --html
+
+      - name: Check catalogue coverage gate
+        run: bash .github/scripts/check-catalog-coverage.sh
+
       - name: Check sqlx offline metadata
         run: cargo sqlx prepare --workspace --check

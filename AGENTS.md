@@ -54,7 +54,7 @@ A default test `DATABASE_URL` is also provided in `.cargo/config.toml` so `cargo
 - `sqlx migrate add <name>`
 
 ## CI / GitHub
-A GitHub Actions workflow is provided in `.github/workflows/ci.yml`. It runs formatting, clippy, migrations, tests, and an offline sqlx metadata check against a PostgreSQL service.
+A GitHub Actions workflow is provided in `.github/workflows/ci.yml`. It runs formatting, clippy, migrations, tests, a catalogue coverage gate (>85 % line coverage), and an offline sqlx metadata check against a PostgreSQL service.
 
 ## Publishing checklist
 - Copy `.env.example` to `.env` and replace secrets; never commit `.env`.

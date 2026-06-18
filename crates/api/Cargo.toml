@@ -38,6 +38,7 @@ rust_decimal.workspace = true
 [dev-dependencies]
 actix-web.workspace = true
 actix-rt.workspace = true
+actix-http = "3"
 serde_json.workspace = true
 async-trait.workspace = true
 domain = { workspace = true }

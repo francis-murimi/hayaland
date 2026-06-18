@@ -12,6 +12,7 @@ pub mod users;
 pub mod verifications;
 
 pub mod admin;
+pub mod catalog;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route(
@@ -32,6 +33,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(reviews::configure)
             .configure(verifications::configure)
             .configure(admin::configure)
+            .configure(catalog::configure)
             .route("/health", web::get().to(health))
             .route("/auth/login", web::post().to(crate::handlers::login::login))
             .route(

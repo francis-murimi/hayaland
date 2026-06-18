@@ -43,6 +43,12 @@ use application::users::list_users::ListUsers;
 use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use application::{
+    catalog::{
+        AdminUpdateCatalogFlags, BindCatalogItemToDeal, ContactCatalogOwner, CreateEnhancement,
+        CreateNeed, CreateResource, DeleteEnhancement, DeleteNeed, DeleteResource, GetEnhancement,
+        GetNeed, GetResource, ListDealCatalogItems, ListEnhancements, ListNeeds, ListResources,
+        UpdateEnhancement, UpdateNeed, UpdatePartyCatalogSettings, UpdateResource,
+    },
     chatrooms::{
         CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
         ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
@@ -56,10 +62,11 @@ use async_trait::async_trait;
 use domain::entities::notification_preference::NotificationPreference;
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, Dispute,
-    DisputeResponse, DisputeStatus, DistributionModel, Email, EmailVerification, Milestone,
-    Notification, NotificationChannel, NotificationStatus, NotificationTemplate, NotificationType,
-    PasswordHash, PasswordResetToken, PlatformWallet, Review, Role, RoleProfile, Signature,
-    TransactionApproval, TransactionStatus, TransactionType, User, Username,
+    DisputeResponse, DisputeStatus, DistributionModel, Email, EmailVerification, Enhancement,
+    Milestone, Need, Notification, NotificationChannel, NotificationStatus, NotificationTemplate,
+    NotificationType, PasswordHash, PasswordResetToken, PlatformWallet, Resource, Review, Role,
+    RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
+    Username,
 };
 use domain::entities::{
     ChatRoom, ChatRoomMemberRole, ChatRoomMembership, Conversation, Message, MessageReaction,
@@ -69,17 +76,19 @@ use domain::entities::{
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
 use domain::repositories::{
-    AgreementRepository, ChatRoomListQuery, ChatRoomRepository, DealAggregate, DealListResult,
-    DealRepository, DealSearchCriteria, DeliveryResult, DisputeFilters, DisputeListResult,
-    DisputeRepository, EmailVerificationRepository, MessageListQuery, MessageRepository,
-    MilestoneRepository, NotificationFilters, NotificationListResult,
-    NotificationPreferenceRepository, NotificationRepository, NotificationTemplateRepository,
-    Pagination, PartyRepository, PartyVerificationRepository, PasswordResetRepository,
-    ReviewRepository, RoleRepository, TransactionFilters, UserRepository, VerificationListFilters,
-    VerificationListResult, WalletRepository,
+    AdminFlags, AgreementRepository, CatalogItemType, CatalogListResult, CatalogRepository,
+    CatalogSearchCriteria, CategoryItemCounts, ChatRoomListQuery, ChatRoomRepository,
+    DealAggregate, DealListResult, DealRepository, DealSearchCriteria, DeliveryResult,
+    DisputeFilters, DisputeListResult, DisputeRepository, EmailVerificationRepository,
+    MessageListQuery, MessageRepository, MilestoneRepository, NotificationFilters,
+    NotificationListResult, NotificationPreferenceRepository, NotificationRepository,
+    NotificationTemplateRepository, Pagination, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, ReviewRepository, RoleRepository, TransactionFilters, UserRepository,
+    VerificationListFilters, VerificationListResult, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use time::OffsetDateTime;
@@ -595,12 +604,12 @@ impl NotificationRepository for FakeNotificationRepo {
                     && (party_id.is_none() || n.party_id == party_id)
                     && filters
                         .notification_type
-                        .map_or(true, |t| n.notification_type == t)
-                    && filters.is_read.map_or(true, |r| n.read_at.is_some() == r)
+                        .is_none_or(|t| n.notification_type == t)
+                    && filters.is_read.is_none_or(|r| n.read_at.is_some() == r)
                     && filters
                         .is_actioned
-                        .map_or(true, |a| n.actioned_at.is_some() == a)
-                    && filters.priority.map_or(true, |p| n.priority == p)
+                        .is_none_or(|a| n.actioned_at.is_some() == a)
+                    && filters.priority.is_none_or(|p| n.priority == p)
             })
             .cloned()
             .collect();
@@ -924,7 +933,7 @@ impl DealRepository for FakeDealRepo {
             .cloned()
             .collect();
         let mut deals: Vec<_> = deals.into_iter().take(limit as usize).collect();
-        deals.sort_by(|a, b| a.current_state_entered_at.cmp(&b.current_state_entered_at));
+        deals.sort_by_key(|a| a.current_state_entered_at);
         Ok(deals)
     }
 
@@ -1867,7 +1876,7 @@ impl DisputeRepository for FakeDisputeRepo {
             .filter(|r| r.dispute_id == dispute_id)
             .cloned()
             .collect();
-        responses.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        responses.sort_by_key(|a| a.created_at);
         Ok(responses)
     }
 
@@ -2440,6 +2449,127 @@ impl ChatRoomRepository for FakeChatRoomRepo {
     }
 }
 
+#[derive(Default)]
+struct FakeCatalogRepository;
+
+#[async_trait]
+impl CatalogRepository for FakeCatalogRepository {
+    async fn create_resource(&self, _resource: &Resource) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn update_resource(&self, _resource: &Resource) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn delete_resource(&self, _id: Uuid) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_resource_by_id(&self, _id: Uuid) -> Result<Option<Resource>, DomainError> {
+        unimplemented!()
+    }
+    async fn list_resources(
+        &self,
+        _criteria: &CatalogSearchCriteria,
+    ) -> Result<CatalogListResult<Resource>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_resources_for_party(&self, _party_id: Uuid) -> Result<i64, DomainError> {
+        unimplemented!()
+    }
+
+    async fn create_need(&self, _need: &Need) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn update_need(&self, _need: &Need) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn delete_need(&self, _id: Uuid) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_need_by_id(&self, _id: Uuid) -> Result<Option<Need>, DomainError> {
+        unimplemented!()
+    }
+    async fn list_needs(
+        &self,
+        _criteria: &CatalogSearchCriteria,
+    ) -> Result<CatalogListResult<Need>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_needs_for_party(&self, _party_id: Uuid) -> Result<i64, DomainError> {
+        unimplemented!()
+    }
+
+    async fn create_enhancement(&self, _enhancement: &Enhancement) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn update_enhancement(&self, _enhancement: &Enhancement) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn delete_enhancement(&self, _id: Uuid) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_enhancement_by_id(&self, _id: Uuid) -> Result<Option<Enhancement>, DomainError> {
+        unimplemented!()
+    }
+    async fn list_enhancements(
+        &self,
+        _criteria: &CatalogSearchCriteria,
+    ) -> Result<CatalogListResult<Enhancement>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_enhancements_for_party(&self, _party_id: Uuid) -> Result<i64, DomainError> {
+        unimplemented!()
+    }
+
+    async fn update_resource_admin_flags(
+        &self,
+        _id: Uuid,
+        _flags: AdminFlags,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn update_need_admin_flags(
+        &self,
+        _id: Uuid,
+        _flags: AdminFlags,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn update_enhancement_admin_flags(
+        &self,
+        _id: Uuid,
+        _flags: AdminFlags,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+
+    async fn increment_deal_count(
+        &self,
+        _item_type: CatalogItemType,
+        _id: Uuid,
+    ) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn find_resources_by_deal(&self, _deal_id: Uuid) -> Result<Vec<Resource>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_needs_by_deal(&self, _deal_id: Uuid) -> Result<Vec<Need>, DomainError> {
+        unimplemented!()
+    }
+    async fn find_enhancements_by_deal(
+        &self,
+        _deal_id: Uuid,
+    ) -> Result<Vec<Enhancement>, DomainError> {
+        unimplemented!()
+    }
+
+    async fn count_active_items_by_category(
+        &self,
+        _category_id: Uuid,
+    ) -> Result<CategoryItemCounts, DomainError> {
+        unimplemented!()
+    }
+}
+
 struct FakeEncryptionService;
 
 #[async_trait]
@@ -2527,8 +2657,12 @@ fn test_fixtures() -> TestFixtures {
     let dispute_repo: Arc<dyn DisputeRepository> = Arc::new(FakeDisputeRepo::default());
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(FakePartyVerificationRepo::default());
-    let message_repo: Arc<dyn MessageRepository> = Arc::new(FakeMessageRepo::default());
-    let chat_room_repo: Arc<dyn ChatRoomRepository> = Arc::new(FakeChatRoomRepo::default());
+    let message_repo: Arc<dyn MessageRepository> = Arc::new(FakeMessageRepo);
+    let chat_room_repo: Arc<dyn ChatRoomRepository> = Arc::new(FakeChatRoomRepo);
+    let catalog_repo: Arc<dyn CatalogRepository> = Arc::new(FakeCatalogRepository);
+    let db_pool =
+        PgPool::connect_lazy(&std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))
+            .expect("failed to create test pool");
     let notification_repo: Arc<dyn NotificationRepository> =
         Arc::new(FakeNotificationRepo::default());
     let notification_pref_repo: Arc<dyn NotificationPreferenceRepository> =
@@ -2951,6 +3085,36 @@ fn test_fixtures() -> TestFixtures {
         admin_delete_template: application::notifications::AdminDeleteTemplate::new(
             notification_template_repo.clone(),
         ),
+        create_resource: CreateResource::new(catalog_repo.clone(), party_repo.clone()),
+        update_resource: UpdateResource::new(catalog_repo.clone(), party_repo.clone()),
+        delete_resource: DeleteResource::new(catalog_repo.clone(), party_repo.clone()),
+        get_resource: GetResource::new(catalog_repo.clone()),
+        list_resources: ListResources::new(catalog_repo.clone()),
+        create_need: CreateNeed::new(catalog_repo.clone(), party_repo.clone()),
+        update_need: UpdateNeed::new(catalog_repo.clone(), party_repo.clone()),
+        delete_need: DeleteNeed::new(catalog_repo.clone(), party_repo.clone()),
+        get_need: GetNeed::new(catalog_repo.clone()),
+        list_needs: ListNeeds::new(catalog_repo.clone()),
+        create_enhancement: CreateEnhancement::new(catalog_repo.clone(), party_repo.clone()),
+        update_enhancement: UpdateEnhancement::new(catalog_repo.clone(), party_repo.clone()),
+        delete_enhancement: DeleteEnhancement::new(catalog_repo.clone(), party_repo.clone()),
+        get_enhancement: GetEnhancement::new(catalog_repo.clone()),
+        list_enhancements: ListEnhancements::new(catalog_repo.clone()),
+        admin_update_catalog_flags: AdminUpdateCatalogFlags::new(catalog_repo.clone()),
+        bind_catalog_item_to_deal: BindCatalogItemToDeal::new(
+            catalog_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+        ),
+        list_deal_catalog_items: ListDealCatalogItems::new(catalog_repo.clone()),
+        contact_catalog_owner: ContactCatalogOwner::new(
+            catalog_repo.clone(),
+            party_repo.clone(),
+            message_repo.clone(),
+        ),
+        update_party_catalog_settings: UpdatePartyCatalogSettings::new(party_repo.clone()),
+        catalog_repo,
+        db_pool,
         send_notification,
         notification_realtime_publisher,
         encryption_service,
@@ -4766,7 +4930,7 @@ async fn admin_can_get_and_update_agreement() {
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["governing_law"].as_str().unwrap(), "California");
     assert_eq!(body["dispute_resolution"].as_str().unwrap(), "Arbitration");
-    assert_eq!(body["auto_renew"].as_bool().unwrap(), true);
+    assert!(body["auto_renew"].as_bool().unwrap());
 }
 
 async fn seed_party(state: &AppState, owner_id: Uuid, email: &str, role: DealRole) -> Uuid {

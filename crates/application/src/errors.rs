@@ -60,6 +60,21 @@ pub enum ApplicationError {
     #[error("deal access denied")]
     DealAccessDenied,
 
+    #[error("resource not found")]
+    ResourceNotFound,
+
+    #[error("need not found")]
+    NeedNotFound,
+
+    #[error("enhancement not found")]
+    EnhancementNotFound,
+
+    #[error("catalog access denied")]
+    CatalogAccessDenied,
+
+    #[error("catalog item has active deals and cannot be deleted")]
+    CatalogItemHasActiveDeals,
+
     #[error("dispute not found")]
     DisputeNotFound,
 
@@ -176,6 +191,9 @@ impl From<DomainError> for ApplicationError {
             | DomainError::InvalidSearchParameters { message }
             | DomainError::InvalidReviewRating { message }
             | DomainError::InvalidReviewText { message }
+            | DomainError::InvalidResourceCondition { message }
+            | DomainError::InvalidNeedPriority { message }
+            | DomainError::InvalidCatalogSearchParameters { message }
             | DomainError::InvalidChatRoomName { message }
             | DomainError::InvalidChatRoomType { message }
             | DomainError::InvalidChatRoomMemberRole { message }
@@ -190,6 +208,9 @@ impl From<DomainError> for ApplicationError {
             | DomainError::TransactionNotFound
             | DomainError::WalletNotFound
             | DomainError::MatchNotFound => ApplicationError::NotFound,
+            DomainError::ResourceNotFound => ApplicationError::ResourceNotFound,
+            DomainError::NeedNotFound => ApplicationError::NeedNotFound,
+            DomainError::EnhancementNotFound => ApplicationError::EnhancementNotFound,
             DomainError::ReviewPeriodExpired => {
                 ApplicationError::Validation(vec!["review period has expired".to_string()])
             }
@@ -204,6 +225,8 @@ impl From<DomainError> for ApplicationError {
             DomainError::RoleNotFound => ApplicationError::RoleNotFound,
             DomainError::PartyRoleHasActiveDeals => ApplicationError::PartyRoleHasActiveDeals,
             DomainError::PartyHasActiveDeals => ApplicationError::PartyHasActiveDeals,
+            DomainError::CatalogItemHasActiveDeals => ApplicationError::CatalogItemHasActiveDeals,
+            DomainError::CatalogAccessDenied => ApplicationError::CatalogAccessDenied,
             DomainError::InvalidDealStatus { message }
             | DomainError::InvalidParticipationStatus { message }
             | DomainError::InvalidDealTitle { message }

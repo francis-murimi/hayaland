@@ -1,3 +1,4 @@
+pub mod catalog;
 pub mod create_deal;
 pub mod execute_transition;
 pub mod get_deal;

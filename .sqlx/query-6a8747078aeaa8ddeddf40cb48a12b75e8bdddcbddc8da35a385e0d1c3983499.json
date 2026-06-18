@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM needs WHERE id = $1 AND deal_count = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6a8747078aeaa8ddeddf40cb48a12b75e8bdddcbddc8da35a385e0d1c3983499"
+}

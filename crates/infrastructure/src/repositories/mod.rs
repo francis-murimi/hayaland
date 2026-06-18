@@ -1,4 +1,5 @@
 pub mod postgres_agreement_repository;
+pub mod postgres_catalog_repository;
 pub mod postgres_chat_room_repository;
 pub mod postgres_deal_repository;
 pub mod postgres_dispute_repository;
@@ -21,6 +22,7 @@ pub mod postgres_wallet_repository;
 mod tests;
 
 pub use postgres_agreement_repository::PostgresAgreementRepository;
+pub use postgres_catalog_repository::PostgresCatalogRepository;
 pub use postgres_chat_room_repository::PostgresChatRoomRepository;
 pub use postgres_deal_repository::PostgresDealRepository;
 pub use postgres_dispute_repository::PostgresDisputeRepository;

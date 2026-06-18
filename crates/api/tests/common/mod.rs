@@ -3,6 +3,12 @@ use api::AppState;
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
 };
+use application::catalog::{
+    AdminUpdateCatalogFlags, BindCatalogItemToDeal, ContactCatalogOwner, CreateEnhancement,
+    CreateNeed, CreateResource, DeleteEnhancement, DeleteNeed, DeleteResource, GetEnhancement,
+    GetNeed, GetResource, ListDealCatalogItems, ListEnhancements, ListNeeds, ListResources,
+    UpdateEnhancement, UpdateNeed, UpdatePartyCatalogSettings, UpdateResource,
+};
 use application::chatrooms::{
     CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
     ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
@@ -55,7 +61,7 @@ use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::repositories::{
-    AgreementRepository, ChatRoomRepository, DealRepository, DisputeRepository,
+    AgreementRepository, CatalogRepository, ChatRoomRepository, DealRepository, DisputeRepository,
     EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
     TrustScoreRepository, UserRepository, WalletRepository,
@@ -64,11 +70,12 @@ use domain::services::ValidationConfig;
 use infrastructure::{
     realtime::InMemoryRealtimePublisher,
     repositories::{
-        PostgresAgreementRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMessageRepository,
-        PostgresMilestoneRepository, PostgresPartyRepository, PostgresPartyVerificationRepository,
-        PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
-        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
+        PostgresAgreementRepository, PostgresCatalogRepository, PostgresChatRoomRepository,
+        PostgresDealRepository, PostgresDisputeRepository, PostgresEmailVerificationRepository,
+        PostgresMessageRepository, PostgresMilestoneRepository, PostgresPartyRepository,
+        PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
+        PostgresReviewRepository, PostgresRoleRepository, PostgresTrustScoreRepository,
+        PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
 };
@@ -133,6 +140,8 @@ pub async fn build_state(pool: PgPool) -> AppState {
         Arc::new(PostgresMessageRepository::new(pool.clone()));
     let chat_room_repo: Arc<dyn ChatRoomRepository> =
         Arc::new(PostgresChatRoomRepository::new(pool.clone()));
+    let catalog_repo: Arc<dyn CatalogRepository> =
+        Arc::new(PostgresCatalogRepository::new(pool.clone()));
     let party_verification_repo: Arc<dyn PartyVerificationRepository> =
         Arc::new(PostgresPartyVerificationRepository::new(pool.clone()));
     let trust_repo: Arc<dyn TrustScoreRepository> =
@@ -554,6 +563,36 @@ pub async fn build_state(pool: PgPool) -> AppState {
         admin_get_template: AdminGetTemplate::new(notification_template_repo.clone()),
         admin_update_template: AdminUpdateTemplate::new(notification_template_repo.clone()),
         admin_delete_template: AdminDeleteTemplate::new(notification_template_repo.clone()),
+        create_resource: CreateResource::new(catalog_repo.clone(), party_repo.clone()),
+        update_resource: UpdateResource::new(catalog_repo.clone(), party_repo.clone()),
+        delete_resource: DeleteResource::new(catalog_repo.clone(), party_repo.clone()),
+        get_resource: GetResource::new(catalog_repo.clone()),
+        list_resources: ListResources::new(catalog_repo.clone()),
+        create_need: CreateNeed::new(catalog_repo.clone(), party_repo.clone()),
+        update_need: UpdateNeed::new(catalog_repo.clone(), party_repo.clone()),
+        delete_need: DeleteNeed::new(catalog_repo.clone(), party_repo.clone()),
+        get_need: GetNeed::new(catalog_repo.clone()),
+        list_needs: ListNeeds::new(catalog_repo.clone()),
+        create_enhancement: CreateEnhancement::new(catalog_repo.clone(), party_repo.clone()),
+        update_enhancement: UpdateEnhancement::new(catalog_repo.clone(), party_repo.clone()),
+        delete_enhancement: DeleteEnhancement::new(catalog_repo.clone(), party_repo.clone()),
+        get_enhancement: GetEnhancement::new(catalog_repo.clone()),
+        list_enhancements: ListEnhancements::new(catalog_repo.clone()),
+        admin_update_catalog_flags: AdminUpdateCatalogFlags::new(catalog_repo.clone()),
+        bind_catalog_item_to_deal: BindCatalogItemToDeal::new(
+            catalog_repo.clone(),
+            deal_repo.clone(),
+            party_repo.clone(),
+        ),
+        list_deal_catalog_items: ListDealCatalogItems::new(catalog_repo.clone()),
+        contact_catalog_owner: ContactCatalogOwner::new(
+            catalog_repo.clone(),
+            party_repo.clone(),
+            message_repo.clone(),
+        ),
+        update_party_catalog_settings: UpdatePartyCatalogSettings::new(party_repo.clone()),
+        catalog_repo,
+        db_pool: pool.clone(),
         send_notification,
         notification_realtime_publisher,
         encryption_service,

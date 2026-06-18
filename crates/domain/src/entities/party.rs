@@ -167,6 +167,8 @@ pub struct Party {
     pub total_deals_completed: i32,
     pub total_deals_initiated: i32,
     pub is_active: bool,
+    pub accepts_catalog_inquiries: bool,
+    pub public_contact_email: bool,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -189,6 +191,8 @@ impl Party {
             total_deals_completed: 0,
             total_deals_initiated: 0,
             is_active: true,
+            accepts_catalog_inquiries: true,
+            public_contact_email: false,
             created_at: now,
             updated_at: now,
         }

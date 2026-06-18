@@ -10,6 +10,12 @@ use actix_web::{web, App, HttpServer};
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
 };
+use application::catalog::{
+    AdminUpdateCatalogFlags, BindCatalogItemToDeal, ContactCatalogOwner, CreateEnhancement,
+    CreateNeed, CreateResource, DeleteEnhancement, DeleteNeed, DeleteResource, GetEnhancement,
+    GetNeed, GetResource, ListDealCatalogItems, ListEnhancements, ListNeeds, ListResources,
+    UpdateEnhancement, UpdateNeed, UpdatePartyCatalogSettings, UpdateResource,
+};
 use application::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
@@ -73,7 +79,8 @@ use application::{
     },
     ports::{EncryptionService, NotificationRealtimePublisher, RealtimePublisher},
 };
-use domain::repositories::{ChatRoomRepository, MessageRepository};
+use domain::repositories::{CatalogRepository, ChatRoomRepository, MessageRepository};
+use sqlx::PgPool;
 use std::net::TcpListener;
 use std::sync::Arc;
 use tracing_actix_web::TracingLogger;
@@ -204,6 +211,28 @@ pub struct AppState {
     pub admin_update_template: AdminUpdateTemplate,
     pub admin_delete_template: AdminDeleteTemplate,
     pub send_notification: Arc<SendNotification>,
+    pub create_resource: CreateResource,
+    pub update_resource: UpdateResource,
+    pub delete_resource: DeleteResource,
+    pub get_resource: GetResource,
+    pub list_resources: ListResources,
+    pub create_need: CreateNeed,
+    pub update_need: UpdateNeed,
+    pub delete_need: DeleteNeed,
+    pub get_need: GetNeed,
+    pub list_needs: ListNeeds,
+    pub create_enhancement: CreateEnhancement,
+    pub update_enhancement: UpdateEnhancement,
+    pub delete_enhancement: DeleteEnhancement,
+    pub get_enhancement: GetEnhancement,
+    pub list_enhancements: ListEnhancements,
+    pub admin_update_catalog_flags: AdminUpdateCatalogFlags,
+    pub bind_catalog_item_to_deal: BindCatalogItemToDeal,
+    pub list_deal_catalog_items: ListDealCatalogItems,
+    pub contact_catalog_owner: ContactCatalogOwner,
+    pub update_party_catalog_settings: UpdatePartyCatalogSettings,
+    pub catalog_repo: Arc<dyn CatalogRepository>,
+    pub db_pool: PgPool,
     pub encryption_service: Arc<dyn EncryptionService>,
     pub realtime_publisher: Arc<dyn RealtimePublisher>,
     pub notification_realtime_publisher: Arc<dyn NotificationRealtimePublisher>,

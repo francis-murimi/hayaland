@@ -1,0 +1,328 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                deal_id,\n                catalog_item_id,\n                enhancer_party_id,\n                enhancement_type_id,\n                enhancement_name,\n                description,\n                input_quantity,\n                quantity_unit,\n                estimated_input_cost,\n                service_duration_hours,\n                estimated_completion_days,\n                deliverables,\n                prerequisites,\n                is_complete,\n                completed_at,\n                metadata,\n                is_active,\n                deal_count,\n                platform_hidden,\n                platform_featured,\n                admin_notes,\n                admin_reviewed_at,\n                admin_reviewed_by,\n                created_at,\n                updated_at\n            FROM enhancements\n            WHERE deal_id = $1\n            ORDER BY created_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "catalog_item_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "catalog_item_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "enhancer_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "enhancer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "enhancement_type_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "enhancement_type_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "enhancement_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "enhancement_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "input_quantity",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "input_quantity"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "quantity_unit",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "quantity_unit"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "estimated_input_cost",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "estimated_input_cost"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "service_duration_hours",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "service_duration_hours"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "estimated_completion_days",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "estimated_completion_days"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "deliverables",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "deliverables"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "prerequisites",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "prerequisites"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "is_complete",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "is_complete"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "completed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "completed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "metadata",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "metadata"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "deal_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "deal_count"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "platform_hidden",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "platform_hidden"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "platform_featured",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "platform_featured"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "admin_notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "admin_notes"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "admin_reviewed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "admin_reviewed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "admin_reviewed_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "admin_reviewed_by"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enhancements",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "aa20c90f29e4a7149843be81dd303de9a0f9c1e096394ed675f50bbbc057eb88"
+}

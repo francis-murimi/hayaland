@@ -1,4 +1,5 @@
 pub mod agreements;
+pub mod catalog;
 pub mod chatrooms;
 pub mod deals;
 pub mod disputes;

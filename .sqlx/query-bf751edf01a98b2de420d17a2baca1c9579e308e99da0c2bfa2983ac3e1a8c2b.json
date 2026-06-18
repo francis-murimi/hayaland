@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM resources WHERE id = $1 AND deal_count = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf751edf01a98b2de420d17a2baca1c9579e308e99da0c2bfa2983ac3e1a8c2b"
+}

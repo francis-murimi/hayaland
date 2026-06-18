@@ -1,0 +1,330 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                deal_id,\n                catalog_item_id,\n                consumer_party_id,\n                need_category_id,\n                need_description,\n                required_quantity,\n                quantity_unit,\n                quality_requirements,\n                required_by_date,\n                max_budget,\n                budget_currency,\n                estimated_fulfillment_value,\n                acceptable_variants,\n                priority,\n                ST_Y(location_geo::geometry) as latitude,\n                ST_X(location_geo::geometry) as longitude,\n                metadata,\n                is_active,\n                deal_count,\n                platform_hidden,\n                platform_featured,\n                admin_notes,\n                admin_reviewed_at,\n                admin_reviewed_by,\n                created_at,\n                updated_at\n            FROM needs\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "catalog_item_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "catalog_item_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "consumer_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "consumer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "need_category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "need_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "need_description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "need_description"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "required_quantity",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "required_quantity"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "quantity_unit",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "quantity_unit"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "quality_requirements",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "quality_requirements"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "required_by_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "required_by_date"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "max_budget",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "max_budget"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "budget_currency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "budget_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "estimated_fulfillment_value",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "estimated_fulfillment_value"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "acceptable_variants",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "acceptable_variants"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "priority",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "priority"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "latitude",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 16,
+        "name": "longitude",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 17,
+        "name": "metadata",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "metadata"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "deal_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "deal_count"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "platform_hidden",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "platform_hidden"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "platform_featured",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "platform_featured"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "admin_notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "admin_notes"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "admin_reviewed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "admin_reviewed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "admin_reviewed_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "admin_reviewed_by"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "633012c6d6bab1b54438675a8c8a9211d4ab4dcc93cfd5e9a05801fd27b709d0"
+}

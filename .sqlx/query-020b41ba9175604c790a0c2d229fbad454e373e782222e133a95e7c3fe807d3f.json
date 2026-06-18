@@ -1,11 +1,77 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, party_type, display_name, email, phone, tax_id, verification_status,\n                primary_domain_id, latitude, longitude, service_radius_km, trust_score,\n                total_deals_completed, total_deals_initiated, is_active, created_at, updated_at\n            FROM parties\n            WHERE id = $1\n            ",
+  "query": "\n            SELECT\n                m.id as membership_id, m.user_id, m.party_id, m.member_role, m.is_active as membership_active, m.created_at as membership_created_at,\n                p.id as \"party_id_2!\", p.party_type, p.display_name, p.email, p.phone, p.tax_id, p.verification_status,\n                p.primary_domain_id, p.latitude, p.longitude, p.service_radius_km, p.trust_score,\n                p.total_deals_completed, p.total_deals_initiated, p.is_active as party_active,\n                p.accepts_catalog_inquiries as party_accepts_catalog_inquiries,\n                p.public_contact_email as party_public_contact_email,\n                p.created_at as party_created_at, p.updated_at as party_updated_at\n            FROM user_party_memberships m\n            JOIN parties p ON p.id = m.party_id\n            WHERE m.user_id = $1 AND m.is_active = true\n            ORDER BY p.created_at DESC\n            ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "membership_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "user_party_memberships",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "user_party_memberships",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "user_party_memberships",
+            "name": "party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "member_role",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_party_memberships",
+            "name": "member_role"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "membership_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "user_party_memberships",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "membership_created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_party_memberships",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "party_id_2!",
         "type_info": "Uuid",
         "origin": {
           "Table": {
@@ -15,7 +81,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 7,
         "name": "party_type",
         "type_info": "Text",
         "origin": {
@@ -26,7 +92,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 8,
         "name": "display_name",
         "type_info": {
           "Custom": {
@@ -42,7 +108,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 9,
         "name": "email",
         "type_info": {
           "Custom": {
@@ -58,7 +124,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 10,
         "name": "phone",
         "type_info": "Text",
         "origin": {
@@ -69,7 +135,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 11,
         "name": "tax_id",
         "type_info": "Text",
         "origin": {
@@ -80,7 +146,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 12,
         "name": "verification_status",
         "type_info": "Text",
         "origin": {
@@ -91,7 +157,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 13,
         "name": "primary_domain_id",
         "type_info": "Uuid",
         "origin": {
@@ -102,7 +168,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 14,
         "name": "latitude",
         "type_info": "Float8",
         "origin": {
@@ -113,7 +179,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 15,
         "name": "longitude",
         "type_info": "Float8",
         "origin": {
@@ -124,7 +190,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 16,
         "name": "service_radius_km",
         "type_info": "Float8",
         "origin": {
@@ -135,7 +201,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 17,
         "name": "trust_score",
         "type_info": "Float8",
         "origin": {
@@ -146,7 +212,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 18,
         "name": "total_deals_completed",
         "type_info": "Int4",
         "origin": {
@@ -157,7 +223,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 19,
         "name": "total_deals_initiated",
         "type_info": "Int4",
         "origin": {
@@ -168,8 +234,8 @@
         }
       },
       {
-        "ordinal": 14,
-        "name": "is_active",
+        "ordinal": 20,
+        "name": "party_active",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -179,8 +245,30 @@
         }
       },
       {
-        "ordinal": 15,
-        "name": "created_at",
+        "ordinal": 21,
+        "name": "party_accepts_catalog_inquiries",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "parties",
+            "name": "accepts_catalog_inquiries"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "party_public_contact_email",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "parties",
+            "name": "public_contact_email"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "party_created_at",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -190,8 +278,8 @@
         }
       },
       {
-        "ordinal": 16,
-        "name": "updated_at",
+        "ordinal": 24,
+        "name": "party_updated_at",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -211,6 +299,12 @@
       false,
       false,
       false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
       true,
       true,
       false,
@@ -218,6 +312,8 @@
       true,
       true,
       true,
+      false,
+      false,
       false,
       false,
       false,
@@ -226,5 +322,5 @@
       false
     ]
   },
-  "hash": "82d6ecad5f722e4b4449237c7ffde2f7813357e4857b0131054c05e5a6c4f1c3"
+  "hash": "020b41ba9175604c790a0c2d229fbad454e373e782222e133a95e7c3fe807d3f"
 }

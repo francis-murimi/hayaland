@@ -140,6 +140,30 @@ pub enum DomainError {
     #[error("invalid search parameters: {message}")]
     InvalidSearchParameters { message: String },
 
+    #[error("resource not found")]
+    ResourceNotFound,
+
+    #[error("need not found")]
+    NeedNotFound,
+
+    #[error("enhancement not found")]
+    EnhancementNotFound,
+
+    #[error("invalid resource condition: {message}")]
+    InvalidResourceCondition { message: String },
+
+    #[error("invalid need priority: {message}")]
+    InvalidNeedPriority { message: String },
+
+    #[error("catalog access denied")]
+    CatalogAccessDenied,
+
+    #[error("catalog item has active deals and cannot be deleted")]
+    CatalogItemHasActiveDeals,
+
+    #[error("invalid catalog search parameters: {message}")]
+    InvalidCatalogSearchParameters { message: String },
+
     #[error("message not found")]
     MessageNotFound,
 

@@ -1,4 +1,5 @@
 pub mod agreement_repository;
+pub mod catalog_repository;
 pub mod chat_room_repository;
 pub mod deal_repository;
 pub mod dispute_repository;
@@ -16,6 +17,7 @@ pub mod user_repository;
 pub mod wallet_repository;
 
 pub use agreement_repository::*;
+pub use catalog_repository::*;
 pub use chat_room_repository::*;
 pub use deal_repository::*;
 pub use dispute_repository::*;

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM enhancements WHERE id = $1 AND deal_count = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8c1aa5f6d860fc5ceb4a5e7a7298b534e107f8db1d5ab87a0f8c33a8ae650a5"
+}

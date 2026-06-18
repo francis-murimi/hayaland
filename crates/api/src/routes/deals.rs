@@ -1,7 +1,7 @@
 use crate::handlers::agreements;
 use crate::handlers::deals::{
-    create_deal, execute_transition, get_deal, list_deals, submit_deal, terms, update_deal,
-    validate_deal, value_distribution,
+    catalog as deal_catalog, create_deal, execute_transition, get_deal, list_deals, submit_deal,
+    terms, update_deal, validate_deal, value_distribution,
 };
 use crate::handlers::milestones;
 use actix_web::web;
@@ -86,5 +86,21 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/deals/{id}/milestones/{milestone_id}/verify")
             .route(web::post().to(milestones::verify_milestone)),
+    )
+    .service(
+        web::resource("/deals/{dealId}/resource")
+            .route(web::post().to(deal_catalog::bind_resource))
+            .route(web::get().to(deal_catalog::list_deal_resources))
+            .route(web::patch().to(deal_catalog::update_deal_resource)),
+    )
+    .service(
+        web::resource("/deals/{dealId}/need")
+            .route(web::post().to(deal_catalog::bind_need))
+            .route(web::get().to(deal_catalog::list_deal_needs)),
+    )
+    .service(
+        web::resource("/deals/{dealId}/enhancement")
+            .route(web::post().to(deal_catalog::bind_enhancement))
+            .route(web::get().to(deal_catalog::list_deal_enhancements)),
     );
 }

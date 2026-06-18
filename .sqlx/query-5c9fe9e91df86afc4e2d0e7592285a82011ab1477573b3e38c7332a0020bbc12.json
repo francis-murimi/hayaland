@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE enhancements\n            SET platform_hidden = COALESCE($1, platform_hidden),\n                platform_featured = COALESCE($2, platform_featured),\n                admin_notes = COALESCE($3, admin_notes),\n                admin_reviewed_by = COALESCE($4, admin_reviewed_by),\n                admin_reviewed_at = CASE WHEN $4 IS NOT NULL THEN now() ELSE admin_reviewed_at END,\n                updated_at = now()\n            WHERE id = $5\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Bool",
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5c9fe9e91df86afc4e2d0e7592285a82011ab1477573b3e38c7332a0020bbc12"
+}

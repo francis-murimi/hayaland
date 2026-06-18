@@ -32,7 +32,8 @@ impl PartyRepository for PostgresPartyRepository {
             INSERT INTO parties (
                 id, party_type, display_name, email, phone, tax_id, verification_status,
                 primary_domain_id, latitude, longitude, location_geo, service_radius_km, trust_score,
-                total_deals_completed, total_deals_initiated, is_active, created_at, updated_at
+                total_deals_completed, total_deals_initiated, is_active,
+                accepts_catalog_inquiries, public_contact_email, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
@@ -41,7 +42,7 @@ impl PartyRepository for PostgresPartyRepository {
                     THEN ST_SetSRID(ST_MakePoint($10, $9), 4326)::geography
                     ELSE NULL
                 END,
-                $11, $12, $13, $14, $15, $16, $17
+                $11, $12, $13, $14, $15, $16, $17, $18, $19
             )
             "#,
             party.id,
@@ -59,6 +60,8 @@ impl PartyRepository for PostgresPartyRepository {
             party.total_deals_completed,
             party.total_deals_initiated,
             party.is_active,
+            party.accepts_catalog_inquiries,
+            party.public_contact_email,
             party.created_at,
             party.updated_at
         )
@@ -75,7 +78,8 @@ impl PartyRepository for PostgresPartyRepository {
             r#"
             SELECT id, party_type, display_name, email, phone, tax_id, verification_status,
                 primary_domain_id, latitude, longitude, service_radius_km, trust_score,
-                total_deals_completed, total_deals_initiated, is_active, created_at, updated_at
+                total_deals_completed, total_deals_initiated, is_active,
+                accepts_catalog_inquiries, public_contact_email, created_at, updated_at
             FROM parties
             WHERE id = $1
             "#,
@@ -94,7 +98,8 @@ impl PartyRepository for PostgresPartyRepository {
             r#"
             SELECT id, party_type, display_name, email, phone, tax_id, verification_status,
                 primary_domain_id, latitude, longitude, service_radius_km, trust_score,
-                total_deals_completed, total_deals_initiated, is_active, created_at, updated_at
+                total_deals_completed, total_deals_initiated, is_active,
+                accepts_catalog_inquiries, public_contact_email, created_at, updated_at
             FROM parties
             WHERE email = $1
             "#,
@@ -135,9 +140,11 @@ impl PartyRepository for PostgresPartyRepository {
                 total_deals_completed = $12,
                 total_deals_initiated = $13,
                 is_active = $14,
-                created_at = $15,
-                updated_at = $16
-            WHERE id = $17
+                accepts_catalog_inquiries = $15,
+                public_contact_email = $16,
+                created_at = $17,
+                updated_at = $18
+            WHERE id = $19
             "#,
             party.party_type.as_str(),
             party.display_name.as_str(),
@@ -153,6 +160,8 @@ impl PartyRepository for PostgresPartyRepository {
             party.total_deals_completed,
             party.total_deals_initiated,
             party.is_active,
+            party.accepts_catalog_inquiries,
+            party.public_contact_email,
             party.created_at,
             party.updated_at,
             party.id
@@ -222,7 +231,8 @@ impl PartyRepository for PostgresPartyRepository {
             r#"
             SELECT id, party_type, display_name, email, phone, tax_id, verification_status,
                 primary_domain_id, latitude, longitude, service_radius_km, trust_score,
-                total_deals_completed, total_deals_initiated, is_active, created_at, updated_at
+                total_deals_completed, total_deals_initiated, is_active,
+                accepts_catalog_inquiries, public_contact_email, created_at, updated_at
             FROM parties
             WHERE ($1::text IS NULL OR display_name ILIKE $1 OR email ILIKE $1)
               AND ($2::text[] IS NULL OR party_type = ANY($2))
@@ -493,7 +503,10 @@ impl PartyRepository for PostgresPartyRepository {
                 m.id as membership_id, m.user_id, m.party_id, m.member_role, m.is_active as membership_active, m.created_at as membership_created_at,
                 p.id as "party_id_2!", p.party_type, p.display_name, p.email, p.phone, p.tax_id, p.verification_status,
                 p.primary_domain_id, p.latitude, p.longitude, p.service_radius_km, p.trust_score,
-                p.total_deals_completed, p.total_deals_initiated, p.is_active as party_active, p.created_at as party_created_at, p.updated_at as party_updated_at
+                p.total_deals_completed, p.total_deals_initiated, p.is_active as party_active,
+                p.accepts_catalog_inquiries as party_accepts_catalog_inquiries,
+                p.public_contact_email as party_public_contact_email,
+                p.created_at as party_created_at, p.updated_at as party_updated_at
             FROM user_party_memberships m
             JOIN parties p ON p.id = m.party_id
             WHERE m.user_id = $1 AND m.is_active = true
@@ -531,6 +544,8 @@ impl PartyRepository for PostgresPartyRepository {
                     total_deals_completed: r.total_deals_completed,
                     total_deals_initiated: r.total_deals_initiated,
                     is_active: r.party_active,
+                    accepts_catalog_inquiries: r.party_accepts_catalog_inquiries,
+                    public_contact_email: r.party_public_contact_email,
                     created_at: r.party_created_at,
                     updated_at: r.party_updated_at,
                 });
@@ -656,6 +671,8 @@ struct PartyRow {
     total_deals_completed: i32,
     total_deals_initiated: i32,
     is_active: bool,
+    accepts_catalog_inquiries: bool,
+    public_contact_email: bool,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
 }
@@ -686,6 +703,8 @@ fn build_party_from_row(row: PartyRow) -> Party {
     party.total_deals_completed = row.total_deals_completed;
     party.total_deals_initiated = row.total_deals_initiated;
     party.is_active = row.is_active;
+    party.accepts_catalog_inquiries = row.accepts_catalog_inquiries;
+    party.public_contact_email = row.public_contact_email;
     party.created_at = row.created_at;
     party.updated_at = row.updated_at;
 

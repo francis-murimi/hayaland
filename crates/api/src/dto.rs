@@ -357,3 +357,5 @@ pub struct NotificationListQueryRequest {
     #[validate(range(min = 0, message = "offset must be at least 0"))]
     pub offset: Option<i64>,
 }
+
+pub mod catalog;

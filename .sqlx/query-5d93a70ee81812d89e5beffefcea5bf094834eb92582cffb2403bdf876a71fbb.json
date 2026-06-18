@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE needs\n            SET need_description = $1,\n                required_quantity = $2,\n                quantity_unit = $3,\n                quality_requirements = $4,\n                required_by_date = $5,\n                max_budget = $6,\n                budget_currency = $7,\n                estimated_fulfillment_value = $8,\n                acceptable_variants = $9,\n                priority = $10,\n                location_geo = CASE\n                    WHEN $11::float8 IS NOT NULL AND $12::float8 IS NOT NULL\n                    THEN ST_SetSRID(ST_MakePoint($12, $11), 4326)::geography\n                    ELSE NULL\n                END,\n                metadata = $13,\n                is_active = $14,\n                updated_at = $15\n            WHERE id = $16\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Numeric",
+        "Text",
+        "Text",
+        "Date",
+        "Numeric",
+        "Text",
+        "Numeric",
+        "Text",
+        "Text",
+        "Float8",
+        "Float8",
+        "Jsonb",
+        "Bool",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5d93a70ee81812d89e5beffefcea5bf094834eb92582cffb2403bdf876a71fbb"
+}

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM resources\n            WHERE resource_type_id = $1\n              AND is_active = true\n              AND platform_hidden = false\n              AND deal_id IS NULL\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a4a3312ea01ebc500e7c93ea526a89a6afa16fc5f0e121ca3dae56fdf184c617"
+}
