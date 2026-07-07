@@ -54,7 +54,8 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::NotificationTemplateNotFound)
             | ApiError::Application(ApplicationError::ResourceNotFound)
             | ApiError::Application(ApplicationError::NeedNotFound)
-            | ApiError::Application(ApplicationError::EnhancementNotFound) => StatusCode::NOT_FOUND,
+            | ApiError::Application(ApplicationError::EnhancementNotFound)
+            | ApiError::Application(ApplicationError::MatchNotFound) => StatusCode::NOT_FOUND,
             ApiError::Application(ApplicationError::InvalidCredentials)
             | ApiError::Application(ApplicationError::AccountInactive)
             | ApiError::Application(ApplicationError::Unauthorized) => StatusCode::UNAUTHORIZED,
@@ -79,7 +80,10 @@ impl ResponseError for ApiError {
             }
             ApiError::Application(ApplicationError::DealAccessDenied)
             | ApiError::Application(ApplicationError::DisputeAccessDenied)
-            | ApiError::Application(ApplicationError::CatalogAccessDenied) => StatusCode::FORBIDDEN,
+            | ApiError::Application(ApplicationError::CatalogAccessDenied)
+            | ApiError::Application(ApplicationError::PartyNotMatchParticipant) => {
+                StatusCode::FORBIDDEN
+            }
             ApiError::Application(ApplicationError::EmailSendFailed)
             | ApiError::Application(ApplicationError::PushSendFailed)
             | ApiError::Application(ApplicationError::SmsSendFailed)
@@ -87,9 +91,10 @@ impl ResponseError for ApiError {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             ApiError::Application(ApplicationError::InvalidOrExpiredVerificationToken)
-            | ApiError::Application(ApplicationError::InvalidOrExpiredPasswordResetToken) => {
-                StatusCode::BAD_REQUEST
-            }
+            | ApiError::Application(ApplicationError::InvalidOrExpiredPasswordResetToken)
+            | ApiError::Application(ApplicationError::InvalidMatchStatus(_))
+            | ApiError::Application(ApplicationError::InvalidMatchResponse(_))
+            | ApiError::Application(ApplicationError::MatchExpired) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -197,6 +202,17 @@ impl ResponseError for ApiError {
             }
             ApiError::Application(ApplicationError::DuplicateNotificationTemplate) => {
                 "duplicate_notification_template"
+            }
+            ApiError::Application(ApplicationError::MatchNotFound) => "match_not_found",
+            ApiError::Application(ApplicationError::InvalidMatchStatus(_)) => {
+                "invalid_match_status"
+            }
+            ApiError::Application(ApplicationError::InvalidMatchResponse(_)) => {
+                "invalid_match_response"
+            }
+            ApiError::Application(ApplicationError::MatchExpired) => "match_expired",
+            ApiError::Application(ApplicationError::PartyNotMatchParticipant) => {
+                "party_not_match_participant"
             }
             ApiError::Application(ApplicationError::PushSendFailed) => "push_send_failed",
             ApiError::Application(ApplicationError::SmsSendFailed) => "sms_send_failed",

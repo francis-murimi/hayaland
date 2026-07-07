@@ -10,6 +10,7 @@ pub mod forgot_password;
 pub mod get_user;
 pub mod list_users;
 pub mod login;
+pub mod matches;
 pub mod messages;
 pub mod milestones;
 pub mod notifications;

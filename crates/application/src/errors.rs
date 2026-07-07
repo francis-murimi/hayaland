@@ -132,6 +132,21 @@ pub enum ApplicationError {
     #[error("chat room membership not found")]
     ChatRoomMembershipNotFound,
 
+    #[error("match suggestion not found")]
+    MatchNotFound,
+
+    #[error("invalid match status: {0}")]
+    InvalidMatchStatus(String),
+
+    #[error("invalid match response: {0}")]
+    InvalidMatchResponse(String),
+
+    #[error("match suggestion has expired")]
+    MatchExpired,
+
+    #[error("party is not a participant in this match suggestion")]
+    PartyNotMatchParticipant,
+
     #[error("already a member of this chat room")]
     AlreadyChatRoomMember,
 
@@ -206,8 +221,7 @@ impl From<DomainError> for ApplicationError {
             | DomainError::MilestoneNotFound
             | DomainError::AgreementNotFound
             | DomainError::TransactionNotFound
-            | DomainError::WalletNotFound
-            | DomainError::MatchNotFound => ApplicationError::NotFound,
+            | DomainError::WalletNotFound => ApplicationError::NotFound,
             DomainError::ResourceNotFound => ApplicationError::ResourceNotFound,
             DomainError::NeedNotFound => ApplicationError::NeedNotFound,
             DomainError::EnhancementNotFound => ApplicationError::EnhancementNotFound,
@@ -300,6 +314,15 @@ impl From<DomainError> for ApplicationError {
             DomainError::DuplicateNotificationTemplate => {
                 ApplicationError::DuplicateNotificationTemplate
             }
+            DomainError::MatchNotFound => ApplicationError::MatchNotFound,
+            DomainError::InvalidMatchStatus { message } => {
+                ApplicationError::InvalidMatchStatus(message)
+            }
+            DomainError::InvalidMatchResponse { message } => {
+                ApplicationError::InvalidMatchResponse(message)
+            }
+            DomainError::MatchExpired => ApplicationError::MatchExpired,
+            DomainError::PartyNotMatchParticipant => ApplicationError::PartyNotMatchParticipant,
         }
     }
 }
@@ -422,7 +445,6 @@ mod tests {
             DomainError::AgreementNotFound,
             DomainError::TransactionNotFound,
             DomainError::WalletNotFound,
-            DomainError::MatchNotFound,
             DomainError::ReviewNotFound,
         ];
 
@@ -432,6 +454,34 @@ mod tests {
                 ApplicationError::NotFound
             ));
         }
+    }
+
+    #[test]
+    fn match_domain_errors_map_to_match_application_errors() {
+        assert!(matches!(
+            ApplicationError::from(DomainError::MatchNotFound),
+            ApplicationError::MatchNotFound
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::MatchExpired),
+            ApplicationError::MatchExpired
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::PartyNotMatchParticipant),
+            ApplicationError::PartyNotMatchParticipant
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::InvalidMatchStatus {
+                message: "bad".to_string()
+            }),
+            ApplicationError::InvalidMatchStatus(_)
+        ));
+        assert!(matches!(
+            ApplicationError::from(DomainError::InvalidMatchResponse {
+                message: "bad".to_string()
+            }),
+            ApplicationError::InvalidMatchResponse(_)
+        ));
     }
 
     #[test]

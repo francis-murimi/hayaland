@@ -3,6 +3,7 @@ use actix_web::{web, HttpResponse};
 pub mod chatrooms;
 pub mod deals;
 pub mod disputes;
+pub mod matches;
 pub mod messages;
 pub mod notifications;
 pub mod parties;
@@ -26,6 +27,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(parties::configure)
             .configure(deals::configure)
             .configure(disputes::configure)
+            .configure(matches::configure)
             .configure(messages::configure)
             .configure(notifications::configure)
             .configure(chatrooms::configure)

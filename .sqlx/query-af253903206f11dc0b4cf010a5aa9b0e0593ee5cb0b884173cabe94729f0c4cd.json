@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                COALESCE(SUM(CASE WHEN match_status = 'PENDING' THEN 1 ELSE 0 END), 0) as \"pending!\",\n                COALESCE(SUM(CASE WHEN match_status = 'ACCEPTED' THEN 1 ELSE 0 END), 0) as \"accepted!\",\n                COALESCE(SUM(CASE WHEN match_status = 'DECLINED' THEN 1 ELSE 0 END), 0) as \"declined!\",\n                COALESCE(SUM(CASE WHEN match_status = 'COUNTER_PROPOSED' THEN 1 ELSE 0 END), 0) as \"counter_proposed!\",\n                COALESCE(SUM(CASE WHEN match_status = 'EXPIRED' THEN 1 ELSE 0 END), 0) as \"expired!\",\n                COALESCE(SUM(CASE WHEN match_status = 'CONVERTED_TO_DEAL' THEN 1 ELSE 0 END), 0) as \"converted_to_deal!\"\n            FROM match_suggestions\n            WHERE supplier_party_id = $1 OR consumer_party_id = $1 OR enhancer_party_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pending!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "accepted!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "declined!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "counter_proposed!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "expired!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "converted_to_deal!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "af253903206f11dc0b4cf010a5aa9b0e0593ee5cb0b884173cabe94729f0c4cd"
+}

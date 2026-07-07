@@ -77,6 +77,18 @@ pub enum DomainError {
     #[error("match suggestion not found")]
     MatchNotFound,
 
+    #[error("invalid match status: {message}")]
+    InvalidMatchStatus { message: String },
+
+    #[error("invalid match response: {message}")]
+    InvalidMatchResponse { message: String },
+
+    #[error("match suggestion has expired")]
+    MatchExpired,
+
+    #[error("party is not a participant in this match suggestion")]
+    PartyNotMatchParticipant,
+
     #[error("insufficient permissions")]
     InsufficientPermissions,
 

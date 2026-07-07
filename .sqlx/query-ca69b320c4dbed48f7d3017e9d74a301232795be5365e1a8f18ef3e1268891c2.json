@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM match_suggestions",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "ca69b320c4dbed48f7d3017e9d74a301232795be5365e1a8f18ef3e1268891c2"
+}

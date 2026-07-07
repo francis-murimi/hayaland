@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM match_suggestions\n            WHERE (supplier_party_id = $1 OR consumer_party_id = $1 OR enhancer_party_id = $1)\n            AND ($2::text IS NULL OR match_status = $2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "64e58fe5706ec519029eea9d0e4143fdcf4f320a6f0d5efd272b6370784dd595"
+}

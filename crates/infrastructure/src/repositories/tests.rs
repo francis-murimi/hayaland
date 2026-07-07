@@ -1,18 +1,20 @@
 use crate::repositories::{
-    PostgresChatRoomRepository, PostgresMessageRepository, PostgresPartyRepository,
-    PostgresUserRepository,
+    PostgresCatalogRepository, PostgresChatRoomRepository, PostgresMatchRepository,
+    PostgresMessageRepository, PostgresPartyRepository, PostgresUserRepository,
 };
 use domain::entities::{
     ChatRoom, ChatRoomMemberRole, ChatRoomMembership, ChatRoomName, ChatRoomType, Conversation,
-    DisplayName, Email, Message, MessageReaction, MessageRead, MessageType, Party,
-    PartyMembershipRole, PartyType, PasswordHash, ReactionType, RecipientType, User,
-    UserPartyMembership, Username,
+    DealRole, DisplayName, Email, Enhancement, MatchScoreBreakdown, MatchScoreWeights, MatchStatus,
+    MatchSuggestion, Message, MessageReaction, MessageRead, MessageType, Need, Party,
+    PartyMembershipRole, PartyType, PasswordHash, ReactionType, RecipientType, Resource,
+    RoleProfile, User, UserPartyMembership, Username,
 };
 use domain::errors::DomainError;
 use domain::repositories::{
-    ChatRoomListQuery, ChatRoomRepository, MessageListQuery, MessageRepository, PartyRepository,
-    UserRepository,
+    CatalogRepository, ChatRoomListQuery, ChatRoomRepository, MatchFilters, MatchRepository,
+    MessageListQuery, MessageRepository, PartyRepository, UserRepository,
 };
+use rust_decimal::prelude::{Decimal, FromPrimitive};
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -668,4 +670,504 @@ async fn chatroom_duplicate_name_is_rejected(pool: PgPool) {
     );
     let err = repo.create_room(&duplicate).await.unwrap_err();
     assert!(matches!(err, DomainError::ChatRoomAlreadyExists));
+}
+
+async fn create_three_parties(pool: &PgPool) -> (Party, Party, Party) {
+    let supplier = create_party(&pool, "match-supplier@example.com").await;
+    let consumer = create_party(&pool, "match-consumer@example.com").await;
+    let enhancer = create_party(&pool, "match-enhancer@example.com").await;
+    (supplier, consumer, enhancer)
+}
+
+fn sample_match(
+    supplier_id: Uuid,
+    consumer_id: Uuid,
+    enhancer_id: Uuid,
+    score: Option<f64>,
+) -> MatchSuggestion {
+    let weights = MatchScoreWeights::default();
+    let scores = score.map(|s| [s; 7]).unwrap_or([0.8; 7]);
+    let breakdown = MatchScoreBreakdown::new(scores, weights);
+    let mut suggestion = MatchSuggestion::new(
+        Uuid::now_v7(),
+        supplier_id,
+        consumer_id,
+        enhancer_id,
+        breakdown,
+        "Test match reason".to_string(),
+    )
+    .unwrap();
+    suggestion.match_score = breakdown.total();
+    suggestion
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_create_and_find(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+
+    repo.create(&suggestion).await.unwrap();
+
+    let found = repo.find_by_id(suggestion.id).await.unwrap().unwrap();
+    assert_eq!(found.id, suggestion.id);
+    assert_eq!(found.supplier_party_id, supplier.id);
+    assert_eq!(found.consumer_party_id, consumer.id);
+    assert_eq!(found.enhancer_party_id, enhancer.id);
+    assert_eq!(found.match_status, MatchStatus::Pending);
+    assert!((found.match_score - suggestion.match_score).abs() < 1e-9);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_list_for_party_with_role_filter(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let filters = MatchFilters {
+        status: Some(MatchStatus::Pending),
+        limit: 10,
+        offset: 0,
+        ..MatchFilters::default()
+    };
+
+    let supplier_list = repo
+        .list_for_party(supplier.id, Some(DealRole::Supplier), &filters)
+        .await
+        .unwrap();
+    assert_eq!(supplier_list.len(), 1);
+
+    let consumer_list = repo
+        .list_for_party(consumer.id, Some(DealRole::Consumer), &filters)
+        .await
+        .unwrap();
+    assert_eq!(consumer_list.len(), 1);
+
+    let enhancer_list = repo
+        .list_for_party(enhancer.id, Some(DealRole::Enhancer), &filters)
+        .await
+        .unwrap();
+    assert_eq!(enhancer_list.len(), 1);
+
+    let wrong_role = repo
+        .list_for_party(supplier.id, Some(DealRole::Consumer), &filters)
+        .await
+        .unwrap();
+    assert!(wrong_role.is_empty());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_status_lifecycle(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    repo.update_status(
+        suggestion.id,
+        MatchStatus::Accepted,
+        Some("Looks good".to_string()),
+    )
+    .await
+    .unwrap();
+    let found = repo.find_by_id(suggestion.id).await.unwrap().unwrap();
+    assert_eq!(found.match_status, MatchStatus::Accepted);
+    assert!(found.responded_at.is_some());
+
+    repo.update_counter_proposal(suggestion.id, None, Some("Lower price".to_string()))
+        .await
+        .unwrap();
+    let found = repo.find_by_id(suggestion.id).await.unwrap().unwrap();
+    assert_eq!(found.match_status, MatchStatus::CounterProposed);
+    assert_eq!(found.counter_notes, Some("Lower price".to_string()));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_count_by_status(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let counts = repo.count_by_status(supplier.id).await.unwrap();
+    assert_eq!(counts.pending, 1);
+    assert_eq!(counts.accepted, 0);
+
+    let all_counts = repo.count_all_by_status().await.unwrap();
+    assert_eq!(all_counts.pending, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_delete_by_party(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let deleted = repo.delete_by_party(supplier.id, None).await.unwrap();
+    assert_eq!(deleted, 1);
+    assert!(repo.find_by_id(suggestion.id).await.unwrap().is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_find_existing_pending(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let existing = repo
+        .find_existing_pending(supplier.id, consumer.id, enhancer.id)
+        .await
+        .unwrap();
+    assert!(existing.is_some());
+
+    repo.update_status(suggestion.id, MatchStatus::Accepted, None)
+        .await
+        .unwrap();
+    let existing = repo
+        .find_existing_pending(supplier.id, consumer.id, enhancer.id)
+        .await
+        .unwrap();
+    assert!(existing.is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_list_all_filters_by_score(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let high = sample_match(supplier.id, consumer.id, enhancer.id, Some(0.9));
+    repo.create(&high).await.unwrap();
+
+    let filters = MatchFilters {
+        min_score: Some(0.95),
+        limit: 10,
+        offset: 0,
+        ..MatchFilters::default()
+    };
+    let list = repo.list_all(&filters).await.unwrap();
+    assert!(list.is_empty());
+
+    let filters = MatchFilters {
+        min_score: Some(0.85),
+        limit: 10,
+        offset: 0,
+        ..MatchFilters::default()
+    };
+    let list = repo.list_all(&filters).await.unwrap();
+    assert_eq!(list.len(), 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_update_counter_with_value(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let value = Decimal::from_f64(123.45).unwrap();
+    repo.update_counter_proposal(
+        suggestion.id,
+        Some(value),
+        Some("Counter offer".to_string()),
+    )
+    .await
+    .unwrap();
+
+    let found = repo.find_by_id(suggestion.id).await.unwrap().unwrap();
+    assert_eq!(found.match_status, MatchStatus::CounterProposed);
+    assert_eq!(found.suggested_deal_value, Some(value));
+    assert_eq!(found.counter_notes, Some("Counter offer".to_string()));
+    assert!(found.responded_at.is_some());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_set_converted_deal(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool.clone());
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let category = create_category(&pool, "Converted Deal Category", "RESOURCE_TYPE").await;
+    let deal_id = Uuid::now_v7();
+    sqlx::query!(
+        r#"
+        INSERT INTO deals (
+            id, deal_reference, deal_title, domain_category_id, initiator_party_id, initiator_role, deal_status
+        )
+        VALUES ($1, $2, $3, $4, $5, 'SUPPLIER', 'DRAFT')
+        "#,
+        deal_id,
+        format!("DEAL-{}", deal_id),
+        "Converted deal",
+        category,
+        supplier.id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    repo.set_converted_deal(suggestion.id, deal_id)
+        .await
+        .unwrap();
+
+    let found = repo.find_by_id(suggestion.id).await.unwrap().unwrap();
+    assert_eq!(found.match_status, MatchStatus::ConvertedToDeal);
+    assert_eq!(found.converted_deal_id, Some(deal_id));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_delete_by_party_with_status_filter(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    repo.update_status(suggestion.id, MatchStatus::Accepted, None)
+        .await
+        .unwrap();
+
+    let pending_deleted = repo
+        .delete_by_party(supplier.id, Some(MatchStatus::Pending))
+        .await
+        .unwrap();
+    assert_eq!(pending_deleted, 0);
+    assert!(repo.find_by_id(suggestion.id).await.unwrap().is_some());
+
+    let accepted_deleted = repo
+        .delete_by_party(supplier.id, Some(MatchStatus::Accepted))
+        .await
+        .unwrap();
+    assert_eq!(accepted_deleted, 1);
+    assert!(repo.find_by_id(suggestion.id).await.unwrap().is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_delete_all(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let first = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    let mut second = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    second.id = Uuid::now_v7();
+    repo.create(&first).await.unwrap();
+    repo.create(&second).await.unwrap();
+
+    let deleted = repo.delete_all().await.unwrap();
+    assert_eq!(deleted, 2);
+    assert!(repo.find_by_id(first.id).await.unwrap().is_none());
+    assert!(repo.find_by_id(second.id).await.unwrap().is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_list_all_filters_by_status_and_generated_by(pool: PgPool) {
+    let (supplier, consumer, enhancer) = create_three_parties(&pool).await;
+    let repo = PostgresMatchRepository::new(pool);
+    let suggestion = sample_match(supplier.id, consumer.id, enhancer.id, None);
+    repo.create(&suggestion).await.unwrap();
+
+    let accepted_filters = MatchFilters {
+        status: Some(MatchStatus::Accepted),
+        limit: 10,
+        offset: 0,
+        ..MatchFilters::default()
+    };
+    assert!(repo.list_all(&accepted_filters).await.unwrap().is_empty());
+
+    let algorithm_filters = MatchFilters {
+        generated_by: Some("ALGORITHM".to_string()),
+        limit: 10,
+        offset: 0,
+        ..MatchFilters::default()
+    };
+    assert_eq!(repo.list_all(&algorithm_filters).await.unwrap().len(), 1);
+
+    let admin_filters = MatchFilters {
+        generated_by: Some("PLATFORM_ADMIN".to_string()),
+        limit: 10,
+        offset: 0,
+        ..MatchFilters::default()
+    };
+    assert!(repo.list_all(&admin_filters).await.unwrap().is_empty());
+}
+
+async fn create_category(pool: &PgPool, name: &str, category_type: &str) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query!(
+        r#"
+        INSERT INTO categories (id, category_name, category_code, category_type, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, now(), now())
+        "#,
+        id,
+        name,
+        name.to_lowercase().replace(' ', "_"),
+        category_type
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn match_generate_use_case_creates_suggestions(pool: PgPool) {
+    let user = create_user(&pool, "match_gen_user@example.com", "match_gen_user").await;
+    let supplier = create_party(&pool, "match_gen_supplier@example.com").await;
+    let consumer = create_party(&pool, "match_gen_consumer@example.com").await;
+    let enhancer = create_party(&pool, "match_gen_enhancer@example.com").await;
+    add_party_member(&pool, user.id, supplier.id).await;
+    add_party_member(&pool, user.id, consumer.id).await;
+    add_party_member(&pool, user.id, enhancer.id).await;
+
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    party_repo
+        .add_role(
+            supplier.id,
+            DealRole::Supplier,
+            RoleProfile::for_role(DealRole::Supplier),
+        )
+        .await
+        .unwrap();
+    party_repo
+        .add_role(
+            consumer.id,
+            DealRole::Consumer,
+            RoleProfile::for_role(DealRole::Consumer),
+        )
+        .await
+        .unwrap();
+    party_repo
+        .add_role(
+            enhancer.id,
+            DealRole::Enhancer,
+            RoleProfile::for_role(DealRole::Enhancer),
+        )
+        .await
+        .unwrap();
+
+    let category = create_category(&pool, "Match Category", "RESOURCE_TYPE").await;
+
+    let catalog_repo = PostgresCatalogRepository::new(pool.clone());
+    let resource = Resource::new(
+        Uuid::now_v7(),
+        supplier.id,
+        category,
+        "Test Resource".to_string(),
+        rust_decimal::Decimal::from(10),
+        "unit".to_string(),
+    )
+    .unwrap();
+    catalog_repo.create_resource(&resource).await.unwrap();
+
+    let need = Need::new(
+        Uuid::now_v7(),
+        consumer.id,
+        category,
+        "Test Need Description".to_string(),
+        rust_decimal::Decimal::from(5),
+        "unit".to_string(),
+    )
+    .unwrap();
+    catalog_repo.create_need(&need).await.unwrap();
+
+    let enhancement = Enhancement::new(
+        Uuid::now_v7(),
+        enhancer.id,
+        category,
+        "Test Enhancement".to_string(),
+    )
+    .unwrap();
+    catalog_repo.create_enhancement(&enhancement).await.unwrap();
+
+    let match_repo: std::sync::Arc<dyn MatchRepository> =
+        std::sync::Arc::new(PostgresMatchRepository::new(pool.clone()));
+    let party_repo: std::sync::Arc<dyn PartyRepository> =
+        std::sync::Arc::new(PostgresPartyRepository::new(pool.clone()));
+    let catalog_repo: std::sync::Arc<dyn CatalogRepository> =
+        std::sync::Arc::new(PostgresCatalogRepository::new(pool.clone()));
+
+    let generate = application::matching::GenerateMatches::new(
+        match_repo.clone(),
+        party_repo.clone(),
+        catalog_repo.clone(),
+    );
+
+    let cmd = application::matching::dto::GenerateMatchesCommand {
+        actor_user_id: user.id,
+        actor_party_id: Some(supplier.id),
+        is_admin: true,
+        min_score: None,
+        max_suggestions: Some(10),
+        weights: None,
+    };
+
+    let suggestions = generate.execute(cmd).await.unwrap();
+    assert_eq!(suggestions.len(), 1);
+    assert_eq!(suggestions[0].supplier_party_id, supplier.id);
+    assert_eq!(suggestions[0].consumer_party_id, consumer.id);
+    assert_eq!(suggestions[0].enhancer_party_id, enhancer.id);
+
+    // List for the consumer party.
+    let list_matches =
+        application::matching::ListMatches::new(match_repo.clone(), party_repo.clone());
+    let query = application::matching::dto::ListMatchesQuery {
+        party_id: Some(consumer.id),
+        role: None,
+        status: None,
+        min_score: None,
+        max_score: None,
+        limit: 10,
+        offset: 0,
+    };
+    let listed = list_matches
+        .execute(user.id, Some(consumer.id), false, query)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+
+    // Respond as supplier.
+    let respond =
+        application::matching::RespondToMatch::new(match_repo.clone(), party_repo.clone());
+    let response_cmd = application::matching::dto::RespondToMatchCommand {
+        actor_user_id: user.id,
+        actor_party_id: supplier.id,
+        match_suggestion_id: suggestions[0].id,
+        response: application::matching::dto::MatchResponseAction::Accept,
+        notes: None,
+        counter_value: None,
+    };
+    respond.execute(response_cmd).await.unwrap();
+
+    let admin_controls = application::matching::AdminMatchControls::new(match_repo.clone());
+    let counts = admin_controls.count_for_party(supplier.id).await.unwrap();
+    assert_eq!(counts.accepted, 1);
+    assert_eq!(counts.pending, 0);
+
+    // Admin updates the suggestion status.
+    let update_cmd = application::matching::dto::AdminUpdateMatchCommand {
+        admin_user_id: user.id,
+        match_suggestion_id: suggestions[0].id,
+        new_status: domain::entities::MatchStatus::Declined,
+        reason: Some("No longer relevant".to_string()),
+    };
+    admin_controls.update_status(update_cmd).await.unwrap();
+    let found = match_repo
+        .find_by_id(suggestions[0].id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.match_status, domain::entities::MatchStatus::Declined);
+
+    // Admin deletes suggestions for the consumer party.
+    let delete_cmd = application::matching::dto::AdminDeleteMatchesCommand {
+        admin_user_id: user.id,
+        party_id: consumer.id,
+        status: None,
+    };
+    let deleted = admin_controls.delete_for_party(delete_cmd).await.unwrap();
+    assert_eq!(deleted, 1);
+
+    // Admin deletes any remaining suggestions (covers the delete_all path).
+    let all_deleted = admin_controls.delete_all(user.id).await.unwrap();
+    assert_eq!(all_deleted, 0);
 }

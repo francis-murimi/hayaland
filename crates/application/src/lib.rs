@@ -5,6 +5,7 @@ pub mod deals;
 pub mod disputes;
 pub mod email;
 pub mod errors;
+pub mod matching;
 pub mod messages;
 pub mod milestones;
 pub mod notifications;

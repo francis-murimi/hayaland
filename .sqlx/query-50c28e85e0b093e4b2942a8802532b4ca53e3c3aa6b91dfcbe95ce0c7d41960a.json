@@ -1,0 +1,246 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id, supplier_party_id, consumer_party_id, enhancer_party_id,\n                match_status as \"match_status!\", match_score, score_breakdown, COALESCE(match_reason, '') as \"match_reason!\",\n                resource_category_id, need_category_id, enhancement_category_id,\n                suggested_deal_value, generated_by, expires_at, converted_deal_id,\n                counter_notes, responded_at, created_at, updated_at\n            FROM match_suggestions\n            WHERE ($1::text IS NULL OR match_status = $1)\n            AND ($2::decimal IS NULL OR match_score >= $2)\n            AND ($3::decimal IS NULL OR match_score <= $3)\n            AND ($4::text IS NULL OR generated_by = $4)\n            AND ($5::timestamptz IS NULL OR created_at >= $5)\n            AND ($6::timestamptz IS NULL OR created_at <= $6)\n            ORDER BY match_score DESC, created_at DESC\n            LIMIT $7 OFFSET $8\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "supplier_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "supplier_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "consumer_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "consumer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "enhancer_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "enhancer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "match_status!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "match_status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "match_score",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "match_score"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "score_breakdown",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "score_breakdown"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "match_reason!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "resource_category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "resource_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "need_category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "need_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "enhancement_category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "enhancement_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "suggested_deal_value",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "suggested_deal_value"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "generated_by",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "generated_by"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "converted_deal_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "converted_deal_id"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "counter_notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "counter_notes"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "responded_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "responded_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "match_suggestions",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "50c28e85e0b093e4b2942a8802532b4ca53e3c3aa6b91dfcbe95ce0c7d41960a"
+}
