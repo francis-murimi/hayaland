@@ -1,6 +1,7 @@
 use crate::agreements::{GenerateAgreement, GenerateAgreementCommand};
 use crate::deals::create_deal::map_aggregate_to_result;
 use crate::deals::dto::{DealResult, ExecuteTransitionCommand};
+use crate::deals::settlement_saga::SettlementSaga;
 use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
 use crate::notifications::LifecycleNotifier;
@@ -25,6 +26,7 @@ pub struct ExecuteTransition {
     party_repo: Arc<dyn PartyRepository>,
     agreement_repo: Arc<dyn AgreementRepository>,
     wallet_repo: Option<Arc<dyn WalletRepository>>,
+    settlement_saga: Option<Arc<SettlementSaga>>,
     milestone_repo: Option<Arc<dyn MilestoneRepository>>,
     review_repo: Option<Arc<dyn ReviewRepository>>,
     trust_repo: Option<Arc<dyn TrustScoreRepository>>,
@@ -45,6 +47,7 @@ impl ExecuteTransition {
             party_repo,
             agreement_repo,
             wallet_repo: None,
+            settlement_saga: None,
             milestone_repo: None,
             review_repo: None,
             trust_repo: None,
@@ -66,6 +69,7 @@ impl ExecuteTransition {
             party_repo,
             agreement_repo,
             wallet_repo: None,
+            settlement_saga: None,
             milestone_repo: Some(milestone_repo),
             review_repo: None,
             trust_repo: None,
@@ -88,6 +92,7 @@ impl ExecuteTransition {
             party_repo,
             agreement_repo,
             wallet_repo: None,
+            settlement_saga: None,
             milestone_repo: Some(milestone_repo),
             review_repo: Some(review_repo),
             trust_repo: None,
@@ -99,6 +104,11 @@ impl ExecuteTransition {
 
     pub fn with_wallet_repository(mut self, wallet_repo: Arc<dyn WalletRepository>) -> Self {
         self.wallet_repo = Some(wallet_repo);
+        self
+    }
+
+    pub fn with_settlement_saga(mut self, saga: Arc<SettlementSaga>) -> Self {
+        self.settlement_saga = Some(saga);
         self
     }
 
@@ -234,6 +244,9 @@ impl ExecuteTransition {
                 }
                 self.ensure_all_milestones_verified(deal_id).await?;
                 self.ensure_all_reviews_submitted(deal_id).await?;
+                if let Some(saga) = self.settlement_saga.as_ref() {
+                    saga.execute(deal_id, cmd.actor_user_id).await?;
+                }
             }
             DealStatus::Cancelled => {
                 // Allow cancellation from most active states by any participant.

@@ -7,14 +7,22 @@ use crate::deals::dto::{
 use crate::deals::validate_deal::ValidateDealQuery;
 use crate::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
-    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
-    ValidateDeal, WithdrawTerm,
+    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SettlementSaga,
+    SubmitDeal, UpdateDeal, ValidateDeal, WithdrawTerm,
 };
 use crate::errors::ApplicationError;
+use crate::milestones::dto::{CreateMilestoneCommand, MilestoneActionCommand};
+use crate::milestones::{CompleteMilestone, CreateMilestone, StartMilestone, VerifyMilestone};
 use crate::parties::dto::CreatePartyCommand;
 use crate::parties::CreateParty;
 use crate::payments::CreateWallet;
-use crate::test_helpers::{FakeAgreementRepo, FakeDealRepo, FakePartyRepo, FakeWalletRepo};
+use crate::ports::NoOpTrustScoreRecalculation;
+use crate::reviews::dto::SubmitReviewCommand;
+use crate::reviews::SubmitReview;
+use crate::test_helpers::{
+    FakeAgreementRepo, FakeDealRepo, FakeMilestoneRepo, FakePartyRepo, FakeReviewRepo,
+    FakeWalletRepo,
+};
 use domain::entities::{
     DealRole, DealStatus, DistributionModel, ParticipationStatus, PartyType, PlatformWallet,
     TermStatus, TermType, TransactionType, ValueDistribution,
@@ -909,4 +917,484 @@ async fn locking_terms_requires_value_distribution() {
         err,
         ApplicationError::WinWinWinValidationFailed { .. }
     ));
+}
+
+/// Helper: move a freshly-created sample deal through to `Committed` with all
+/// wallets created and the consumer funded for the full `consumer_cost_amount`.
+async fn setup_deal_through_committed() -> (
+    Arc<FakePartyRepo>,
+    Arc<FakeDealRepo>,
+    Arc<FakeAgreementRepo>,
+    Arc<FakeWalletRepo>,
+    Uuid,
+    Uuid,
+    Uuid,
+    Uuid,
+) {
+    let (party_repo, deal_repo, deal_id, supplier, consumer, enhancer, _result) =
+        create_sample_deal().await;
+
+    let mut aggregate = deal_repo
+        .find_aggregate_by_id(deal_id)
+        .await
+        .unwrap()
+        .unwrap();
+    aggregate.deal.deal_status = DealStatus::PendingReview;
+    deal_repo.update(&aggregate.deal).await.unwrap();
+
+    let participations = deal_repo
+        .find_participations_by_deal(deal_id)
+        .await
+        .unwrap();
+    for mut p in participations {
+        p.participation_status = ParticipationStatus::Accepted;
+        p.responded_at = Some(time::OffsetDateTime::now_utc());
+        deal_repo.update_participation(&p).await.unwrap();
+    }
+
+    set_valid_value_distribution(&deal_repo, deal_id).await;
+
+    let agreement_repo = Arc::new(FakeAgreementRepo::default());
+    let wallet_repo = Arc::new(FakeWalletRepo::default());
+    for party_id in [supplier, consumer, enhancer] {
+        CreateWallet::new(wallet_repo.clone())
+            .execute(party_id)
+            .await
+            .unwrap();
+    }
+    fund_party_wallet(&wallet_repo, consumer, Decimal::from(10000)).await;
+
+    let transition = ExecuteTransition::new(
+        deal_repo.clone(),
+        party_repo.clone(),
+        agreement_repo.clone(),
+        ValidationConfig::default(),
+    )
+    .with_wallet_repository(wallet_repo.clone());
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Negotiating,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::TermsLocked,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    let sign = SignAgreement::new(
+        deal_repo.clone(),
+        party_repo.clone(),
+        agreement_repo.clone(),
+    );
+    for party_id in [supplier, consumer, enhancer] {
+        sign.execute(SignAgreementCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: party_id,
+            is_admin: false,
+            deal_id,
+            signature_type: domain::entities::SignatureType::DigitalAttestation,
+            ip_address: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Committed,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    (
+        party_repo,
+        deal_repo,
+        agreement_repo,
+        wallet_repo,
+        deal_id,
+        supplier,
+        consumer,
+        enhancer,
+    )
+}
+
+async fn create_verified_milestone(
+    party_repo: &Arc<FakePartyRepo>,
+    deal_repo: &Arc<FakeDealRepo>,
+    milestone_repo: &Arc<FakeMilestoneRepo>,
+    wallet_repo: &Arc<FakeWalletRepo>,
+    deal_id: Uuid,
+    supplier: Uuid,
+    consumer: Uuid,
+) -> Uuid {
+    let create = CreateMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    );
+    let milestone = create
+        .execute(CreateMilestoneCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            is_admin: false,
+            deal_id,
+            milestone_name: "Deliver goods".to_string(),
+            description: None,
+            assigned_to_party_id: supplier,
+            verified_by_party_id: consumer,
+            due_date: None,
+            completion_criteria: "Goods delivered".to_string(),
+            payment_trigger_amount: None,
+            display_order: 1,
+        })
+        .await
+        .unwrap();
+
+    let start = StartMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    );
+    start
+        .execute(MilestoneActionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            is_admin: false,
+            milestone_id: milestone.id,
+            comment: None,
+        })
+        .await
+        .unwrap();
+
+    let complete = CompleteMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    );
+    complete
+        .execute(MilestoneActionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: supplier,
+            is_admin: false,
+            milestone_id: milestone.id,
+            comment: None,
+        })
+        .await
+        .unwrap();
+
+    let verify = VerifyMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+        wallet_repo.clone(),
+    );
+    verify
+        .execute(MilestoneActionCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: consumer,
+            is_admin: false,
+            milestone_id: milestone.id,
+            comment: None,
+        })
+        .await
+        .unwrap();
+
+    milestone.id
+}
+
+async fn submit_all_reviews(
+    party_repo: &Arc<FakePartyRepo>,
+    deal_repo: &Arc<FakeDealRepo>,
+    review_repo: &Arc<FakeReviewRepo>,
+    recalc: Arc<dyn crate::ports::TrustScoreRecalculationPort>,
+    deal_id: Uuid,
+    supplier: Uuid,
+    consumer: Uuid,
+    enhancer: Uuid,
+) {
+    let submit = SubmitReview::new(
+        review_repo.clone(),
+        deal_repo.clone(),
+        party_repo.clone(),
+        recalc,
+    );
+    let pairs = [
+        (supplier, consumer),
+        (supplier, enhancer),
+        (consumer, supplier),
+        (consumer, enhancer),
+        (enhancer, supplier),
+        (enhancer, consumer),
+    ];
+    for (reviewer, reviewed) in pairs {
+        submit
+            .execute(SubmitReviewCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: reviewer,
+                is_admin: false,
+                deal_id,
+                reviewed_party_id: reviewed,
+                overall_rating: 4,
+                communication_rating: None,
+                reliability_rating: None,
+                quality_rating: None,
+                timeliness_rating: None,
+                review_text: None,
+                is_public: None,
+            })
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn execute_transition_completes_deal_and_settles_escrow() {
+    let (party_repo, deal_repo, agreement_repo, wallet_repo, deal_id, supplier, consumer, enhancer) =
+        setup_deal_through_committed().await;
+
+    let milestone_repo = Arc::new(FakeMilestoneRepo::default());
+    create_verified_milestone(
+        &party_repo,
+        &deal_repo,
+        &milestone_repo,
+        &wallet_repo,
+        deal_id,
+        supplier,
+        consumer,
+    )
+    .await;
+
+    let recalc: Arc<dyn crate::ports::TrustScoreRecalculationPort> =
+        Arc::new(NoOpTrustScoreRecalculation);
+    let review_repo = Arc::new(FakeReviewRepo::default());
+
+    let settlement_saga = Arc::new(SettlementSaga::new(deal_repo.clone(), wallet_repo.clone()));
+
+    let transition = ExecuteTransition::new_with_reviews(
+        deal_repo.clone(),
+        party_repo.clone(),
+        agreement_repo.clone(),
+        milestone_repo.clone(),
+        review_repo.clone(),
+        ValidationConfig::default(),
+    )
+    .with_wallet_repository(wallet_repo.clone())
+    .with_settlement_saga(settlement_saga);
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Executing,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    submit_all_reviews(
+        &party_repo,
+        &deal_repo,
+        &review_repo,
+        recalc,
+        deal_id,
+        supplier,
+        consumer,
+        enhancer,
+    )
+    .await;
+
+    let result = transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Completed,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.deal_status, DealStatus::Completed);
+
+    let consumer_wallet = wallet_repo
+        .find_by_party_id(consumer)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(consumer_wallet.balance, Decimal::ZERO);
+    assert_eq!(consumer_wallet.escrow_balance, Decimal::ZERO);
+
+    let supplier_wallet = wallet_repo
+        .find_by_party_id(supplier)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(supplier_wallet.balance, Decimal::from(6000));
+
+    let enhancer_wallet = wallet_repo
+        .find_by_party_id(enhancer)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(enhancer_wallet.balance, Decimal::from(3000));
+
+    let fee_txns = wallet_repo
+        .find_transactions(
+            consumer,
+            &domain::repositories::TransactionFilters {
+                deal_id: Some(deal_id),
+                transaction_type: Some("FEE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(fee_txns.len(), 1);
+    assert_eq!(fee_txns[0].amount, Decimal::from(1000));
+
+    let release_txns = wallet_repo
+        .find_transactions(
+            consumer,
+            &domain::repositories::TransactionFilters {
+                deal_id: Some(deal_id),
+                transaction_type: Some("ESCROW_RELEASE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(release_txns.len(), 2);
+}
+
+#[tokio::test]
+async fn complete_rejected_when_escrow_insufficient_for_settlement() {
+    let (party_repo, deal_repo, agreement_repo, wallet_repo, deal_id, supplier, consumer, enhancer) =
+        setup_deal_through_committed().await;
+
+    let milestone_repo = Arc::new(FakeMilestoneRepo::default());
+    create_verified_milestone(
+        &party_repo,
+        &deal_repo,
+        &milestone_repo,
+        &wallet_repo,
+        deal_id,
+        supplier,
+        consumer,
+    )
+    .await;
+
+    let recalc: Arc<dyn crate::ports::TrustScoreRecalculationPort> =
+        Arc::new(NoOpTrustScoreRecalculation);
+    let review_repo = Arc::new(FakeReviewRepo::default());
+
+    let settlement_saga = Arc::new(SettlementSaga::new(deal_repo.clone(), wallet_repo.clone()));
+
+    let transition = ExecuteTransition::new_with_reviews(
+        deal_repo.clone(),
+        party_repo.clone(),
+        agreement_repo.clone(),
+        milestone_repo.clone(),
+        review_repo.clone(),
+        ValidationConfig::default(),
+    )
+    .with_wallet_repository(wallet_repo.clone())
+    .with_settlement_saga(settlement_saga);
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Executing,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    submit_all_reviews(
+        &party_repo,
+        &deal_repo,
+        &review_repo,
+        recalc,
+        deal_id,
+        supplier,
+        consumer,
+        enhancer,
+    )
+    .await;
+
+    // Drain consumer escrow so settlement cannot proceed.
+    {
+        let mut consumer_wallet = wallet_repo
+            .find_by_party_id(consumer)
+            .await
+            .unwrap()
+            .unwrap();
+        // Release 1 point back to balance so escrow is 9999.
+        consumer_wallet
+            .release_escrow_to_self(Decimal::from(1))
+            .unwrap();
+        wallet_repo.update(&consumer_wallet).await.unwrap();
+    }
+
+    let err = transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Completed,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, ApplicationError::SettlementFailed { .. }));
+
+    let deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
+    assert_eq!(deal.deal_status, DealStatus::Executing);
 }

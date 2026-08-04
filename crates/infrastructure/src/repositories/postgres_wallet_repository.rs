@@ -181,6 +181,79 @@ impl WalletRepository for PostgresWalletRepository {
         Ok(())
     }
 
+    async fn record_multi_party_transaction(
+        &self,
+        wallets: &[PlatformWallet],
+        transaction: &Transaction,
+    ) -> Result<(), DomainError> {
+        let mut tx = self.pool.begin().await.map_err(map_err)?;
+
+        for wallet in wallets {
+            sqlx::query!(
+                r#"
+                UPDATE platform_wallets
+                SET balance = $1,
+                    escrow_balance = $2,
+                    pending_balance = $3,
+                    total_deposited = $4,
+                    total_withdrawn = $5,
+                    updated_at = $6
+                WHERE id = $7
+                "#,
+                wallet.balance,
+                wallet.escrow_balance,
+                wallet.pending_balance,
+                wallet.total_deposited,
+                wallet.total_withdrawn,
+                wallet.updated_at,
+                wallet.id
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(map_err)?;
+        }
+
+        sqlx::query!(
+            r#"
+            INSERT INTO transactions (
+                id, deal_id, agreement_id, milestone_id, transaction_type,
+                from_party_id, to_party_id, amount, currency, description,
+                status, payment_method, external_reference, requires_approval,
+                approvals_required, approvals_received, involved_party_ids, executed_at, created_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                $11, $12, $13, $14, $15, $16, $17::uuid[], $18, $19
+            )
+            "#,
+            transaction.id,
+            transaction.deal_id,
+            transaction.agreement_id,
+            transaction.milestone_id,
+            transaction.transaction_type.as_str(),
+            transaction.from_party_id,
+            transaction.to_party_id,
+            transaction.amount,
+            transaction.currency.as_str(),
+            transaction.description,
+            transaction.status.as_str(),
+            transaction.payment_method,
+            transaction.external_reference,
+            transaction.requires_approval,
+            transaction.approvals_required,
+            transaction.approvals_received,
+            transaction.involved_party_ids.as_slice(),
+            transaction.executed_at,
+            transaction.created_at
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(map_err)?;
+
+        tx.commit().await.map_err(map_err)?;
+        Ok(())
+    }
+
     async fn find_transactions(
         &self,
         party_id: Uuid,

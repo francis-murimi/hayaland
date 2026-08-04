@@ -45,6 +45,16 @@ pub trait WalletRepository: Send + Sync {
         transaction: &Transaction,
     ) -> Result<(), DomainError>;
 
+    /// Persist a transaction and update multiple wallet containers atomically.
+    ///
+    /// Used when a single transaction moves value between parties (e.g. a
+    /// cross-party escrow release).
+    async fn record_multi_party_transaction(
+        &self,
+        wallets: &[PlatformWallet],
+        transaction: &Transaction,
+    ) -> Result<(), DomainError>;
+
     /// Find transactions for a party (as source or beneficiary) with optional filters.
     async fn find_transactions(
         &self,

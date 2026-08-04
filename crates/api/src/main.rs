@@ -303,18 +303,25 @@ async fn main() -> anyhow::Result<()> {
             party_repo.clone(),
             settings.validation.clone(),
         ),
-        execute_transition: ExecuteTransition::new_with_reviews(
-            deal_repo.clone(),
-            party_repo.clone(),
-            agreement_repo.clone(),
-            milestone_repo.clone(),
-            review_repo.clone(),
-            settings.validation.clone(),
-        )
-        .with_trust_score_repository(trust_repo.clone())
-        .with_trust_score_recalculation_port(trust_score_recalculation_port.clone())
-        .with_notifier(lifecycle_notifier.clone())
-        .with_wallet_repository(wallet_repo.clone()),
+        execute_transition: {
+            let settlement_saga = Arc::new(
+                application::deals::SettlementSaga::new(deal_repo.clone(), wallet_repo.clone())
+                    .with_notifier(lifecycle_notifier.clone()),
+            );
+            ExecuteTransition::new_with_reviews(
+                deal_repo.clone(),
+                party_repo.clone(),
+                agreement_repo.clone(),
+                milestone_repo.clone(),
+                review_repo.clone(),
+                settings.validation.clone(),
+            )
+            .with_trust_score_repository(trust_repo.clone())
+            .with_trust_score_recalculation_port(trust_score_recalculation_port.clone())
+            .with_notifier(lifecycle_notifier.clone())
+            .with_wallet_repository(wallet_repo.clone())
+            .with_settlement_saga(settlement_saga)
+        },
         submit_review: application::reviews::SubmitReview::new(
             review_repo.clone(),
             deal_repo.clone(),

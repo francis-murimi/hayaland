@@ -98,6 +98,9 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::InsufficientEscrowFunds) => {
                 StatusCode::PAYMENT_REQUIRED
             }
+            ApiError::Application(ApplicationError::SettlementFailed { .. }) => {
+                StatusCode::CONFLICT
+            }
         }
     }
 
@@ -222,6 +225,7 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::InsufficientEscrowFunds) => {
                 "insufficient_escrow_funds"
             }
+            ApiError::Application(ApplicationError::SettlementFailed { .. }) => "settlement_failed",
             ApiError::Validation(_) => "validation_error",
             ApiError::Forbidden => "forbidden",
         };

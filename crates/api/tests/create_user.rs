@@ -1255,6 +1255,20 @@ impl WalletRepository for FakeWalletRepo {
         Ok(())
     }
 
+    async fn record_multi_party_transaction(
+        &self,
+        wallets: &[PlatformWallet],
+        transaction: &domain::entities::Transaction,
+    ) -> Result<(), DomainError> {
+        let mut guard = self.wallets.lock().unwrap();
+        for wallet in wallets {
+            guard.insert(wallet.party_id, wallet.clone());
+        }
+        drop(guard);
+        self.transactions.lock().unwrap().push(transaction.clone());
+        Ok(())
+    }
+
     async fn find_transactions(
         &self,
         party_id: Uuid,

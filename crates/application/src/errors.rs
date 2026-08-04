@@ -60,6 +60,9 @@ pub enum ApplicationError {
     #[error("insufficient escrow funds to commit to deal")]
     InsufficientEscrowFunds,
 
+    #[error("settlement failed: {reason}")]
+    SettlementFailed { reason: String },
+
     #[error("deal access denied")]
     DealAccessDenied,
 
