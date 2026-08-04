@@ -1,7 +1,8 @@
 use crate::errors::ApplicationError;
+use crate::notifications::LifecycleNotifier;
 use crate::ports::TrustScoreRecalculationPort;
 use crate::reviews::dto::{ReviewResult, SubmitReviewCommand};
-use domain::entities::{DealStatus, Review, ReviewRating, ReviewText};
+use domain::entities::{DealStatus, NotificationType, Review, ReviewRating, ReviewText};
 use domain::repositories::{DealRepository, PartyRepository, ReviewRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -13,6 +14,7 @@ pub struct SubmitReview {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
     recalc: Arc<dyn TrustScoreRecalculationPort>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl SubmitReview {
@@ -27,7 +29,13 @@ impl SubmitReview {
             deal_repo,
             party_repo,
             recalc,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(deal_id = %cmd.deal_id))]
@@ -122,6 +130,9 @@ impl SubmitReview {
         // 7. Persist.
         self.review_repo.create(&review).await?;
 
+        self.emit_review_notification(&deal, &review, cmd.actor_user_id)
+            .await;
+
         info!(
             review_id = %review.id,
             reviewed_party_id = %review.reviewed_party_id,
@@ -134,5 +145,31 @@ impl SubmitReview {
             .await?;
 
         Ok(review.into())
+    }
+
+    async fn emit_review_notification(
+        &self,
+        deal: &domain::entities::Deal,
+        review: &Review,
+        actor_user_id: Uuid,
+    ) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+        let metadata = serde_json::json!({
+            "deal_name": deal.deal_title.as_str(),
+            "deal_id": deal.id,
+        });
+        let result = notifier
+            .notify_party_members(
+                actor_user_id,
+                review.reviewed_party_id,
+                NotificationType::ReviewReceived,
+                Some("deal"),
+                Some(deal.id),
+                metadata,
+            )
+            .await;
+        notifier.fire_and_forget(result, "review received");
     }
 }

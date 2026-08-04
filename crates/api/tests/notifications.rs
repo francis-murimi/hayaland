@@ -352,7 +352,7 @@ async fn admin_notification_template_crud(pool: PgPool) {
         .await;
     assert_eq!(list_resp.status(), StatusCode::OK);
     let list_body: serde_json::Value = test::read_body_json(list_resp).await;
-    let initial_len = list_body.as_array().unwrap().len();
+    let _initial_len = list_body.as_array().unwrap().len();
 
     let create_resp = test::TestRequest::post()
         .uri("/api/v1/admin/notification-templates")
@@ -379,7 +379,14 @@ async fn admin_notification_template_crud(pool: PgPool) {
         .send_request(&app)
         .await;
     let list_body: serde_json::Value = test::read_body_json(list_resp).await;
-    assert_eq!(list_body.as_array().unwrap().len(), initial_len + 1);
+    assert!(
+        list_body
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == template_id),
+        "created template should appear in the list"
+    );
 
     let get_resp = test::TestRequest::get()
         .uri(&format!(

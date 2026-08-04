@@ -1,18 +1,21 @@
 use crate::errors::ApplicationError;
+use crate::notifications::LifecycleNotifier;
 use crate::ports::TrustScoreRecalculationPort;
 use crate::verifications::dto::{
     party_verification_status_for_points, ApproveVerificationCommand, VerificationResult,
 };
-use domain::entities::verification_level_from_points;
+use domain::entities::{verification_level_from_points, NotificationType};
 use domain::repositories::{PartyRepository, PartyVerificationRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ApproveVerification {
     verification_repo: Arc<dyn PartyVerificationRepository>,
     party_repo: Arc<dyn PartyRepository>,
     recalc: Arc<dyn TrustScoreRecalculationPort>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl ApproveVerification {
@@ -25,7 +28,13 @@ impl ApproveVerification {
             verification_repo,
             party_repo,
             recalc,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(verification_id = %cmd.verification_id))]
@@ -53,6 +62,14 @@ impl ApproveVerification {
             party_id = %verification.party_id,
             "verification approved"
         );
+
+        self.emit_verification_notification(
+            verification.party_id,
+            verification.id,
+            cmd.actor_user_id,
+            NotificationType::VerificationApproved,
+        )
+        .await;
 
         // 4. Trigger trust-score recalculation.
         self.recalc
@@ -89,5 +106,31 @@ impl ApproveVerification {
             .await?;
 
         Ok(())
+    }
+
+    async fn emit_verification_notification(
+        &self,
+        party_id: Uuid,
+        verification_id: Uuid,
+        actor_user_id: Uuid,
+        notification_type: NotificationType,
+    ) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+        let metadata = serde_json::json!({
+            "verification_id": verification_id,
+        });
+        let result = notifier
+            .notify_party_members(
+                actor_user_id,
+                party_id,
+                notification_type,
+                Some("verification"),
+                Some(verification_id),
+                metadata,
+            )
+            .await;
+        notifier.fire_and_forget(result, "verification status changed");
     }
 }

@@ -57,7 +57,7 @@ async fn find_active(pool: PgPool) {
 
     let mut active = sample_template(
         "find_active_active",
-        NotificationType::DealSubmitted,
+        NotificationType::SystemMaintenance,
         NotificationChannel::InApp,
         "sw",
     );
@@ -65,7 +65,7 @@ async fn find_active(pool: PgPool) {
 
     let mut inactive = sample_template(
         "find_active_inactive",
-        NotificationType::DealSubmitted,
+        NotificationType::SystemMaintenance,
         NotificationChannel::Email,
         "sw",
     );
@@ -76,7 +76,7 @@ async fn find_active(pool: PgPool) {
 
     let found = repo
         .find_active(
-            NotificationType::DealSubmitted,
+            NotificationType::SystemMaintenance,
             NotificationChannel::InApp,
             "sw",
         )
@@ -88,7 +88,7 @@ async fn find_active(pool: PgPool) {
     // Inactive template is not returned.
     let found = repo
         .find_active(
-            NotificationType::DealSubmitted,
+            NotificationType::SystemMaintenance,
             NotificationChannel::Email,
             "sw",
         )
@@ -99,7 +99,7 @@ async fn find_active(pool: PgPool) {
     // Different locale does not match.
     let found = repo
         .find_active(
-            NotificationType::DealSubmitted,
+            NotificationType::SystemMaintenance,
             NotificationChannel::InApp,
             "en",
         )
@@ -158,9 +158,9 @@ async fn update_template(pool: PgPool) {
 
     let mut template = sample_template(
         "update_template",
-        NotificationType::PaymentDue,
+        NotificationType::SystemMaintenance,
         NotificationChannel::Email,
-        "en",
+        "xx",
     );
     repo.create(&template).await.unwrap();
 
@@ -193,9 +193,9 @@ async fn delete_template(pool: PgPool) {
 
     let template = sample_template(
         "delete_template",
-        NotificationType::VerificationApproved,
+        NotificationType::SystemMaintenance,
         NotificationChannel::Email,
-        "en",
+        "xx",
     );
     let id = template.id;
     repo.create(&template).await.unwrap();

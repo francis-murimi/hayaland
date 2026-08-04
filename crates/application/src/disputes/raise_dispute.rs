@@ -1,7 +1,8 @@
 use crate::disputes::dto::{DisputeResult, RaiseDisputeCommand};
 use crate::errors::ApplicationError;
+use crate::notifications::LifecycleNotifier;
 use crate::ports::TrustScoreRecalculationPort;
-use domain::entities::{DealStatus, Dispute, DisputeType};
+use domain::entities::{DealStatus, Dispute, DisputeType, NotificationType};
 use domain::repositories::{DealRepository, DisputeRepository, PartyRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -13,6 +14,7 @@ pub struct RaiseDispute {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
     recalc: Arc<dyn TrustScoreRecalculationPort>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl RaiseDispute {
@@ -27,7 +29,13 @@ impl RaiseDispute {
             deal_repo,
             party_repo,
             recalc,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(deal_id = %cmd.deal_id))]
@@ -117,6 +125,9 @@ impl RaiseDispute {
             )
             .await?;
 
+        self.emit_dispute_notification(&deal, cmd.actor_user_id)
+            .await;
+
         // 10. Update trust-score dispute counts and request recalculation.
         self.dispute_repo
             .increment_deals_disputed_count(cmd.actor_party_id)
@@ -139,5 +150,24 @@ impl RaiseDispute {
         );
 
         Ok(dispute.into())
+    }
+
+    async fn emit_dispute_notification(&self, deal: &domain::entities::Deal, actor_user_id: Uuid) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+        let metadata = serde_json::json!({
+            "deal_name": deal.deal_title.as_str(),
+            "deal_id": deal.id,
+        });
+        let result = notifier
+            .notify_deal_participants(
+                actor_user_id,
+                deal.id,
+                NotificationType::DealDisputed,
+                metadata,
+            )
+            .await;
+        notifier.fire_and_forget(result, "deal disputed");
     }
 }

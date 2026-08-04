@@ -1,6 +1,7 @@
 use crate::catalog::dto::{ContactCatalogOwnerCommand, ContactCatalogOwnerResult};
 use crate::errors::ApplicationError;
-use domain::entities::{Conversation, Message, MessageType, RecipientType};
+use crate::notifications::LifecycleNotifier;
+use domain::entities::{Conversation, Message, MessageType, NotificationType, RecipientType};
 use domain::repositories::{
     CatalogItemType, CatalogRepository, MessageRepository, PartyRepository,
 };
@@ -9,12 +10,13 @@ use tracing::{info, instrument};
 use uuid::Uuid;
 
 /// Contact the owner of a catalogue item. Creates a direct-party conversation and sends an
-/// initial message. Notification delivery is left as a future TODO.
+/// initial message, then notifies the owner party members.
 #[derive(Clone)]
 pub struct ContactCatalogOwner {
     catalog_repo: Arc<dyn CatalogRepository>,
     party_repo: Arc<dyn PartyRepository>,
     message_repo: Arc<dyn MessageRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl ContactCatalogOwner {
@@ -27,7 +29,13 @@ impl ContactCatalogOwner {
             catalog_repo,
             party_repo,
             message_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(item_id = %cmd.item_id))]
@@ -123,7 +131,14 @@ impl ContactCatalogOwner {
             .touch_conversation(conversation.id, message.created_at)
             .await?;
 
-        // TODO: send notification to owner party members.
+        self.emit_owner_notification(
+            cmd.actor_user_id,
+            owner_party_id,
+            cmd.item_type,
+            cmd.item_id,
+        )
+        .await;
+
         info!(conversation_id = %conversation.id, message_id = %message.id, "sent catalog inquiry");
 
         Ok(ContactCatalogOwnerResult {
@@ -155,5 +170,32 @@ impl ContactCatalogOwner {
                 Ok(c)
             }
         }
+    }
+
+    async fn emit_owner_notification(
+        &self,
+        actor_user_id: Uuid,
+        owner_party_id: Uuid,
+        item_type: String,
+        item_id: Uuid,
+    ) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+        let metadata = serde_json::json!({
+            "item_type": item_type,
+            "item_id": item_id,
+        });
+        let result = notifier
+            .notify_party_members(
+                actor_user_id,
+                owner_party_id,
+                NotificationType::MessageReceived,
+                Some("catalog"),
+                Some(item_id),
+                metadata,
+            )
+            .await;
+        notifier.fire_and_forget(result, "catalog owner contacted");
     }
 }

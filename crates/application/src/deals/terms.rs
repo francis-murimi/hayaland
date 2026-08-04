@@ -1,6 +1,7 @@
 use crate::deals::dto::{CounterTermCommand, ProposeTermCommand, TermActionCommand, TermResult};
 use crate::errors::ApplicationError;
-use domain::entities::{DealStatus, Term, TermStatus};
+use crate::notifications::LifecycleNotifier;
+use domain::entities::{DealStatus, NotificationType, Term, TermStatus};
 use domain::repositories::{DealRepository, PartyRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -74,11 +75,39 @@ pub(crate) fn map_term_to_result(term: Term) -> TermResult {
     }
 }
 
+async fn notify_term_event(
+    notifier: &Option<Arc<LifecycleNotifier>>,
+    deal_repo: &Arc<dyn DealRepository>,
+    actor_user_id: Uuid,
+    deal_id: Uuid,
+    term_id: Uuid,
+    term_name: &str,
+    notification_type: NotificationType,
+) {
+    let Some(notifier) = notifier else {
+        return;
+    };
+    let Ok(Some(deal)) = deal_repo.find_by_id(deal_id).await else {
+        return;
+    };
+    let metadata = serde_json::json!({
+        "deal_name": deal.deal_title.as_str(),
+        "deal_id": deal_id,
+        "term_name": term_name,
+        "term_id": term_id,
+    });
+    let result = notifier
+        .notify_deal_participants(actor_user_id, deal_id, notification_type, metadata)
+        .await;
+    notifier.fire_and_forget(result, "term event");
+}
+
 /// Propose a new term on a deal.
 #[derive(Clone)]
 pub struct ProposeTerm {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl ProposeTerm {
@@ -86,7 +115,13 @@ impl ProposeTerm {
         Self {
             deal_repo,
             party_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(deal_id = %cmd.deal_id))]
@@ -106,7 +141,7 @@ impl ProposeTerm {
             cmd.deal_id,
             cmd.actor_party_id,
             cmd.term_type,
-            cmd.term_name,
+            cmd.term_name.clone(),
             cmd.description,
             cmd.is_mandatory,
         );
@@ -115,6 +150,17 @@ impl ProposeTerm {
         self.deal_repo
             .record_history(cmd.deal_id, "TERM_PROPOSED", Some(cmd.actor_party_id), None)
             .await?;
+
+        notify_term_event(
+            &self.notifier,
+            &self.deal_repo,
+            cmd.actor_user_id,
+            cmd.deal_id,
+            term.id,
+            &term.term_name,
+            NotificationType::TermProposed,
+        )
+        .await;
 
         info!(term_id = %term.id, "proposed term");
         Ok(map_term_to_result(term))
@@ -126,6 +172,7 @@ impl ProposeTerm {
 pub struct CounterTerm {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl CounterTerm {
@@ -133,7 +180,13 @@ impl CounterTerm {
         Self {
             deal_repo,
             party_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(term_id = %cmd.term_id))]
@@ -167,6 +220,17 @@ impl CounterTerm {
             )
             .await?;
 
+        notify_term_event(
+            &self.notifier,
+            &self.deal_repo,
+            cmd.actor_user_id,
+            cmd.deal_id,
+            counter.id,
+            &counter.term_name,
+            NotificationType::TermCountered,
+        )
+        .await;
+
         info!(parent_term = %existing.id, counter_term = %counter.id, "countered term");
         Ok(map_term_to_result(counter))
     }
@@ -177,6 +241,7 @@ impl CounterTerm {
 pub struct AcceptTerm {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl AcceptTerm {
@@ -184,7 +249,13 @@ impl AcceptTerm {
         Self {
             deal_repo,
             party_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(term_id = %cmd.term_id))]
@@ -209,6 +280,17 @@ impl AcceptTerm {
             .record_history(cmd.deal_id, "TERM_ACCEPTED", Some(cmd.actor_party_id), None)
             .await?;
 
+        notify_term_event(
+            &self.notifier,
+            &self.deal_repo,
+            cmd.actor_user_id,
+            cmd.deal_id,
+            term.id,
+            &term.term_name,
+            NotificationType::TermAccepted,
+        )
+        .await;
+
         Ok(map_term_to_result(term))
     }
 }
@@ -218,6 +300,7 @@ impl AcceptTerm {
 pub struct RejectTerm {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl RejectTerm {
@@ -225,7 +308,13 @@ impl RejectTerm {
         Self {
             deal_repo,
             party_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(term_id = %cmd.term_id))]
@@ -250,6 +339,17 @@ impl RejectTerm {
             .record_history(cmd.deal_id, "TERM_REJECTED", Some(cmd.actor_party_id), None)
             .await?;
 
+        notify_term_event(
+            &self.notifier,
+            &self.deal_repo,
+            cmd.actor_user_id,
+            cmd.deal_id,
+            term.id,
+            &term.term_name,
+            NotificationType::TermRejected,
+        )
+        .await;
+
         Ok(map_term_to_result(term))
     }
 }
@@ -259,6 +359,7 @@ impl RejectTerm {
 pub struct WithdrawTerm {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl WithdrawTerm {
@@ -266,7 +367,13 @@ impl WithdrawTerm {
         Self {
             deal_repo,
             party_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(term_id = %cmd.term_id))]
@@ -299,6 +406,17 @@ impl WithdrawTerm {
                 None,
             )
             .await?;
+
+        notify_term_event(
+            &self.notifier,
+            &self.deal_repo,
+            cmd.actor_user_id,
+            cmd.deal_id,
+            term.id,
+            &term.term_name,
+            NotificationType::TermRejected,
+        )
+        .await;
 
         Ok(map_term_to_result(term))
     }

@@ -1,16 +1,21 @@
 use crate::disputes::dto::{DisputeResult, ResolveDisputeCommand};
 use crate::errors::ApplicationError;
+use crate::notifications::LifecycleNotifier;
 use crate::ports::TrustScoreRecalculationPort;
-use domain::entities::{DealStatus, DisputeSeverity, ResolutionOutcome, ResolutionType};
+use domain::entities::{
+    DealStatus, DisputeSeverity, NotificationType, ResolutionOutcome, ResolutionType,
+};
 use domain::repositories::{DealRepository, DisputeRepository};
 use std::sync::Arc;
 use tracing::instrument;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ResolveDispute {
     dispute_repo: Arc<dyn DisputeRepository>,
     deal_repo: Arc<dyn DealRepository>,
     recalc: Arc<dyn TrustScoreRecalculationPort>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl ResolveDispute {
@@ -23,7 +28,13 @@ impl ResolveDispute {
             dispute_repo,
             deal_repo,
             recalc,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(dispute_id = %cmd.dispute_id))]
@@ -113,6 +124,9 @@ impl ResolveDispute {
             self.recalc.request_recalculation(against_party_id).await?;
         }
 
+        self.emit_dispute_resolved_notification(&deal, cmd.actor_user_id)
+            .await;
+
         // 8. Return refreshed dispute.
         let dispute = self
             .dispute_repo
@@ -124,5 +138,28 @@ impl ResolveDispute {
         let mut result: DisputeResult = dispute.into();
         result.responses = responses.into_iter().map(Into::into).collect();
         Ok(result)
+    }
+
+    async fn emit_dispute_resolved_notification(
+        &self,
+        deal: &domain::entities::Deal,
+        actor_user_id: Uuid,
+    ) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+        let metadata = serde_json::json!({
+            "deal_name": deal.deal_title.as_str(),
+            "deal_id": deal.id,
+        });
+        let result = notifier
+            .notify_deal_participants(
+                actor_user_id,
+                deal.id,
+                NotificationType::DisputeResolved,
+                metadata,
+            )
+            .await;
+        notifier.fire_and_forget(result, "dispute resolved");
     }
 }

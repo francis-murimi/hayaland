@@ -197,6 +197,9 @@ async fn main() -> anyhow::Result<()> {
         sms_sender.clone(),
         settings.notifications.default_locale.clone(),
     ));
+    let lifecycle_notifier = Arc::new(application::notifications::LifecycleNotifier::new(
+        send_notification.clone(),
+    ));
 
     if settings.notifications.worker_enabled {
         tokio::spawn(run_notification_worker(
@@ -309,19 +312,22 @@ async fn main() -> anyhow::Result<()> {
             settings.validation.clone(),
         )
         .with_trust_score_repository(trust_repo.clone())
-        .with_trust_score_recalculation_port(trust_score_recalculation_port.clone()),
+        .with_trust_score_recalculation_port(trust_score_recalculation_port.clone())
+        .with_notifier(lifecycle_notifier.clone()),
         submit_review: application::reviews::SubmitReview::new(
             review_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
             trust_score_recalculation_port.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         raise_dispute: application::disputes::RaiseDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
             trust_score_recalculation_port.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         list_deal_disputes: application::disputes::ListDealDisputes::new(
             deal_repo.clone(),
             dispute_repo.clone(),
@@ -343,7 +349,8 @@ async fn main() -> anyhow::Result<()> {
             dispute_repo.clone(),
             deal_repo.clone(),
             trust_score_recalculation_port.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         reject_dispute: application::disputes::RejectDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
@@ -386,25 +393,33 @@ async fn main() -> anyhow::Result<()> {
             party_verification_repo.clone(),
             party_repo.clone(),
             trust_score_recalculation_port.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         reject_verification: application::verifications::RejectVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             trust_score_recalculation_port.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         revoke_verification: application::verifications::RevokeVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             trust_score_recalculation_port.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         list_admin_verifications: application::verifications::ListAdminVerifications::new(
             party_verification_repo.clone(),
         ),
-        propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
-        counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
-        accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),
-        reject_term: RejectTerm::new(deal_repo.clone(), party_repo.clone()),
-        withdraw_term: WithdrawTerm::new(deal_repo.clone(), party_repo.clone()),
+        propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        reject_term: RejectTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        withdraw_term: WithdrawTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
         list_terms: ListTerms::new(deal_repo.clone(), party_repo.clone()),
         set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
@@ -510,7 +525,8 @@ async fn main() -> anyhow::Result<()> {
             deal_repo.clone(),
             milestone_repo.clone(),
             wallet_repo.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         send_message: SendMessage::new(
             message_repo.clone(),
             party_repo.clone(),
@@ -662,11 +678,13 @@ async fn main() -> anyhow::Result<()> {
             catalog_repo.clone(),
             party_repo.clone(),
             message_repo.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         update_party_catalog_settings: UpdatePartyCatalogSettings::new(party_repo.clone()),
         catalog_repo,
         db_pool: pool.clone(),
         send_notification,
+        lifecycle_notifier,
         encryption_service,
         realtime_publisher,
         notification_realtime_publisher,

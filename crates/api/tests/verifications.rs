@@ -163,6 +163,9 @@ async fn build_state(pool: PgPool) -> AppState {
             sms_sender,
             "en".to_string(),
         ));
+    let lifecycle_notifier = Arc::new(application::notifications::LifecycleNotifier::new(
+        send_notification.clone(),
+    ));
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher);
     const TEST_MESSAGE_KEY: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
     let encryption_service: Arc<dyn EncryptionService> =
@@ -599,6 +602,7 @@ async fn build_state(pool: PgPool) -> AppState {
         catalog_repo,
         db_pool: pool.clone(),
         send_notification,
+        lifecycle_notifier,
         notification_realtime_publisher,
         encryption_service,
         realtime_publisher,

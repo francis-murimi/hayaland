@@ -74,8 +74,8 @@ use application::{
         AdminCreateTemplate, AdminDeleteTemplate, AdminGetTemplate, AdminListTemplates,
         AdminSendNotification, AdminUpdateTemplate, DeleteNotification, GetNotification,
         GetNotificationPreferences, GetUnreadCount as GetUnreadNotificationCount,
-        ListNotifications, MarkAllNotificationsRead, MarkNotificationRead, SendNotification,
-        UpdateNotificationPreferences,
+        LifecycleNotifier, ListNotifications, MarkAllNotificationsRead, MarkNotificationRead,
+        SendNotification, UpdateNotificationPreferences,
     },
     ports::{EncryptionService, NotificationRealtimePublisher, RealtimePublisher},
 };
@@ -211,6 +211,7 @@ pub struct AppState {
     pub admin_update_template: AdminUpdateTemplate,
     pub admin_delete_template: AdminDeleteTemplate,
     pub send_notification: Arc<SendNotification>,
+    pub lifecycle_notifier: Arc<LifecycleNotifier>,
     pub create_resource: CreateResource,
     pub update_resource: UpdateResource,
     pub delete_resource: DeleteResource,

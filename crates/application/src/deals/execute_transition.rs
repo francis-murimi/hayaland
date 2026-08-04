@@ -3,8 +3,11 @@ use crate::deals::create_deal::map_aggregate_to_result;
 use crate::deals::dto::{DealResult, ExecuteTransitionCommand};
 use crate::deals::validate_deal::{persist_validation, run_validation, status_is_good_or_better};
 use crate::errors::ApplicationError;
+use crate::notifications::LifecycleNotifier;
 use crate::ports::TrustScoreRecalculationPort;
-use domain::entities::{AgreementStatus, DealStatus, ParticipationStatus, TermStatus};
+use domain::entities::{
+    AgreementStatus, DealStatus, NotificationType, ParticipationStatus, TermStatus,
+};
 use domain::repositories::{
     AgreementRepository, DealRepository, MilestoneRepository, PartyRepository, ReviewRepository,
     TrustScoreRepository,
@@ -24,6 +27,7 @@ pub struct ExecuteTransition {
     review_repo: Option<Arc<dyn ReviewRepository>>,
     trust_repo: Option<Arc<dyn TrustScoreRepository>>,
     recalc_port: Option<Arc<dyn TrustScoreRecalculationPort>>,
+    notifier: Option<Arc<LifecycleNotifier>>,
     validation_config: ValidationConfig,
 }
 
@@ -42,6 +46,7 @@ impl ExecuteTransition {
             review_repo: None,
             trust_repo: None,
             recalc_port: None,
+            notifier: None,
             validation_config,
         }
     }
@@ -61,6 +66,7 @@ impl ExecuteTransition {
             review_repo: None,
             trust_repo: None,
             recalc_port: None,
+            notifier: None,
             validation_config,
         }
     }
@@ -81,6 +87,7 @@ impl ExecuteTransition {
             review_repo: Some(review_repo),
             trust_repo: None,
             recalc_port: None,
+            notifier: None,
             validation_config,
         }
     }
@@ -98,6 +105,11 @@ impl ExecuteTransition {
         port: Arc<dyn TrustScoreRecalculationPort>,
     ) -> Self {
         self.recalc_port = Some(port);
+        self
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
         self
     }
 
@@ -287,6 +299,9 @@ impl ExecuteTransition {
             }
         }
 
+        self.emit_transition_notification(deal_id, &deal, cmd.actor_user_id, cmd.new_status)
+            .await;
+
         info!(%deal_id, new_status = %cmd.new_status.as_str(), "executed deal transition");
         Ok(map_aggregate_to_result(
             domain::repositories::DealAggregate {
@@ -294,6 +309,39 @@ impl ExecuteTransition {
                 participations,
             },
         ))
+    }
+
+    async fn emit_transition_notification(
+        &self,
+        deal_id: Uuid,
+        deal: &domain::entities::Deal,
+        actor_user_id: Uuid,
+        new_status: DealStatus,
+    ) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+
+        let notification_type = match new_status {
+            DealStatus::TermsLocked => NotificationType::DealTermsLocked,
+            DealStatus::Committed => NotificationType::DealCommitted,
+            DealStatus::Executing => NotificationType::DealExecuting,
+            DealStatus::Completed => NotificationType::DealCompleted,
+            DealStatus::Cancelled => NotificationType::DealCancelled,
+            DealStatus::Expired => NotificationType::DealExpired,
+            DealStatus::Disputed => NotificationType::DealDisputed,
+            _ => return,
+        };
+
+        let metadata = serde_json::json!({
+            "deal_name": deal.deal_title.as_str(),
+            "deal_id": deal_id,
+        });
+
+        let result = notifier
+            .notify_deal_participants(actor_user_id, deal_id, notification_type, metadata)
+            .await;
+        notifier.fire_and_forget(result, "deal transition");
     }
 
     async fn ensure_milestones_present(&self, deal_id: Uuid) -> Result<(), ApplicationError> {

@@ -2690,6 +2690,9 @@ fn test_fixtures() -> TestFixtures {
             sms_sender,
             "en".to_string(),
         ));
+    let lifecycle_notifier = Arc::new(application::notifications::LifecycleNotifier::new(
+        send_notification.clone(),
+    ));
     let encryption_service: Arc<dyn EncryptionService> = Arc::new(FakeEncryptionService);
     let realtime_publisher: Arc<dyn RealtimePublisher> =
         Arc::new(application::ports::NoOpRealtimePublisher);
@@ -3116,6 +3119,7 @@ fn test_fixtures() -> TestFixtures {
         catalog_repo,
         db_pool,
         send_notification,
+        lifecycle_notifier,
         notification_realtime_publisher,
         encryption_service,
         realtime_publisher,

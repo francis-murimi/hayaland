@@ -33,8 +33,8 @@ use application::notifications::GetUnreadCount as NotificationGetUnreadCount;
 use application::notifications::{
     AdminCreateTemplate, AdminDeleteTemplate, AdminGetTemplate, AdminListTemplates,
     AdminSendNotification, AdminUpdateTemplate, DeleteNotification, GetNotification,
-    GetNotificationPreferences, ListNotifications, MarkAllNotificationsRead, MarkNotificationRead,
-    SendNotification, UpdateNotificationPreferences,
+    GetNotificationPreferences, LifecycleNotifier, ListNotifications, MarkAllNotificationsRead,
+    MarkNotificationRead, SendNotification, UpdateNotificationPreferences,
 };
 use application::parties::{
     AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
@@ -195,6 +195,7 @@ pub async fn build_state(pool: PgPool) -> AppState {
         sms_sender,
         "en".to_string(),
     ));
+    let lifecycle_notifier = Arc::new(LifecycleNotifier::new(send_notification.clone()));
 
     AppState {
         create_user: CreateUser::new(
@@ -261,12 +262,18 @@ pub async fn build_state(pool: PgPool) -> AppState {
             ValidationConfig::default(),
         )
         .with_trust_score_repository(trust_repo.clone())
-        .with_trust_score_recalculation_port(Arc::new(NoOpTrustScoreRecalculation)),
-        propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone()),
-        counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone()),
-        accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone()),
-        reject_term: RejectTerm::new(deal_repo.clone(), party_repo.clone()),
-        withdraw_term: WithdrawTerm::new(deal_repo.clone(), party_repo.clone()),
+        .with_trust_score_recalculation_port(Arc::new(NoOpTrustScoreRecalculation))
+        .with_notifier(lifecycle_notifier.clone()),
+        propose_term: ProposeTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        counter_term: CounterTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        accept_term: AcceptTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        reject_term: RejectTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
+        withdraw_term: WithdrawTerm::new(deal_repo.clone(), party_repo.clone())
+            .with_notifier(lifecycle_notifier.clone()),
         list_terms: ListTerms::new(deal_repo.clone(), party_repo.clone()),
         set_value_distribution: SetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
         get_value_distribution: GetValueDistribution::new(deal_repo.clone(), party_repo.clone()),
@@ -372,13 +379,15 @@ pub async fn build_state(pool: PgPool) -> AppState {
             deal_repo.clone(),
             milestone_repo.clone(),
             wallet_repo.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         submit_review: application::reviews::SubmitReview::new(
             review_repo.clone(),
             deal_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         list_deal_reviews: application::reviews::ListDealReviews::new(
             deal_repo.clone(),
             review_repo.clone(),
@@ -401,7 +410,8 @@ pub async fn build_state(pool: PgPool) -> AppState {
             deal_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         list_deal_disputes: application::disputes::ListDealDisputes::new(
             deal_repo.clone(),
             dispute_repo.clone(),
@@ -423,7 +433,8 @@ pub async fn build_state(pool: PgPool) -> AppState {
             dispute_repo.clone(),
             deal_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         reject_dispute: application::disputes::RejectDispute::new(
             dispute_repo.clone(),
             deal_repo.clone(),
@@ -445,17 +456,20 @@ pub async fn build_state(pool: PgPool) -> AppState {
             party_verification_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         reject_verification: application::verifications::RejectVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         revoke_verification: application::verifications::RevokeVerification::new(
             party_verification_repo.clone(),
             party_repo.clone(),
             Arc::new(NoOpTrustScoreRecalculation),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         list_admin_verifications: application::verifications::ListAdminVerifications::new(
             party_verification_repo.clone(),
         ),
@@ -589,11 +603,13 @@ pub async fn build_state(pool: PgPool) -> AppState {
             catalog_repo.clone(),
             party_repo.clone(),
             message_repo.clone(),
-        ),
+        )
+        .with_notifier(lifecycle_notifier.clone()),
         update_party_catalog_settings: UpdatePartyCatalogSettings::new(party_repo.clone()),
         catalog_repo,
         db_pool: pool.clone(),
         send_notification,
+        lifecycle_notifier,
         notification_realtime_publisher,
         encryption_service,
         realtime_publisher,
@@ -618,6 +634,11 @@ pub async fn auth_token(user_id: Uuid, scopes: Vec<String>) -> String {
 
 pub async fn create_user(pool: &PgPool, email: &str) -> Uuid {
     let user_id = Uuid::now_v7();
+    let username: String = email
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .take(32)
+        .collect();
     sqlx::query!(
         r#"
         INSERT INTO users (id, email, username, password_hash, created_at, updated_at)
@@ -625,7 +646,7 @@ pub async fn create_user(pool: &PgPool, email: &str) -> Uuid {
         "#,
         user_id,
         email,
-        email.replace(['@', '.'], "_"),
+        username,
         "hashed:password123",
         time::OffsetDateTime::now_utc(),
         time::OffsetDateTime::now_utc()

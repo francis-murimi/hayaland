@@ -1,7 +1,10 @@
 use crate::errors::ApplicationError;
 use crate::milestones::access::{allow_milestone_mutations, ensure_participant};
 use crate::milestones::dto::{MilestoneActionCommand, MilestoneWithTransactionResult};
-use domain::entities::{Milestone, MilestoneStatus, PlatformWallet, Transaction, TransactionType};
+use crate::notifications::LifecycleNotifier;
+use domain::entities::{
+    Milestone, MilestoneStatus, NotificationType, PlatformWallet, Transaction, TransactionType,
+};
 use domain::repositories::{
     DealRepository, MilestoneRepository, PartyRepository, WalletRepository,
 };
@@ -16,6 +19,7 @@ pub struct VerifyMilestone {
     deal_repo: Arc<dyn DealRepository>,
     milestone_repo: Arc<dyn MilestoneRepository>,
     wallet_repo: Arc<dyn WalletRepository>,
+    notifier: Option<Arc<LifecycleNotifier>>,
 }
 
 impl VerifyMilestone {
@@ -30,7 +34,13 @@ impl VerifyMilestone {
             deal_repo,
             milestone_repo,
             wallet_repo,
+            notifier: None,
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<LifecycleNotifier>) -> Self {
+        self.notifier = Some(notifier);
+        self
     }
 
     #[instrument(skip(self, cmd), fields(milestone_id = %cmd.milestone_id))]
@@ -76,6 +86,9 @@ impl VerifyMilestone {
         };
 
         self.milestone_repo.update(&milestone).await?;
+
+        self.emit_verified_notification(&deal, &milestone, cmd.actor_user_id)
+            .await;
 
         info!(
             milestone_id = %milestone.id,
@@ -153,5 +166,31 @@ impl VerifyMilestone {
             self.wallet_repo.create(&wallet).await?;
         }
         Ok(())
+    }
+
+    async fn emit_verified_notification(
+        &self,
+        deal: &domain::entities::Deal,
+        milestone: &Milestone,
+        actor_user_id: Uuid,
+    ) {
+        let Some(notifier) = self.notifier.as_ref() else {
+            return;
+        };
+        let metadata = serde_json::json!({
+            "deal_name": deal.deal_title.as_str(),
+            "deal_id": deal.id,
+            "milestone_title": milestone.milestone_name.as_str(),
+            "milestone_id": milestone.id,
+        });
+        let result = notifier
+            .notify_deal_participants(
+                actor_user_id,
+                deal.id,
+                NotificationType::MilestoneVerified,
+                metadata,
+            )
+            .await;
+        notifier.fire_and_forget(result, "milestone verified");
     }
 }
