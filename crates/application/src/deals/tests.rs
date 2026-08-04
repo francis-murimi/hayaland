@@ -13,12 +13,13 @@ use crate::deals::{
 use crate::errors::ApplicationError;
 use crate::parties::dto::CreatePartyCommand;
 use crate::parties::CreateParty;
-use crate::test_helpers::{FakeAgreementRepo, FakeDealRepo, FakePartyRepo};
+use crate::payments::CreateWallet;
+use crate::test_helpers::{FakeAgreementRepo, FakeDealRepo, FakePartyRepo, FakeWalletRepo};
 use domain::entities::{
-    DealRole, DealStatus, DistributionModel, ParticipationStatus, PartyType, TermStatus, TermType,
-    ValueDistribution,
+    DealRole, DealStatus, DistributionModel, ParticipationStatus, PartyType, PlatformWallet,
+    TermStatus, TermType, TransactionType, ValueDistribution,
 };
-use domain::repositories::DealRepository;
+use domain::repositories::{DealRepository, WalletRepository};
 use domain::services::ValidationConfig;
 use rust_decimal::Decimal;
 use std::sync::Arc;
@@ -171,6 +172,16 @@ async fn create_sample_deal() -> (
         enhancer,
         result,
     )
+}
+
+async fn fund_party_wallet(wallet_repo: &Arc<FakeWalletRepo>, party_id: Uuid, amount: Decimal) {
+    let mut wallet = wallet_repo
+        .find_by_party_id(party_id)
+        .await
+        .unwrap()
+        .unwrap_or_else(|| PlatformWallet::new(Uuid::now_v7(), party_id));
+    wallet.deposit(amount).unwrap();
+    wallet_repo.update(&wallet).await.unwrap();
 }
 
 #[tokio::test]
@@ -349,12 +360,23 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
     set_valid_value_distribution(&deal_repo, deal_id).await;
 
     let agreement_repo = Arc::new(FakeAgreementRepo::default());
+    let wallet_repo = Arc::new(FakeWalletRepo::default());
+    // Create and fund wallets for all parties; the consumer must cover the cost.
+    for party_id in [supplier, consumer, enhancer] {
+        CreateWallet::new(wallet_repo.clone())
+            .execute(party_id)
+            .await
+            .unwrap();
+    }
+    fund_party_wallet(&wallet_repo, consumer, Decimal::from(10000)).await;
+
     let transition = ExecuteTransition::new(
         deal_repo.clone(),
         party_repo.clone(),
         agreement_repo.clone(),
         domain::services::ValidationConfig::default(),
-    );
+    )
+    .with_wallet_repository(wallet_repo.clone());
 
     let result = transition
         .execute(
@@ -418,6 +440,148 @@ async fn execute_transition_moves_through_negotiating_to_committed() {
         .await
         .unwrap();
     assert_eq!(result.deal_status, DealStatus::Committed);
+
+    // The consumer's escrow hold should have been recorded automatically.
+    let consumer_wallet = wallet_repo
+        .find_by_party_id(consumer)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(consumer_wallet.balance, Decimal::ZERO);
+    assert_eq!(consumer_wallet.escrow_balance, Decimal::from(10000));
+
+    let txns = wallet_repo
+        .find_transactions(
+            consumer,
+            &domain::repositories::TransactionFilters {
+                deal_id: Some(deal_id),
+                transaction_type: Some("ESCROW_HOLD".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(txns.len(), 1);
+    assert_eq!(txns[0].amount, Decimal::from(10000));
+    assert_eq!(txns[0].transaction_type, TransactionType::EscrowHold);
+}
+
+#[tokio::test]
+async fn commit_rejected_when_consumer_has_insufficient_funds() {
+    let (party_repo, deal_repo, deal_id, supplier, consumer, enhancer, _result) =
+        create_sample_deal().await;
+
+    let mut aggregate = deal_repo
+        .find_aggregate_by_id(deal_id)
+        .await
+        .unwrap()
+        .unwrap();
+    aggregate.deal.deal_status = DealStatus::PendingReview;
+    deal_repo.update(&aggregate.deal).await.unwrap();
+
+    let participations = deal_repo
+        .find_participations_by_deal(deal_id)
+        .await
+        .unwrap();
+    for mut p in participations {
+        p.participation_status = ParticipationStatus::Accepted;
+        p.responded_at = Some(time::OffsetDateTime::now_utc());
+        deal_repo.update_participation(&p).await.unwrap();
+    }
+
+    set_valid_value_distribution(&deal_repo, deal_id).await;
+
+    let agreement_repo = Arc::new(FakeAgreementRepo::default());
+    let wallet_repo = Arc::new(FakeWalletRepo::default());
+    for party_id in [supplier, consumer, enhancer] {
+        CreateWallet::new(wallet_repo.clone())
+            .execute(party_id)
+            .await
+            .unwrap();
+    }
+    // Consumer is short by one point.
+    fund_party_wallet(&wallet_repo, consumer, Decimal::from(9999)).await;
+
+    let transition = ExecuteTransition::new(
+        deal_repo.clone(),
+        party_repo.clone(),
+        agreement_repo.clone(),
+        domain::services::ValidationConfig::default(),
+    )
+    .with_wallet_repository(wallet_repo.clone());
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Negotiating,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::TermsLocked,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    let sign = SignAgreement::new(deal_repo.clone(), party_repo.clone(), agreement_repo);
+    for party_id in [supplier, consumer, enhancer] {
+        sign.execute(SignAgreementCommand {
+            actor_user_id: actor_user_id(),
+            actor_party_id: party_id,
+            is_admin: false,
+            deal_id,
+            signature_type: domain::entities::SignatureType::DigitalAttestation,
+            ip_address: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    let err = transition
+        .execute(
+            deal_id,
+            ExecuteTransitionCommand {
+                actor_user_id: actor_user_id(),
+                actor_party_id: supplier,
+                is_admin: false,
+                new_status: DealStatus::Committed,
+                reason: None,
+                acknowledge_warnings: false,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, ApplicationError::InsufficientEscrowFunds));
+
+    let deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
+    assert_eq!(deal.deal_status, DealStatus::TermsLocked);
+
+    // No escrow should have been moved.
+    let consumer_wallet = wallet_repo
+        .find_by_party_id(consumer)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(consumer_wallet.balance, Decimal::from(9999));
+    assert_eq!(consumer_wallet.escrow_balance, Decimal::ZERO);
 }
 
 #[tokio::test]

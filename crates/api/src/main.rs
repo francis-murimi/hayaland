@@ -313,7 +313,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_trust_score_repository(trust_repo.clone())
         .with_trust_score_recalculation_port(trust_score_recalculation_port.clone())
-        .with_notifier(lifecycle_notifier.clone()),
+        .with_notifier(lifecycle_notifier.clone())
+        .with_wallet_repository(wallet_repo.clone()),
         submit_review: application::reviews::SubmitReview::new(
             review_repo.clone(),
             deal_repo.clone(),

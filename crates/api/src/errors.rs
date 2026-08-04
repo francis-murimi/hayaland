@@ -95,6 +95,9 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::InvalidMatchStatus(_))
             | ApiError::Application(ApplicationError::InvalidMatchResponse(_))
             | ApiError::Application(ApplicationError::MatchExpired) => StatusCode::BAD_REQUEST,
+            ApiError::Application(ApplicationError::InsufficientEscrowFunds) => {
+                StatusCode::PAYMENT_REQUIRED
+            }
         }
     }
 
@@ -216,6 +219,9 @@ impl ResponseError for ApiError {
             }
             ApiError::Application(ApplicationError::PushSendFailed) => "push_send_failed",
             ApiError::Application(ApplicationError::SmsSendFailed) => "sms_send_failed",
+            ApiError::Application(ApplicationError::InsufficientEscrowFunds) => {
+                "insufficient_escrow_funds"
+            }
             ApiError::Validation(_) => "validation_error",
             ApiError::Forbidden => "forbidden",
         };

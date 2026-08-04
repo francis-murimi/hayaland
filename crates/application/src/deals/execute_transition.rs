@@ -6,11 +6,12 @@ use crate::errors::ApplicationError;
 use crate::notifications::LifecycleNotifier;
 use crate::ports::TrustScoreRecalculationPort;
 use domain::entities::{
-    AgreementStatus, DealStatus, NotificationType, ParticipationStatus, TermStatus,
+    AgreementStatus, DealRole, DealStatus, NotificationType, ParticipationStatus, TermStatus,
+    Transaction, TransactionStatus, TransactionType, ValueDistribution,
 };
 use domain::repositories::{
     AgreementRepository, DealRepository, MilestoneRepository, PartyRepository, ReviewRepository,
-    TrustScoreRepository,
+    TrustScoreRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use std::sync::Arc;
@@ -23,6 +24,7 @@ pub struct ExecuteTransition {
     deal_repo: Arc<dyn DealRepository>,
     party_repo: Arc<dyn PartyRepository>,
     agreement_repo: Arc<dyn AgreementRepository>,
+    wallet_repo: Option<Arc<dyn WalletRepository>>,
     milestone_repo: Option<Arc<dyn MilestoneRepository>>,
     review_repo: Option<Arc<dyn ReviewRepository>>,
     trust_repo: Option<Arc<dyn TrustScoreRepository>>,
@@ -42,6 +44,7 @@ impl ExecuteTransition {
             deal_repo,
             party_repo,
             agreement_repo,
+            wallet_repo: None,
             milestone_repo: None,
             review_repo: None,
             trust_repo: None,
@@ -62,6 +65,7 @@ impl ExecuteTransition {
             deal_repo,
             party_repo,
             agreement_repo,
+            wallet_repo: None,
             milestone_repo: Some(milestone_repo),
             review_repo: None,
             trust_repo: None,
@@ -83,6 +87,7 @@ impl ExecuteTransition {
             deal_repo,
             party_repo,
             agreement_repo,
+            wallet_repo: None,
             milestone_repo: Some(milestone_repo),
             review_repo: Some(review_repo),
             trust_repo: None,
@@ -90,6 +95,11 @@ impl ExecuteTransition {
             notifier: None,
             validation_config,
         }
+    }
+
+    pub fn with_wallet_repository(mut self, wallet_repo: Arc<dyn WalletRepository>) -> Self {
+        self.wallet_repo = Some(wallet_repo);
+        self
     }
 
     pub fn with_trust_score_repository(
@@ -199,9 +209,12 @@ impl ExecuteTransition {
                         to: cmd.new_status.as_str().to_string(),
                     });
                 }
-                self.validate_commit(deal_id, cmd.acknowledge_warnings)
+                let value_distribution = self
+                    .validate_commit(deal_id, cmd.acknowledge_warnings)
                     .await?;
                 self.require_signed_agreement(deal_id).await?;
+                self.hold_consumer_escrow(deal_id, &participations, &value_distribution)
+                    .await?;
             }
             DealStatus::Executing => {
                 if deal.deal_status != DealStatus::Committed {
@@ -447,8 +460,9 @@ impl ExecuteTransition {
         &self,
         deal_id: Uuid,
         acknowledge_warnings: bool,
-    ) -> Result<(), ApplicationError> {
-        self.deal_repo
+    ) -> Result<ValueDistribution, ApplicationError> {
+        let value_distribution = self
+            .deal_repo
             .find_value_distribution_by_deal(deal_id)
             .await?
             .ok_or_else(|| ApplicationError::WinWinWinValidationFailed {
@@ -477,6 +491,61 @@ impl ExecuteTransition {
             });
         }
         persist_validation(&*self.deal_repo, deal_id, &result).await?;
+        Ok(value_distribution)
+    }
+
+    async fn hold_consumer_escrow(
+        &self,
+        deal_id: Uuid,
+        participations: &[domain::entities::DealParticipation],
+        value_distribution: &ValueDistribution,
+    ) -> Result<(), ApplicationError> {
+        let wallet_repo = self.wallet_repo.as_ref().ok_or_else(|| {
+            ApplicationError::Infrastructure(
+                "wallet repository is required to commit a deal".to_string(),
+            )
+        })?;
+
+        let consumer_participation = participations
+            .iter()
+            .find(|p| p.role == DealRole::Consumer)
+            .ok_or_else(|| {
+                ApplicationError::Validation(vec!["deal has no consumer participation".to_string()])
+            })?;
+        let consumer_party_id = consumer_participation.party_id;
+
+        let mut wallet = wallet_repo
+            .find_by_party_id(consumer_party_id)
+            .await?
+            .ok_or(ApplicationError::NotFound)?;
+
+        let amount = value_distribution.consumer_cost_amount;
+        wallet.hold_escrow(amount).map_err(|err| match err {
+            domain::errors::DomainError::Validation(messages)
+                if messages.iter().any(|m| m == "insufficient balance") =>
+            {
+                ApplicationError::InsufficientEscrowFunds
+            }
+            _ => ApplicationError::from(err),
+        })?;
+
+        let transaction = Transaction::new(
+            Uuid::now_v7(),
+            deal_id,
+            TransactionType::EscrowHold,
+            Some(consumer_party_id),
+            None,
+            amount,
+            Some("automatic escrow hold on deal commit".to_string()),
+            TransactionStatus::Verified,
+            None,
+            None,
+        );
+
+        wallet_repo
+            .record_transaction(&wallet, &transaction)
+            .await?;
+
         Ok(())
     }
 

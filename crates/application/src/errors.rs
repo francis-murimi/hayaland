@@ -57,6 +57,9 @@ pub enum ApplicationError {
     #[error("win-win-win validation failed")]
     WinWinWinValidationFailed { violations: Vec<String> },
 
+    #[error("insufficient escrow funds to commit to deal")]
+    InsufficientEscrowFunds,
+
     #[error("deal access denied")]
     DealAccessDenied,
 
