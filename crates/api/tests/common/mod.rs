@@ -47,7 +47,9 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
-use application::ports::{EncryptionService, NoOpTrustScoreRecalculation, RealtimePublisher};
+use application::ports::{
+    EncryptionService, MediaStorage, NoOpTrustScoreRecalculation, RealtimePublisher,
+};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -61,21 +63,24 @@ use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
 use application::users::update_user::UpdateUser;
 use async_trait::async_trait;
 use domain::repositories::{
-    AgreementRepository, CatalogRepository, ChatRoomRepository, DealRepository, DisputeRepository,
-    EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
+    AgreementRepository, AnalyticsRepository, AuditLogRepository, CatalogRepository,
+    ChatRoomRepository, DealRepository, DisputeRepository, EmailVerificationRepository,
+    MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
-    TrustScoreRepository, UserRepository, WalletRepository,
+    SearchRepository, TrustScoreRepository, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
 use infrastructure::{
+    media::LocalFileStorage,
     realtime::InMemoryRealtimePublisher,
     repositories::{
-        PostgresAgreementRepository, PostgresCatalogRepository, PostgresChatRoomRepository,
-        PostgresDealRepository, PostgresDisputeRepository, PostgresEmailVerificationRepository,
+        PostgresAgreementRepository, PostgresAnalyticsRepository, PostgresAuditLogRepository,
+        PostgresCatalogRepository, PostgresChatRoomRepository, PostgresDealRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMediaRepository,
         PostgresMessageRepository, PostgresMilestoneRepository, PostgresPartyRepository,
         PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
-        PostgresReviewRepository, PostgresRoleRepository, PostgresTrustScoreRepository,
-        PostgresUserRepository, PostgresWalletRepository,
+        PostgresReviewRepository, PostgresRoleRepository, PostgresSearchRepository,
+        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
 };
@@ -117,7 +122,12 @@ impl application::email::queue::EmailQueue for FakeEmailQueue {
     }
 }
 
+#[allow(dead_code)]
 pub async fn build_state(pool: PgPool) -> AppState {
+    build_state_sync(pool)
+}
+
+pub fn build_state_sync(pool: PgPool) -> AppState {
     let repo: Arc<dyn UserRepository> = Arc::new(PostgresUserRepository::new(pool.clone()));
     let verification_repo: Arc<dyn EmailVerificationRepository> =
         Arc::new(PostgresEmailVerificationRepository::new(pool.clone()));
@@ -158,6 +168,21 @@ pub async fn build_state(pool: PgPool) -> AppState {
         Arc::new(
             infrastructure::repositories::PostgresNotificationTemplateRepository::new(pool.clone()),
         );
+    let analytics_repo: Arc<dyn AnalyticsRepository> =
+        Arc::new(PostgresAnalyticsRepository::new(pool.clone()));
+    let audit_log_repo: Arc<dyn AuditLogRepository> =
+        Arc::new(PostgresAuditLogRepository::new(pool.clone()));
+    let media_repo: Arc<dyn MediaRepository> = Arc::new(PostgresMediaRepository::new(pool.clone()));
+    let search_repo: Arc<dyn SearchRepository> =
+        Arc::new(PostgresSearchRepository::new(pool.clone()));
+    let media_storage: Arc<dyn MediaStorage> = Arc::new(LocalFileStorage::new(
+        "./test-uploads".to_string(),
+        "/uploads".to_string(),
+    ));
+    let media_settings = infrastructure::config::MediaSettings {
+        storage_path: "./test-uploads".to_string(),
+        ..Default::default()
+    };
     let notification_realtime_publisher: Arc<
         dyn application::ports::NotificationRealtimePublisher,
     > = Arc::new(application::ports::NoOpNotificationRealtimePublisher);
@@ -617,9 +642,35 @@ pub async fn build_state(pool: PgPool) -> AppState {
         chat_room_repository: chat_room_repo,
         websocket_registry: SessionRegistry::new(),
         token_validator: token_service,
+        get_dashboard_summary: application::analytics::GetDashboardSummary::new(
+            analytics_repo.clone(),
+        ),
+        get_deal_trends: application::analytics::GetDealTrends::new(analytics_repo.clone()),
+        get_party_activity: application::analytics::GetPartyActivity::new(analytics_repo.clone()),
+        list_daily_metrics: application::analytics::ListDailyMetrics::new(analytics_repo.clone()),
+        refresh_daily_metrics: application::analytics::RefreshDailyMetrics::new(
+            analytics_repo.clone(),
+        ),
+        list_audit_log: application::audit_log::ListAuditLog::new(audit_log_repo.clone()),
+        record_admin_action: application::audit_log::RecordAdminAction::new(audit_log_repo.clone()),
+        upload_media: application::media::UploadMedia::new(
+            media_repo.clone(),
+            media_storage.clone(),
+            media_settings.max_size_bytes,
+            media_settings.allowed_content_types.clone(),
+        ),
+        list_media: application::media::ListMedia::new(media_repo.clone()),
+        delete_media: application::media::DeleteMedia::new(
+            media_repo.clone(),
+            media_storage.clone(),
+        ),
+        search: application::search::Search::new(search_repo.clone()),
+        media_storage,
+        media_settings,
     }
 }
 
+#[allow(dead_code)]
 pub async fn auth_token(user_id: Uuid, scopes: Vec<String>) -> String {
     let generator = JwtTokenService::new("test-secret".to_string(), 86400);
     generator

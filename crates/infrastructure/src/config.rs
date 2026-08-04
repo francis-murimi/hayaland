@@ -24,6 +24,10 @@ pub struct Settings {
     pub notifications: NotificationSettings,
     #[serde(default)]
     pub trust_score: TrustScoreSettings,
+    #[serde(default)]
+    pub media: MediaSettings,
+    #[serde(default)]
+    pub analytics_worker: AnalyticsWorkerSettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -457,6 +461,74 @@ fn default_timeout_worker_batch_size() -> usize {
     100
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct MediaSettings {
+    #[serde(default = "default_media_storage_path")]
+    pub storage_path: String,
+    #[serde(default = "default_media_public_base_url")]
+    pub public_base_url: String,
+    #[serde(default = "default_media_max_size_bytes")]
+    pub max_size_bytes: usize,
+    #[serde(default = "default_media_allowed_content_types")]
+    pub allowed_content_types: Vec<String>,
+}
+
+impl Default for MediaSettings {
+    fn default() -> Self {
+        Self {
+            storage_path: default_media_storage_path(),
+            public_base_url: default_media_public_base_url(),
+            max_size_bytes: default_media_max_size_bytes(),
+            allowed_content_types: default_media_allowed_content_types(),
+        }
+    }
+}
+
+fn default_media_storage_path() -> String {
+    "./uploads".to_string()
+}
+
+fn default_media_public_base_url() -> String {
+    "/uploads".to_string()
+}
+
+fn default_media_max_size_bytes() -> usize {
+    10 * 1024 * 1024
+}
+
+fn default_media_allowed_content_types() -> Vec<String> {
+    vec![
+        "image/*".to_string(),
+        "application/pdf".to_string(),
+        "text/plain".to_string(),
+    ]
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AnalyticsWorkerSettings {
+    #[serde(default = "default_analytics_worker_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_analytics_worker_interval_seconds")]
+    pub interval_seconds: u64,
+}
+
+impl Default for AnalyticsWorkerSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_analytics_worker_enabled(),
+            interval_seconds: default_analytics_worker_interval_seconds(),
+        }
+    }
+}
+
+fn default_analytics_worker_enabled() -> bool {
+    true
+}
+
+fn default_analytics_worker_interval_seconds() -> u64 {
+    3600
+}
+
 impl EmailSettings {
     pub fn verification_base_url(&self) -> &str {
         &self.verification_base_url
@@ -588,6 +660,8 @@ mod tests {
             messages: Default::default(),
             notifications: Default::default(),
             trust_score: Default::default(),
+            media: Default::default(),
+            analytics_worker: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();
@@ -623,6 +697,8 @@ mod tests {
             messages: Default::default(),
             notifications: Default::default(),
             trust_score: Default::default(),
+            media: Default::default(),
+            analytics_worker: Default::default(),
         };
 
         let settings = settings.with_database_url_fallback().unwrap();

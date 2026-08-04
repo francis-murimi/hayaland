@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM parties\n            WHERE (\n                $1 = ''\n                OR to_tsvector('english', COALESCE(display_name, '') || ' ' || COALESCE(email, ''))\n                    @@ plainto_tsquery('english', $1)\n            )\n            AND is_active = true\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3d15c23f7f7d637c70ee6dc2bb71d4ab283e82afb86e2bd2240ce146dc69160b"
+}

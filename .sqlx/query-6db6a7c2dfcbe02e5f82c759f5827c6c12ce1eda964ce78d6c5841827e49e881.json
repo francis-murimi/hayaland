@@ -1,0 +1,114 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                supplier_party_id AS owner_party_id,\n                resource_type_id AS category_id,\n                resource_name AS title,\n                description,\n                is_active,\n                verified_by_platform,\n                created_at\n            FROM resources\n            WHERE (\n                $1 = ''\n                OR to_tsvector('english', COALESCE(resource_name, '') || ' ' || COALESCE(description, ''))\n                    @@ plainto_tsquery('english', $1)\n            )\n            AND is_active = true\n            AND platform_hidden = false\n            ORDER BY\n                ts_rank(\n                    to_tsvector('english', COALESCE(resource_name, '') || ' ' || COALESCE(description, '')),\n                    plainto_tsquery('english', $1)\n                ) DESC,\n                created_at DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "supplier_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "resource_type_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "resource_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "verified_by_platform",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "verified_by_platform"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "resources",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6db6a7c2dfcbe02e5f82c759f5827c6c12ce1eda964ce78d6c5841827e49e881"
+}

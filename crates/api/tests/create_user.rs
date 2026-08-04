@@ -94,6 +94,8 @@ use std::sync::{Arc, Mutex, Once};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+mod common;
+
 static INIT_TRACING: Once = Once::new();
 
 fn init_test_tracing() {
@@ -3131,7 +3133,7 @@ fn test_fixtures() -> TestFixtures {
         ),
         update_party_catalog_settings: UpdatePartyCatalogSettings::new(party_repo.clone()),
         catalog_repo,
-        db_pool,
+        db_pool: db_pool.clone(),
         send_notification,
         lifecycle_notifier,
         notification_realtime_publisher,
@@ -3141,6 +3143,7 @@ fn test_fixtures() -> TestFixtures {
         chat_room_repository: chat_room_repo,
         websocket_registry: SessionRegistry::new(),
         token_validator: token,
+        ..common::build_state_sync(db_pool.clone())
     };
 
     TestFixtures {

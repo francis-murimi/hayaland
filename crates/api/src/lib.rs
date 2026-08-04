@@ -10,6 +10,10 @@ use actix_web::{web, App, HttpServer};
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
 };
+use application::analytics::{
+    GetDashboardSummary, GetDealTrends, GetPartyActivity, ListDailyMetrics, RefreshDailyMetrics,
+};
+use application::audit_log::{ListAuditLog, RecordAdminAction};
 use application::catalog::{
     AdminUpdateCatalogFlags, BindCatalogItemToDeal, ContactCatalogOwner, CreateEnhancement,
     CreateNeed, CreateResource, DeleteEnhancement, DeleteNeed, DeleteResource, GetEnhancement,
@@ -27,6 +31,7 @@ use application::disputes::{
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::media::{DeleteMedia, ListMedia, UploadMedia};
 use application::milestones::{
     CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
     StartMilestone, UpdateMilestone, VerifyMilestone,
@@ -49,6 +54,7 @@ use application::reviews::{
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
+use application::search::Search as SearchService;
 use application::trust_scores::{GetTrustScore, RecalculateTrustScore};
 use application::users::authenticate_user::AuthenticateUser;
 use application::users::create_user::CreateUser;
@@ -77,7 +83,7 @@ use application::{
         LifecycleNotifier, ListNotifications, MarkAllNotificationsRead, MarkNotificationRead,
         SendNotification, UpdateNotificationPreferences,
     },
-    ports::{EncryptionService, NotificationRealtimePublisher, RealtimePublisher},
+    ports::{EncryptionService, MediaStorage, NotificationRealtimePublisher, RealtimePublisher},
 };
 use domain::repositories::{CatalogRepository, ChatRoomRepository, MessageRepository};
 use sqlx::PgPool;
@@ -241,6 +247,20 @@ pub struct AppState {
     pub chat_room_repository: Arc<dyn ChatRoomRepository>,
     pub websocket_registry: crate::websocket::SessionRegistry,
     pub token_validator: Arc<dyn TokenVerifier>,
+    // Platform services
+    pub get_dashboard_summary: GetDashboardSummary,
+    pub get_deal_trends: GetDealTrends,
+    pub get_party_activity: GetPartyActivity,
+    pub list_daily_metrics: ListDailyMetrics,
+    pub refresh_daily_metrics: RefreshDailyMetrics,
+    pub list_audit_log: ListAuditLog,
+    pub record_admin_action: RecordAdminAction,
+    pub upload_media: UploadMedia,
+    pub list_media: ListMedia,
+    pub delete_media: DeleteMedia,
+    pub search: SearchService,
+    pub media_storage: Arc<dyn MediaStorage>,
+    pub media_settings: infrastructure::config::MediaSettings,
 }
 
 /// Factory for the Actix HTTP server.

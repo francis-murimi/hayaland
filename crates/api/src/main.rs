@@ -32,7 +32,9 @@ use application::payments::{
     GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
     RecordAdjustment, ReleaseEscrow, WithdrawPoints,
 };
-use application::ports::TrustScoreRecalculationService;
+use application::ports::{
+    EncryptionService, MediaStorage, RealtimePublisher, TrustScoreRecalculationService,
+};
 use application::roles::assign_user_roles::AssignUserRoles;
 use application::roles::list_roles::ListRoles;
 use application::roles::update_role_scopes::UpdateRoleScopes;
@@ -52,35 +54,37 @@ use application::{
         AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
         MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
     },
-    ports::{EncryptionService, RealtimePublisher},
 };
 use domain::repositories::{
-    AgreementRepository, CatalogRepository, ChatRoomRepository, DealRepository, DisputeRepository,
-    EmailVerificationRepository, MessageRepository, MilestoneRepository, PartyRepository,
+    AgreementRepository, AnalyticsRepository, AuditLogRepository, CatalogRepository,
+    ChatRoomRepository, DealRepository, DisputeRepository, EmailVerificationRepository,
+    MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
-    TrustScoreRepository, UserRepository, WalletRepository,
+    SearchRepository, TrustScoreRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
     config, database,
     email::{run_worker, InMemoryEmailQueue, SmtpEmailSender},
+    media::LocalFileStorage,
     migrations,
     notifications::{
         run_notification_worker, NoOpPushSender, NoOpSmsSender, NotificationWorkerConfig,
     },
     realtime::{InMemoryRealtimePublisher, NotificationWebSocketPublisher},
     repositories::{
-        PostgresAgreementRepository, PostgresCatalogRepository, PostgresChatRoomRepository,
-        PostgresDealRepository, PostgresDisputeRepository, PostgresEmailVerificationRepository,
+        PostgresAgreementRepository, PostgresAnalyticsRepository, PostgresAuditLogRepository,
+        PostgresCatalogRepository, PostgresChatRoomRepository, PostgresDealRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMediaRepository,
         PostgresMessageRepository, PostgresMilestoneRepository,
         PostgresNotificationPreferenceRepository, PostgresNotificationRepository,
         PostgresNotificationTemplateRepository, PostgresPartyRepository,
         PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
-        PostgresReviewRepository, PostgresRoleRepository, PostgresTrustScoreRepository,
-        PostgresUserRepository, PostgresWalletRepository,
+        PostgresReviewRepository, PostgresRoleRepository, PostgresSearchRepository,
+        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
     telemetry,
-    workers::{run_deal_timeout_worker, run_trust_score_worker},
+    workers::{run_analytics_worker, run_deal_timeout_worker, run_trust_score_worker},
 };
 use secrecy::ExposeSecret;
 use std::net::TcpListener;
@@ -138,6 +142,17 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PostgresNotificationPreferenceRepository::new(pool.clone()));
     let notification_template_repo: Arc<dyn domain::repositories::NotificationTemplateRepository> =
         Arc::new(PostgresNotificationTemplateRepository::new(pool.clone()));
+    let analytics_repo: Arc<dyn AnalyticsRepository> =
+        Arc::new(PostgresAnalyticsRepository::new(pool.clone()));
+    let audit_log_repo: Arc<dyn AuditLogRepository> =
+        Arc::new(PostgresAuditLogRepository::new(pool.clone()));
+    let media_repo: Arc<dyn MediaRepository> = Arc::new(PostgresMediaRepository::new(pool.clone()));
+    let search_repo: Arc<dyn SearchRepository> =
+        Arc::new(PostgresSearchRepository::new(pool.clone()));
+    let media_storage: Arc<dyn MediaStorage> = Arc::new(LocalFileStorage::new(
+        settings.media.storage_path.clone(),
+        settings.media.public_base_url.clone(),
+    ));
     let hasher = Arc::new(Argon2PasswordHasher);
     let token_service = Arc::new(JwtTokenService::new(
         settings.auth.secret.expose_secret().to_string(),
@@ -244,6 +259,15 @@ async fn main() -> anyhow::Result<()> {
             recalc_all,
             std::time::Duration::from_secs(settings.trust_score.nightly_job.interval_seconds),
             settings.trust_score.nightly_job.batch_size,
+        ));
+    }
+
+    if settings.analytics_worker.enabled {
+        let refresh_daily_metrics =
+            application::analytics::RefreshDailyMetrics::new(analytics_repo.clone());
+        tokio::spawn(run_analytics_worker(
+            Arc::new(refresh_daily_metrics),
+            std::time::Duration::from_secs(settings.analytics_worker.interval_seconds),
         ));
     }
 
@@ -700,6 +724,31 @@ async fn main() -> anyhow::Result<()> {
         chat_room_repository: chat_room_repo,
         websocket_registry,
         token_validator: token_service,
+        get_dashboard_summary: application::analytics::GetDashboardSummary::new(
+            analytics_repo.clone(),
+        ),
+        get_deal_trends: application::analytics::GetDealTrends::new(analytics_repo.clone()),
+        get_party_activity: application::analytics::GetPartyActivity::new(analytics_repo.clone()),
+        list_daily_metrics: application::analytics::ListDailyMetrics::new(analytics_repo.clone()),
+        refresh_daily_metrics: application::analytics::RefreshDailyMetrics::new(
+            analytics_repo.clone(),
+        ),
+        list_audit_log: application::audit_log::ListAuditLog::new(audit_log_repo.clone()),
+        record_admin_action: application::audit_log::RecordAdminAction::new(audit_log_repo.clone()),
+        upload_media: application::media::UploadMedia::new(
+            media_repo.clone(),
+            media_storage.clone(),
+            settings.media.max_size_bytes,
+            settings.media.allowed_content_types.clone(),
+        ),
+        list_media: application::media::ListMedia::new(media_repo.clone()),
+        delete_media: application::media::DeleteMedia::new(
+            media_repo.clone(),
+            media_storage.clone(),
+        ),
+        search: application::search::Search::new(search_repo.clone()),
+        media_storage,
+        media_settings: settings.media.clone(),
     };
 
     let address = format!("{}:{}", settings.server.host, settings.server.port);

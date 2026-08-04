@@ -4,15 +4,19 @@ pub mod chatrooms;
 pub mod deals;
 pub mod disputes;
 pub mod matches;
+pub mod media;
 pub mod messages;
 pub mod notifications;
 pub mod parties;
 pub mod payments;
 pub mod reviews;
+pub mod search;
 pub mod users;
 pub mod verifications;
 
 pub mod admin;
+pub mod analytics;
+pub mod audit_log;
 pub mod catalog;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -36,6 +40,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(verifications::configure)
             .configure(admin::configure)
             .configure(catalog::configure)
+            .configure(analytics::configure)
+            .configure(audit_log::configure)
+            .configure(media::configure)
+            .configure(search::configure)
             .route("/health", web::get().to(health))
             .route("/auth/login", web::post().to(crate::handlers::login::login))
             .route(
@@ -60,6 +68,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::put().to(crate::handlers::roles::update_role_scopes),
             ),
     );
+    media::configure_uploads(cfg);
 }
 
 async fn health() -> HttpResponse {

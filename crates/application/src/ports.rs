@@ -169,6 +169,23 @@ pub trait SmsSender: Send + Sync {
     async fn send(&self, phone: &str, body: &str) -> Result<(), ApplicationError>;
 }
 
+/// Outbound port for storing and retrieving uploaded media files.
+#[async_trait]
+pub trait MediaStorage: Send + Sync {
+    /// Store the file content and return a relative storage path.
+    async fn store(
+        &self,
+        content: &[u8],
+        extension: Option<&str>,
+    ) -> Result<String, ApplicationError>;
+
+    /// Delete a stored file by its relative path.
+    async fn delete(&self, path: &str) -> Result<(), ApplicationError>;
+
+    /// Return a publicly accessible URL for the stored file.
+    async fn public_url(&self, path: &str) -> Result<String, ApplicationError>;
+}
+
 /// A lightweight domain event emitted after a business transaction succeeds.
 #[derive(Debug, Clone)]
 pub enum DomainEvent {

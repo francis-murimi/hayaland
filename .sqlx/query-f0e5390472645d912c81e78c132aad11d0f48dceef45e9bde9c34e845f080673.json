@@ -1,0 +1,223 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                date,\n                total_deals,\n                deals_completed,\n                deals_disputed,\n                deals_cancelled,\n                deals_by_status as \"deals_by_status!: sqlx::types::Json<serde_json::Value>\",\n                total_parties,\n                active_parties,\n                total_users,\n                active_users,\n                avg_deal_value,\n                total_escrow_held,\n                total_fees_collected,\n                total_reviews,\n                avg_review_score,\n                created_at,\n                updated_at\n            FROM platform_metrics\n            WHERE ($1::DATE IS NULL OR date >= $1)\n              AND ($2::DATE IS NULL OR date <= $2)\n            ORDER BY date DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "total_deals",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "total_deals"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "deals_completed",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "deals_completed"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "deals_disputed",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "deals_disputed"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "deals_cancelled",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "deals_cancelled"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "deals_by_status!: sqlx::types::Json<serde_json::Value>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "deals_by_status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "total_parties",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "total_parties"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "active_parties",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "active_parties"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "total_users",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "total_users"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "active_users",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "active_users"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "avg_deal_value",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "avg_deal_value"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "total_escrow_held",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "total_escrow_held"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "total_fees_collected",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "total_fees_collected"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "total_reviews",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "total_reviews"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "avg_review_score",
+        "type_info": "Numeric",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "avg_review_score"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "platform_metrics",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f0e5390472645d912c81e78c132aad11d0f48dceef45e9bde9c34e845f080673"
+}

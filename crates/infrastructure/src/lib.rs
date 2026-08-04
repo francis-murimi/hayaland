@@ -1,6 +1,7 @@
 pub mod config;
 pub mod database;
 pub mod email;
+pub mod media;
 pub mod migrations;
 pub mod notifications;
 pub mod realtime;

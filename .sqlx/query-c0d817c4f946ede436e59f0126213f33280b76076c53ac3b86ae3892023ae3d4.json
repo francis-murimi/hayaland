@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM resources\n            WHERE (\n                $1 = ''\n                OR to_tsvector('english', COALESCE(resource_name, '') || ' ' || COALESCE(description, ''))\n                    @@ plainto_tsquery('english', $1)\n            )\n            AND is_active = true\n            AND platform_hidden = false\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c0d817c4f946ede436e59f0126213f33280b76076c53ac3b86ae3892023ae3d4"
+}

@@ -1,0 +1,109 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                consumer_party_id AS owner_party_id,\n                need_category_id AS category_id,\n                need_description AS title,\n                quality_requirements AS description,\n                is_active,\n                false AS verified_by_platform,\n                created_at\n            FROM needs\n            WHERE (\n                $1 = ''\n                OR to_tsvector('english', COALESCE(need_description, '') || ' ' || COALESCE(quality_requirements, ''))\n                    @@ plainto_tsquery('english', $1)\n            )\n            AND is_active = true\n            AND platform_hidden = false\n            ORDER BY\n                ts_rank(\n                    to_tsvector('english', COALESCE(need_description, '') || ' ' || COALESCE(quality_requirements, '')),\n                    plainto_tsquery('english', $1)\n                ) DESC,\n                created_at DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "consumer_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "need_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "need_description"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "quality_requirements"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "verified_by_platform",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "needs",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      null,
+      false
+    ]
+  },
+  "hash": "4cf506cdb0902c16283eab58069023340230afaaf823fa861714096e5cefe1a0"
+}

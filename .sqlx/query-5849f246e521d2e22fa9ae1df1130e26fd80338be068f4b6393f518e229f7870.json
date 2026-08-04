@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) as \"count!\"\n            FROM media_uploads\n            WHERE ($1::UUID IS NULL OR owner_user_id = $1)\n              AND ($2::UUID IS NULL OR owner_party_id = $2)\n              AND ($3::TEXT IS NULL OR related_entity_type = $3)\n              AND ($4::UUID IS NULL OR related_entity_id = $4)\n              AND ($5 OR deleted_at IS NULL)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "5849f246e521d2e22fa9ae1df1130e26fd80338be068f4b6393f518e229f7870"
+}

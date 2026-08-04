@@ -26,6 +26,7 @@ const PUBLIC_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v1/enhancements*"),
     ("GET", "/api/v1/discovery*"),
     ("GET", "/api/v1/catalog/categories*"),
+    ("GET", "/api/v1/search*"),
 ];
 
 /// Middleware that validates a `Bearer` JWT for protected routes and inserts the
@@ -241,6 +242,13 @@ mod tests {
         assert!(!is_public_route("POST", "/api/v1/resources"));
         assert!(!is_public_route("PUT", "/api/v1/resources/123"));
         assert!(!is_public_route("DELETE", "/api/v1/resources/123"));
+    }
+
+    #[test]
+    fn prefix_public_route_matches_search() {
+        assert!(is_public_route("GET", "/api/v1/search"));
+        assert!(is_public_route("GET", "/api/v1/search?q=hello"));
+        assert!(!is_public_route("POST", "/api/v1/search"));
     }
 
     #[test]

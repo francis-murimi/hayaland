@@ -4,3 +4,8 @@
 .env
 Cargo.lock
 # Keep .sqlx/ — it holds compile-time query metadata for offline builds.
+
+# Local media upload directories
+/uploads
+/test-uploads
+crates/*/test-uploads

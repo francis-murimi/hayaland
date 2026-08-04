@@ -85,6 +85,8 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod common;
+
 struct TestTokenService {
     secret: String,
 }
@@ -605,6 +607,7 @@ async fn build_state(pool: PgPool) -> AppState {
         chat_room_repository: chat_room_repo,
         websocket_registry: SessionRegistry::new(),
         token_validator: token_service,
+        ..common::build_state_sync(pool.clone())
     }
 }
 

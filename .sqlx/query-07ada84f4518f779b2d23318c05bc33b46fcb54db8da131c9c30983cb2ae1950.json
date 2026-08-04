@@ -1,0 +1,126 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                deal_reference,\n                deal_title,\n                deal_description,\n                deal_status,\n                domain_category_id,\n                initiator_party_id,\n                is_public,\n                created_at\n            FROM deals\n            WHERE (\n                $1 = ''\n                OR to_tsvector('english', COALESCE(deal_title, '') || ' ' || COALESCE(deal_description, ''))\n                    @@ plainto_tsquery('english', $1)\n            )\n            AND is_public = true\n            ORDER BY\n                ts_rank(\n                    to_tsvector('english', COALESCE(deal_title, '') || ' ' || COALESCE(deal_description, '')),\n                    plainto_tsquery('english', $1)\n                ) DESC,\n                created_at DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_reference",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_reference"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "deal_title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "deal_description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_description"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "deal_status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "deal_status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "domain_category_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "domain_category_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "initiator_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "initiator_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "is_public",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "is_public"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "deals",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "07ada84f4518f779b2d23318c05bc33b46fcb54db8da131c9c30983cb2ae1950"
+}

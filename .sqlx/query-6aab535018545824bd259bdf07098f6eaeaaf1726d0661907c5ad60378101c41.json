@@ -1,0 +1,197 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                owner_user_id,\n                owner_party_id,\n                purpose,\n                related_entity_type,\n                related_entity_id,\n                original_filename,\n                stored_filename,\n                storage_path,\n                content_type,\n                size_bytes,\n                sha256,\n                is_public,\n                created_at,\n                deleted_at\n            FROM media_uploads\n            WHERE id = $1\n              AND ($2 OR deleted_at IS NULL)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "owner_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "owner_party_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "owner_party_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "purpose",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "purpose"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "related_entity_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "related_entity_type"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "related_entity_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "related_entity_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "original_filename",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "original_filename"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "stored_filename",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "stored_filename"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "storage_path",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "storage_path"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "content_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "content_type"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "size_bytes",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "size_bytes"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "sha256",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "sha256"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "is_public",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "is_public"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "deleted_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "media_uploads",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "6aab535018545824bd259bdf07098f6eaeaaf1726d0661907c5ad60378101c41"
+}

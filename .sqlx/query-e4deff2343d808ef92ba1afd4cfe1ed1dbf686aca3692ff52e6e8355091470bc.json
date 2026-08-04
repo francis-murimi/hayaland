@@ -1,0 +1,143 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                admin_user_id,\n                action_type,\n                target_type,\n                target_id,\n                before_snapshot,\n                after_snapshot,\n                reason,\n                ip_address,\n                created_at\n            FROM admin_actions\n            WHERE ($1::UUID IS NULL OR admin_user_id = $1)\n              AND ($2::TEXT IS NULL OR action_type = $2)\n              AND ($3::TEXT IS NULL OR target_type = $3)\n              AND ($4::UUID IS NULL OR target_id = $4)\n              AND ($5::TIMESTAMPTZ IS NULL OR created_at >= $5)\n              AND ($6::TIMESTAMPTZ IS NULL OR created_at <= $6)\n            ORDER BY created_at DESC\n            LIMIT $7 OFFSET $8\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "admin_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "admin_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "action_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "action_type"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "target_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "target_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "target_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "target_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "before_snapshot",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "before_snapshot"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "after_snapshot",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "after_snapshot"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "reason"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "ip_address",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "ip_address"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_actions",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "e4deff2343d808ef92ba1afd4cfe1ed1dbf686aca3692ff52e6e8355091470bc"
+}

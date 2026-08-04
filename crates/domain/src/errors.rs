@@ -269,6 +269,30 @@ pub enum DomainError {
     #[error("dispute access denied")]
     DisputeAccessDenied,
 
+    #[error("invalid admin action type: {message}")]
+    InvalidAdminActionType { message: String },
+
+    #[error("invalid admin action target type: {message}")]
+    InvalidAdminActionTargetType { message: String },
+
+    #[error("invalid media content type: {message}")]
+    InvalidMediaContentType { message: String },
+
+    #[error("invalid media purpose: {message}")]
+    InvalidMediaPurpose { message: String },
+
+    #[error("invalid media related entity type: {message}")]
+    InvalidMediaRelatedEntityType { message: String },
+
+    #[error("invalid media size: {message}")]
+    InvalidMediaSize { message: String },
+
+    #[error("media upload not found")]
+    MediaNotFound,
+
+    #[error("invalid search target: {message}")]
+    InvalidSearchTarget { message: String },
+
     #[error("repository error: {0}")]
     RepositoryError(String),
 }

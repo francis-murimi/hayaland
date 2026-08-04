@@ -94,7 +94,18 @@ impl ResponseError for ApiError {
             | ApiError::Application(ApplicationError::InvalidOrExpiredPasswordResetToken)
             | ApiError::Application(ApplicationError::InvalidMatchStatus(_))
             | ApiError::Application(ApplicationError::InvalidMatchResponse(_))
-            | ApiError::Application(ApplicationError::MatchExpired) => StatusCode::BAD_REQUEST,
+            | ApiError::Application(ApplicationError::MatchExpired)
+            | ApiError::Application(ApplicationError::InvalidMediaContentType { .. })
+            | ApiError::Application(ApplicationError::MediaTooLarge)
+            | ApiError::Application(ApplicationError::InvalidSearchTarget { .. }) => {
+                StatusCode::BAD_REQUEST
+            }
+            ApiError::Application(ApplicationError::MediaNotFound)
+            | ApiError::Application(ApplicationError::AuditLogNotFound) => StatusCode::NOT_FOUND,
+            ApiError::Application(ApplicationError::MediaStorageFailed { .. })
+            | ApiError::Application(ApplicationError::AnalyticsError { .. }) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
             ApiError::Application(ApplicationError::InsufficientEscrowFunds) => {
                 StatusCode::PAYMENT_REQUIRED
             }
@@ -219,6 +230,19 @@ impl ResponseError for ApiError {
             ApiError::Application(ApplicationError::MatchExpired) => "match_expired",
             ApiError::Application(ApplicationError::PartyNotMatchParticipant) => {
                 "party_not_match_participant"
+            }
+            ApiError::Application(ApplicationError::MediaNotFound) => "media_not_found",
+            ApiError::Application(ApplicationError::InvalidMediaContentType { .. }) => {
+                "invalid_media_content_type"
+            }
+            ApiError::Application(ApplicationError::MediaTooLarge) => "media_too_large",
+            ApiError::Application(ApplicationError::MediaStorageFailed { .. }) => {
+                "media_storage_failed"
+            }
+            ApiError::Application(ApplicationError::AuditLogNotFound) => "audit_log_not_found",
+            ApiError::Application(ApplicationError::AnalyticsError { .. }) => "analytics_error",
+            ApiError::Application(ApplicationError::InvalidSearchTarget { .. }) => {
+                "invalid_search_target"
             }
             ApiError::Application(ApplicationError::PushSendFailed) => "push_send_failed",
             ApiError::Application(ApplicationError::SmsSendFailed) => "sms_send_failed",

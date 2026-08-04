@@ -192,6 +192,27 @@ pub enum ApplicationError {
     #[error("failed to send sms")]
     SmsSendFailed,
 
+    #[error("media upload not found")]
+    MediaNotFound,
+
+    #[error("invalid media content type: {message}")]
+    InvalidMediaContentType { message: String },
+
+    #[error("media upload too large")]
+    MediaTooLarge,
+
+    #[error("media storage operation failed: {message}")]
+    MediaStorageFailed { message: String },
+
+    #[error("audit log entry not found")]
+    AuditLogNotFound,
+
+    #[error("analytics operation failed: {message}")]
+    AnalyticsError { message: String },
+
+    #[error("invalid search target: {message}")]
+    InvalidSearchTarget { message: String },
+
     #[error("infrastructure error: {0}")]
     Infrastructure(String),
 }
@@ -329,6 +350,16 @@ impl From<DomainError> for ApplicationError {
             }
             DomainError::MatchExpired => ApplicationError::MatchExpired,
             DomainError::PartyNotMatchParticipant => ApplicationError::PartyNotMatchParticipant,
+            DomainError::InvalidAdminActionType { message }
+            | DomainError::InvalidAdminActionTargetType { message }
+            | DomainError::InvalidMediaContentType { message }
+            | DomainError::InvalidMediaPurpose { message }
+            | DomainError::InvalidMediaRelatedEntityType { message }
+            | DomainError::InvalidMediaSize { message }
+            | DomainError::InvalidSearchTarget { message } => {
+                ApplicationError::Validation(vec![message])
+            }
+            DomainError::MediaNotFound => ApplicationError::MediaNotFound,
         }
     }
 }

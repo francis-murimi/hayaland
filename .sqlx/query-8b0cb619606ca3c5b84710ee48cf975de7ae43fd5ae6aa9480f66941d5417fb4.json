@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO media_uploads (\n                id, owner_user_id, owner_party_id, purpose, related_entity_type, related_entity_id,\n                original_filename, stored_filename, storage_path, content_type, size_bytes, sha256,\n                is_public, created_at, deleted_at\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8b0cb619606ca3c5b84710ee48cf975de7ae43fd5ae6aa9480f66941d5417fb4"
+}
