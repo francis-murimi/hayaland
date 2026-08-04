@@ -476,4 +476,146 @@ mod tests {
         let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
         assert!(result.blocked);
     }
+
+    #[test]
+    fn total_value_below_minimum_blocks() {
+        let mut input = input_with_shares(60, 30, 10);
+        input.value_distribution.total_value = Decimal::from(100);
+        input.value_distribution.supplier_share_amount = Decimal::from(60);
+        input.value_distribution.enhancer_share_amount = Decimal::from(30);
+        input.value_distribution.platform_fee_amount = Decimal::from(10);
+        input.value_distribution.consumer_cost_amount = Decimal::from(100);
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(result.blocked);
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == "DEAL_VALUE_TOO_SMALL"));
+    }
+
+    #[test]
+    fn platform_fee_exceeds_maximum_blocks() {
+        let input = input_with_shares(10, 10, 80);
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(result.blocked);
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == "PLATFORM_FEE_EXCEEDS_MAX"));
+    }
+
+    #[test]
+    fn supplier_share_low_warns() {
+        let input = input_with_shares(3, 67, 30);
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.code == "SUPPLIER_SHARE_LOW"));
+    }
+
+    #[test]
+    fn enhancer_share_high_warns() {
+        let input = input_with_shares(30, 50, 20);
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.code == "ENHANCER_SHARE_HIGH"));
+    }
+
+    #[test]
+    fn high_risk_ratio_warns() {
+        // supplier 69%, enhancer 1% -> ratio 69:1, far above the max of 3.
+        let input = input_with_shares(69, 1, 30);
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert!(result.warnings.iter().any(|w| w.code == "RISK_RATIO_HIGH"));
+    }
+
+    #[test]
+    fn front_loaded_payment_schedule_warns() {
+        let mut input = input_with_shares(60, 30, 10);
+        input.value_distribution.payment_schedule = vec![
+            crate::entities::PaymentScheduleEntry {
+                sequence: 1,
+                trigger: crate::entities::PaymentTrigger::Upfront,
+                due_at: None,
+                amount: Decimal::from(8500),
+                recipient_role: DealRole::Supplier,
+                milestone_id: None,
+            },
+            crate::entities::PaymentScheduleEntry {
+                sequence: 2,
+                trigger: crate::entities::PaymentTrigger::OnDelivery,
+                due_at: None,
+                amount: Decimal::from(1500),
+                recipient_role: DealRole::Enhancer,
+                milestone_id: None,
+            },
+        ];
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.code == "PAYMENT_SCHEDULE_FRONT_LOADED"));
+    }
+
+    #[test]
+    fn market_benchmark_premium_increases_score() {
+        let mut input = input_with_shares(60, 30, 10);
+        input.market_benchmark_premium = Some(Decimal::from(10));
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert!(result.score > Decimal::from(70));
+    }
+
+    #[test]
+    fn high_active_deals_reduce_opportunity_score() {
+        let mut input = input_with_shares(60, 30, 10);
+        input.supplier.active_deals = 5;
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert!(result.score < Decimal::from(100));
+    }
+
+    #[test]
+    fn zero_score_weights_yield_zero_score() {
+        let input = input_with_shares(60, 30, 10);
+        let config = ValidationConfig {
+            score_weights: ScoreWeights {
+                absolute_gain: Decimal::ZERO,
+                proportional_fairness: Decimal::ZERO,
+                market_benchmark: Decimal::ZERO,
+                opportunity_cost: Decimal::ZERO,
+            },
+            ..ValidationConfig::default()
+        };
+        let result = WinWinWinValidator::validate(&input, &config);
+        assert!(!result.blocked);
+        assert_eq!(result.score, Decimal::ZERO);
+    }
+
+    #[test]
+    fn poor_deal_status() {
+        // Low supplier share, many active deals and a high platform fee push the score below 50.
+        let mut input = input_with_shares(5, 25, 70);
+        input.supplier.active_deals = 5;
+        input.consumer.active_deals = 5;
+        input.enhancer.active_deals = 5;
+        let result = WinWinWinValidator::validate(&input, &ValidationConfig::default());
+        assert!(!result.blocked);
+        assert_eq!(result.status, ValidationStatus::Poor);
+    }
+
+    #[test]
+    fn safe_percent_with_zero_whole_returns_zero() {
+        assert_eq!(
+            WinWinWinValidator::safe_percent(Decimal::from(100), Decimal::ZERO),
+            Decimal::ZERO
+        );
+    }
 }

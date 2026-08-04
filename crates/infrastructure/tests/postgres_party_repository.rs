@@ -245,3 +245,47 @@ async fn duplicate_email_is_rejected(pool: PgPool) {
         domain::errors::DomainError::DuplicatePartyEmail
     ));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn lists_members_for_party(pool: PgPool) {
+    let user_repo = PostgresUserRepository::new(pool.clone());
+    let repo = PostgresPartyRepository::new(pool);
+    let party = sample_party("list-members@example.com");
+    let id = party.id;
+    let user = User::new(
+        Uuid::now_v7(),
+        Email::new("listmember@example.com").unwrap(),
+        Username::new("listmember").unwrap(),
+        PasswordHash::new("hash".to_string()).unwrap(),
+    );
+    let user_id = user.id;
+
+    user_repo.create(&user).await.unwrap();
+    repo.create(&party).await.unwrap();
+
+    let membership =
+        UserPartyMembership::new(Uuid::now_v7(), user_id, id, PartyMembershipRole::Owner);
+    repo.add_membership(&membership).await.unwrap();
+
+    let members = repo.list_members_for_party(id).await.unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].user_id, user_id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn count_active_deals_returns_zero_without_deals(pool: PgPool) {
+    let repo = PostgresPartyRepository::new(pool);
+    let party = sample_party("no-deals@example.com");
+    let id = party.id;
+
+    repo.create(&party).await.unwrap();
+
+    let count = repo.count_active_deals(id).await.unwrap();
+    assert_eq!(count, 0);
+
+    let count = repo
+        .count_active_deals_for_role(id, DealRole::Supplier)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}

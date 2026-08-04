@@ -235,3 +235,72 @@ pub struct BindCatalogItemInput {
     pub deal_id: Uuid,
     pub overrides: Option<serde_json::Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_item_type_round_trips() {
+        for variant in [
+            CatalogItemType::Resource,
+            CatalogItemType::Need,
+            CatalogItemType::Enhancement,
+        ] {
+            assert_eq!(
+                CatalogItemType::try_from(variant.as_str()).unwrap(),
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_item_type_rejects_unknown() {
+        assert!(matches!(
+            CatalogItemType::try_from("UNKNOWN"),
+            Err(DomainError::InvalidCatalogSearchParameters { .. })
+        ));
+    }
+
+    #[test]
+    fn catalog_item_status_round_trips() {
+        for variant in [
+            CatalogItemStatus::Active,
+            CatalogItemStatus::Inactive,
+            CatalogItemStatus::All,
+        ] {
+            assert_eq!(
+                CatalogItemStatus::try_from(variant.as_str()).unwrap(),
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_item_status_rejects_unknown() {
+        assert!(matches!(
+            CatalogItemStatus::try_from("DRAFT"),
+            Err(DomainError::InvalidCatalogSearchParameters { .. })
+        ));
+    }
+
+    #[test]
+    fn catalog_sort_round_trips() {
+        for variant in [
+            CatalogSort::Newest,
+            CatalogSort::TrustScore,
+            CatalogSort::Nearest,
+            CatalogSort::Relevance,
+        ] {
+            assert_eq!(CatalogSort::try_from(variant.as_str()).unwrap(), variant);
+        }
+    }
+
+    #[test]
+    fn catalog_sort_rejects_unknown() {
+        assert!(matches!(
+            CatalogSort::try_from("OLDEST"),
+            Err(DomainError::InvalidCatalogSearchParameters { .. })
+        ));
+    }
+}

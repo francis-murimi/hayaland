@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                dp.role as \"role!\",\n                COUNT(*) FILTER (WHERE d.deal_status = 'COMPLETED') as \"completed!: i64\",\n                COUNT(*) FILTER (WHERE d.deal_status = 'CANCELLED') as \"cancelled!: i64\",\n                COALESCE(SUM(d.total_deal_value) FILTER (WHERE d.deal_status = 'COMPLETED'), 0.0) as \"value!: f64\"\n            FROM deal_participations dp\n            JOIN deals d ON d.id = dp.deal_id\n            WHERE dp.party_id = $1\n            GROUP BY dp.role\n            ",
+  "query": "\n            SELECT\n                dp.role as \"role!\",\n                COUNT(*) FILTER (WHERE d.deal_status = 'COMPLETED') as \"completed!: i64\",\n                COUNT(*) FILTER (WHERE d.deal_status = 'CANCELLED') as \"cancelled!: i64\",\n                COALESCE(SUM(d.total_deal_value) FILTER (WHERE d.deal_status = 'COMPLETED'), 0.0::double precision) as \"value!: f64\"\n            FROM deal_participations dp\n            JOIN deals d ON d.id = dp.deal_id\n            WHERE dp.party_id = $1\n            GROUP BY dp.role\n            ",
   "describe": {
     "columns": [
       {
@@ -29,7 +29,7 @@
       {
         "ordinal": 3,
         "name": "value!: f64",
-        "type_info": "Numeric",
+        "type_info": "Float8",
         "origin": "Expression"
       }
     ],
@@ -45,5 +45,5 @@
       null
     ]
   },
-  "hash": "bbde1a818cfb4cf0d2a012171a1b8dc626479c6ceb31b0fdb17d444b30c046be"
+  "hash": "16178be30b8bf67c527703db381f5c12e5de5f742a8860e14a7a2582694bbd5e"
 }

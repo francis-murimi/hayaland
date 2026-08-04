@@ -20,3 +20,14 @@ impl SmsSender for NoOpSmsSender {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn send_returns_ok() {
+        let sender = NoOpSmsSender::new();
+        sender.send("+1234567890", "hello").await.unwrap();
+    }
+}

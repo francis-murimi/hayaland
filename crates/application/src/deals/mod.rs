@@ -5,6 +5,8 @@ pub mod get_deal;
 pub mod list_deals;
 pub mod process_timeouts;
 pub mod settlement_saga;
+#[cfg(test)]
+pub mod settlement_saga_tests;
 pub mod submit_deal;
 pub mod terms;
 pub mod timeout_config;

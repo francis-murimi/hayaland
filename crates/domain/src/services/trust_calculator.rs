@@ -281,3 +281,351 @@ fn clone_inputs(inputs: &TrustScoreInputs) -> TrustScoreInputs {
 pub fn tier_from_score(score: f64, thresholds: &TrustTierThresholds) -> TrustTier {
     TrustTier::from_score(score, thresholds)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entities::{DisputeInput, ReviewInput};
+    use std::collections::HashMap;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    fn default_config() -> TrustScoreConfig {
+        TrustScoreConfig::default()
+    }
+
+    fn base_inputs() -> TrustScoreInputs {
+        TrustScoreInputs {
+            deals_completed_count: 0,
+            deals_cancelled_count: 0,
+            deals_disputed_count: 0,
+            timeouts_count: 0,
+            no_shows_count: 0,
+            total_completed_value: 0.0,
+            reviews: Vec::new(),
+            disputes: Vec::new(),
+            role_deals: HashMap::new(),
+            role_reviews: HashMap::new(),
+            response_metrics: ResponseMetrics {
+                average_response_hours: None,
+                messages_received_90d: 0,
+                messages_responded_90d: 0,
+            },
+            profile_completeness: 0.0,
+            verification_level: 0,
+            longevity_days: 0,
+            days_since_last_activity: None,
+        }
+    }
+
+    #[test]
+    fn calculate_with_empty_inputs_uses_defaults_and_cold_start() {
+        let config = default_config();
+        let inputs = base_inputs();
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.transaction_history, 50.0);
+        assert_eq!(score.components.review_ratings, 25.0);
+        assert_eq!(score.components.response_rate, 50.0);
+        assert_eq!(score.components.dispute_history, 100.0);
+        assert_eq!(score.components.longevity, 0.0);
+        assert_eq!(score.components.community, 50.0);
+        assert_eq!(score.tier, TrustTier::Bronze);
+        assert!(score.as_supplier_score.is_none());
+        assert!(score.as_consumer_score.is_none());
+        assert!(score.as_enhancer_score.is_none());
+    }
+
+    #[test]
+    fn transaction_history_score_combines_completion_rate_and_value() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.deals_completed_count = 8;
+        inputs.deals_cancelled_count = 2;
+        inputs.total_completed_value = 1000.0;
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.transaction_history, 71.0);
+    }
+
+    #[test]
+    fn review_ratings_uses_cold_start_when_no_reviews() {
+        let config = default_config();
+        let inputs = base_inputs();
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.review_ratings, 25.0);
+    }
+
+    #[test]
+    fn review_ratings_ignores_hidden_reviews() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.reviews.push(ReviewInput {
+            reviewer_party_id: None,
+            reviewer_overall_score: 80.0,
+            review_score: 5.0,
+            deal_value: 100.0,
+            created_at: OffsetDateTime::now_utc(),
+            is_public: false,
+            is_hidden: true,
+        });
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.review_ratings, 25.0);
+    }
+
+    #[test]
+    fn review_ratings_blends_with_cold_start_below_threshold() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.reviews.push(ReviewInput {
+            reviewer_party_id: None,
+            reviewer_overall_score: 100.0,
+            review_score: 5.0,
+            deal_value: 100.0,
+            created_at: OffsetDateTime::now_utc(),
+            is_public: true,
+            is_hidden: false,
+        });
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        // One review out of 3 threshold -> alpha = 1/3
+        // own_score = 5.0 * (0.5 + 1.0 * 0.5) * 20 = 100
+        // cold = 2.5 * 10 = 25
+        assert!((score.components.review_ratings - 50.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn review_ratings_uses_own_score_when_enough_reviews() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        for _ in 0..3 {
+            inputs.reviews.push(ReviewInput {
+                reviewer_party_id: None,
+                reviewer_overall_score: 100.0,
+                review_score: 4.0,
+                deal_value: 100.0,
+                created_at: OffsetDateTime::now_utc(),
+                is_public: true,
+                is_hidden: false,
+            });
+        }
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        // weighted avg = 4.0 * 1.0 = 4.0, own_score = 80.0
+        assert_eq!(score.components.review_ratings, 80.0);
+    }
+
+    #[test]
+    fn verification_level_score_steps() {
+        let config = default_config();
+        for (level, expected) in [(0, 0.0), (1, 25.0), (2, 50.0), (3, 75.0), (5, 100.0)] {
+            let mut inputs = base_inputs();
+            inputs.verification_level = level;
+            let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+            assert_eq!(
+                score.components.verification_level, expected,
+                "level {level}"
+            );
+        }
+    }
+
+    #[test]
+    fn response_rate_score_with_no_messages_defaults_to_fifty() {
+        let config = default_config();
+        let inputs = base_inputs();
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.response_rate, 50.0);
+    }
+
+    #[test]
+    fn response_rate_score_combines_rate_and_speed() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.response_metrics = ResponseMetrics {
+            average_response_hours: Some(12.0),
+            messages_received_90d: 10,
+            messages_responded_90d: 10,
+        };
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        // Existing formula: (rate * 50 + speed * 50) / 100
+        // rate = 1.0, speed = 100 - (11/23)*30 ≈ 85.65
+        let speed = 100.0 - 11.0 / 23.0 * 30.0;
+        let expected = (1.0 * 50.0 + speed * 50.0) / 100.0;
+        assert!((score.components.response_rate - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn response_rate_speed_branches() {
+        let config = default_config();
+        let cases = [
+            (0.5, 100.0),
+            (1.0, 100.0),
+            (24.0, 70.0),
+            (48.0, 70.0 - 24.0 / 168.0 * 70.0),
+            (200.0, 0.0),
+        ];
+        for (hours, speed) in cases {
+            let mut inputs = base_inputs();
+            inputs.response_metrics = ResponseMetrics {
+                average_response_hours: Some(hours),
+                messages_received_90d: 10,
+                messages_responded_90d: 10,
+            };
+            let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+            // With rate = 1.0 the existing formula yields (50 + speed * 50) / 100.
+            let expected = (50.0 + speed * 50.0) / 100.0;
+            assert!(
+                (score.components.response_rate - expected).abs() < 0.001,
+                "hours {hours}"
+            );
+        }
+    }
+
+    #[test]
+    fn dispute_history_score_punishes_lost_disputes() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.disputes.push(DisputeInput {
+            raised_by_party_id: Uuid::now_v7(),
+            against_party_id: None,
+            resolution_type: Some("refund".into()),
+            resolution_outcome: Some("lost".into()),
+            created_at: OffsetDateTime::now_utc(),
+            resolved_at: None,
+        });
+        inputs.disputes.push(DisputeInput {
+            raised_by_party_id: Uuid::now_v7(),
+            against_party_id: None,
+            resolution_type: Some("refund".into()),
+            resolution_outcome: Some("won".into()),
+            created_at: OffsetDateTime::now_utc(),
+            resolved_at: None,
+        });
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.dispute_history, 50.0);
+    }
+
+    #[test]
+    fn partially_lost_dispute_counts_as_lost() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.disputes.push(DisputeInput {
+            raised_by_party_id: Uuid::now_v7(),
+            against_party_id: None,
+            resolution_type: None,
+            resolution_outcome: Some("partially_lost".into()),
+            created_at: OffsetDateTime::now_utc(),
+            resolved_at: None,
+        });
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.dispute_history, 0.0);
+    }
+
+    #[test]
+    fn longevity_score_caps_at_100() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.longevity_days = 365 * 10;
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.longevity, 100.0);
+    }
+
+    #[test]
+    fn community_score_activity_and_verification_bonuses() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.days_since_last_activity = Some(3);
+        inputs.verification_level = 3;
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.community, 85.0);
+    }
+
+    #[test]
+    fn apply_decay_reduces_score_after_30_days() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.days_since_last_activity = Some(65);
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        // 2 full 30-day periods -> penalty 4.0
+        assert!(score.overall_score < 50.0);
+    }
+
+    #[test]
+    fn role_scores_computed_when_role_deals_present() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.role_deals.insert(
+            "supplier".into(),
+            RoleDealInput {
+                deals_completed_count: 10,
+                deals_cancelled_count: 0,
+                total_completed_value: 500.0,
+            },
+        );
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert!(score.as_supplier_score.is_some());
+        assert!(score.as_supplier_score.unwrap() > 0.0);
+        assert!(score.as_consumer_score.is_none());
+        assert!(score.as_enhancer_score.is_none());
+    }
+
+    #[test]
+    fn role_score_with_reviews() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.role_deals.insert(
+            "consumer".into(),
+            RoleDealInput {
+                deals_completed_count: 5,
+                deals_cancelled_count: 0,
+                total_completed_value: 100.0,
+            },
+        );
+        inputs.role_reviews.insert(
+            "consumer".into(),
+            vec![ReviewInput {
+                reviewer_party_id: None,
+                reviewer_overall_score: 80.0,
+                review_score: 5.0,
+                deal_value: 100.0,
+                created_at: OffsetDateTime::now_utc(),
+                is_public: true,
+                is_hidden: false,
+            }],
+        );
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert!(score.as_consumer_score.is_some());
+    }
+
+    #[test]
+    fn tier_changes_based_on_score() {
+        let thresholds = TrustTierThresholds::default();
+        assert_eq!(tier_from_score(30.0, &thresholds), TrustTier::Bronze);
+        assert_eq!(tier_from_score(45.0, &thresholds), TrustTier::Silver);
+        assert_eq!(tier_from_score(65.0, &thresholds), TrustTier::Gold);
+        assert_eq!(tier_from_score(80.0, &thresholds), TrustTier::Platinum);
+    }
+
+    #[test]
+    fn scores_are_clamped_between_zero_and_one_hundred() {
+        let config = default_config();
+        let mut inputs = base_inputs();
+        inputs.profile_completeness = 150.0;
+        inputs.verification_level = 10;
+        let score = TrustCalculator::calculate(Uuid::now_v7(), &inputs, &config);
+
+        assert_eq!(score.components.profile_completeness, 100.0);
+        assert_eq!(score.components.verification_level, 100.0);
+    }
+}

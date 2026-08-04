@@ -236,4 +236,69 @@ mod tests {
         assert_eq!(vd.platform_fee_amount, Decimal::from(1000));
         assert!(vd.validate().is_ok());
     }
+
+    #[test]
+    fn distribution_model_round_trips() {
+        for variant in [
+            DistributionModel::FixedPrice,
+            DistributionModel::RevenueShare,
+            DistributionModel::CostPlus,
+            DistributionModel::Barter,
+            DistributionModel::Hybrid,
+        ] {
+            assert_eq!(
+                DistributionModel::try_from(variant.as_str()).unwrap(),
+                variant
+            );
+        }
+        assert!(DistributionModel::try_from("UNKNOWN").is_err());
+    }
+
+    #[test]
+    fn payment_trigger_round_trips() {
+        for variant in [
+            PaymentTrigger::Upfront,
+            PaymentTrigger::Milestone,
+            PaymentTrigger::OnDelivery,
+            PaymentTrigger::Deferred,
+        ] {
+            assert_eq!(PaymentTrigger::try_from(variant.as_str()).unwrap(), variant);
+        }
+        assert!(PaymentTrigger::try_from("UNKNOWN").is_err());
+    }
+
+    #[test]
+    fn rejects_supplier_share_not_positive() {
+        let mut vd = valid_distribution();
+        vd.supplier_share_percentage = Decimal::ZERO;
+        vd.supplier_share_amount = Decimal::ZERO;
+        assert!(vd.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_consumer_cost_exceeding_total() {
+        let mut vd = valid_distribution();
+        vd.consumer_cost_amount = Decimal::from(20000);
+        assert!(vd.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_negative_platform_fee() {
+        let mut vd = valid_distribution();
+        vd.platform_fee_percentage = Decimal::from(-10);
+        vd.enhancer_share_percentage = Decimal::from(40);
+        vd.supplier_share_percentage = Decimal::from(60);
+        assert!(vd.validate().is_err());
+    }
+
+    #[test]
+    fn recalculate_updates_consumer_cost() {
+        let mut vd = valid_distribution();
+        vd.total_value = Decimal::from(20000);
+        vd.recalculate_amounts();
+        assert_eq!(vd.consumer_cost_amount, Decimal::from(20000));
+        assert_eq!(vd.supplier_share_amount, Decimal::from(12000));
+        assert_eq!(vd.enhancer_share_amount, Decimal::from(6000));
+        assert_eq!(vd.platform_fee_amount, Decimal::from(2000));
+    }
 }

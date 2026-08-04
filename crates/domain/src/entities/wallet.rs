@@ -446,4 +446,63 @@ mod tests {
         assert_eq!(recipient.balance, Decimal::from(40));
         assert!(source.debit_escrow(Decimal::from(100)).is_err());
     }
+
+    #[test]
+    fn currency_try_from_rejects_unknown() {
+        assert_eq!(Currency::try_from("POINTS").unwrap(), Currency::Points);
+        assert!(Currency::try_from("USD").is_err());
+    }
+
+    #[test]
+    fn mark_active_re_enables_wallet() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.mark_inactive();
+        assert!(!wallet.is_active);
+        wallet.mark_active();
+        assert!(wallet.is_active);
+        wallet.deposit(Decimal::from(10)).unwrap();
+    }
+
+    #[test]
+    fn release_escrow_rejects_insufficient_escrow() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_escrow(Decimal::from(60)).unwrap();
+        assert!(wallet.release_escrow_to_self(Decimal::from(70)).is_err());
+    }
+
+    #[test]
+    fn commit_pending_to_balance_works() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_pending(Decimal::from(40)).unwrap();
+
+        wallet.commit_pending_to_balance(Decimal::from(25)).unwrap();
+        assert_eq!(wallet.balance, Decimal::from(85));
+        assert_eq!(wallet.pending_balance, Decimal::from(15));
+        assert!(wallet.commit_pending_to_balance(Decimal::from(20)).is_err());
+    }
+
+    #[test]
+    fn release_pending_rejects_insufficient_pending() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_pending(Decimal::from(10)).unwrap();
+        assert!(wallet.release_pending(Decimal::from(20)).is_err());
+    }
+
+    #[test]
+    fn commit_pending_to_escrow_rejects_insufficient_pending() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_pending(Decimal::from(10)).unwrap();
+        assert!(wallet.commit_pending_to_escrow(Decimal::from(20)).is_err());
+    }
+
+    #[test]
+    fn credit_balance_rejects_inactive_wallet() {
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), Uuid::now_v7());
+        wallet.mark_inactive();
+        assert!(wallet.credit_balance(Decimal::from(10)).is_err());
+    }
 }

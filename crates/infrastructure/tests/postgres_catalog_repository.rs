@@ -4,7 +4,7 @@ use domain::entities::{
 };
 use domain::repositories::{
     AdminFlags, CatalogItemStatus, CatalogItemType, CatalogRepository, CatalogSearchCriteria,
-    CatalogSort, DealAggregate, DealRepository, PartyRepository, UserRepository,
+    CatalogSort, DealAggregate, DealRepository, GeoSearch, PartyRepository, UserRepository,
 };
 use infrastructure::repositories::{
     PostgresCatalogRepository, PostgresDealRepository, PostgresPartyRepository,
@@ -1107,4 +1107,948 @@ async fn counts_needs_and_enhancements_for_party(pool: PgPool) {
         repo.count_enhancements_for_party(enhancer).await.unwrap(),
         1
     );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_by_id_returns_none(pool: PgPool) {
+    let repo = PostgresCatalogRepository::new(pool);
+
+    assert!(repo
+        .find_resource_by_id(Uuid::now_v7())
+        .await
+        .unwrap()
+        .is_none());
+    assert!(repo
+        .find_need_by_id(Uuid::now_v7())
+        .await
+        .unwrap()
+        .is_none());
+    assert!(repo
+        .find_enhancement_by_id(Uuid::now_v7())
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn update_not_found_errors(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let supplier = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "unf-s@example.com",
+        "UNF Farm",
+    )
+    .await;
+    let consumer = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "unf-c@example.com",
+        "UNF Store",
+    )
+    .await;
+    let enhancer = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "unf-e@example.com",
+        "UNF Services",
+    )
+    .await;
+
+    let mut resource = sample_resource(supplier);
+    resource.id = Uuid::now_v7();
+    assert!(matches!(
+        repo.update_resource(&resource).await.unwrap_err(),
+        domain::errors::DomainError::ResourceNotFound
+    ));
+
+    let mut need = sample_need(consumer);
+    need.id = Uuid::now_v7();
+    assert!(matches!(
+        repo.update_need(&need).await.unwrap_err(),
+        domain::errors::DomainError::NeedNotFound
+    ));
+
+    let mut enhancement = sample_enhancement(enhancer);
+    enhancement.id = Uuid::now_v7();
+    assert!(matches!(
+        repo.update_enhancement(&enhancement).await.unwrap_err(),
+        domain::errors::DomainError::EnhancementNotFound
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn delete_not_found_errors(pool: PgPool) {
+    let repo = PostgresCatalogRepository::new(pool);
+
+    assert!(matches!(
+        repo.delete_resource(Uuid::now_v7()).await.unwrap_err(),
+        domain::errors::DomainError::ResourceNotFound
+    ));
+    assert!(matches!(
+        repo.delete_need(Uuid::now_v7()).await.unwrap_err(),
+        domain::errors::DomainError::NeedNotFound
+    ));
+    assert!(matches!(
+        repo.delete_enhancement(Uuid::now_v7()).await.unwrap_err(),
+        domain::errors::DomainError::EnhancementNotFound
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn increment_deal_count_not_found(pool: PgPool) {
+    let repo = PostgresCatalogRepository::new(pool);
+    let id = Uuid::now_v7();
+
+    assert!(matches!(
+        repo.increment_deal_count(CatalogItemType::Resource, id)
+            .await
+            .unwrap_err(),
+        domain::errors::DomainError::ResourceNotFound
+    ));
+    assert!(matches!(
+        repo.increment_deal_count(CatalogItemType::Need, id)
+            .await
+            .unwrap_err(),
+        domain::errors::DomainError::NeedNotFound
+    ));
+    assert!(matches!(
+        repo.increment_deal_count(CatalogItemType::Enhancement, id)
+            .await
+            .unwrap_err(),
+        domain::errors::DomainError::EnhancementNotFound
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn update_admin_flags_not_found(pool: PgPool) {
+    let repo = PostgresCatalogRepository::new(pool);
+    let flags = AdminFlags {
+        platform_hidden: Some(true),
+        platform_featured: None,
+        admin_notes: None,
+        admin_reviewed_by: None,
+    };
+
+    assert!(matches!(
+        repo.update_resource_admin_flags(Uuid::now_v7(), flags.clone())
+            .await
+            .unwrap_err(),
+        domain::errors::DomainError::ResourceNotFound
+    ));
+    assert!(matches!(
+        repo.update_need_admin_flags(Uuid::now_v7(), flags.clone())
+            .await
+            .unwrap_err(),
+        domain::errors::DomainError::NeedNotFound
+    ));
+    assert!(matches!(
+        repo.update_enhancement_admin_flags(Uuid::now_v7(), flags)
+            .await
+            .unwrap_err(),
+        domain::errors::DomainError::EnhancementNotFound
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_with_invalid_party_id_returns_party_not_found(pool: PgPool) {
+    let repo = PostgresCatalogRepository::new(pool);
+    let invalid_party_id = Uuid::now_v7();
+
+    let mut resource = sample_resource(invalid_party_id);
+    resource.id = Uuid::now_v7();
+    assert!(matches!(
+        repo.create_resource(&resource).await.unwrap_err(),
+        domain::errors::DomainError::PartyNotFound
+    ));
+
+    let mut need = sample_need(invalid_party_id);
+    need.id = Uuid::now_v7();
+    assert!(matches!(
+        repo.create_need(&need).await.unwrap_err(),
+        domain::errors::DomainError::PartyNotFound
+    ));
+
+    let mut enhancement = sample_enhancement(invalid_party_id);
+    enhancement.id = Uuid::now_v7();
+    assert!(matches!(
+        repo.create_enhancement(&enhancement).await.unwrap_err(),
+        domain::errors::DomainError::PartyNotFound
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn count_for_party_excludes_deal_bound_items(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool.clone());
+
+    let supplier = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "cfb-s@example.com",
+        "CFB Farm",
+    )
+    .await;
+    let consumer = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "cfb-c@example.com",
+        "CFB Store",
+    )
+    .await;
+    let enhancer = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "cfb-e@example.com",
+        "CFB Services",
+    )
+    .await;
+
+    let deal_id = create_deal(pool, supplier, consumer, enhancer, "DL-CFB-0001").await;
+
+    let standalone_resource = sample_resource(supplier);
+    repo.create_resource(&standalone_resource).await.unwrap();
+
+    let mut deal_resource = sample_resource(supplier);
+    deal_resource.deal_id = Some(deal_id);
+    deal_resource.catalog_item_id = None;
+    repo.create_resource(&deal_resource).await.unwrap();
+
+    let standalone_need = sample_need(consumer);
+    repo.create_need(&standalone_need).await.unwrap();
+
+    let mut deal_need = sample_need(consumer);
+    deal_need.deal_id = Some(deal_id);
+    deal_need.catalog_item_id = None;
+    repo.create_need(&deal_need).await.unwrap();
+
+    let standalone_enhancement = sample_enhancement(enhancer);
+    repo.create_enhancement(&standalone_enhancement)
+        .await
+        .unwrap();
+
+    let mut deal_enhancement = sample_enhancement(enhancer);
+    deal_enhancement.deal_id = Some(deal_id);
+    deal_enhancement.catalog_item_id = None;
+    repo.create_enhancement(&deal_enhancement).await.unwrap();
+
+    assert_eq!(repo.count_resources_for_party(supplier).await.unwrap(), 1);
+    assert_eq!(repo.count_needs_for_party(consumer).await.unwrap(), 1);
+    assert_eq!(
+        repo.count_enhancements_for_party(enhancer).await.unwrap(),
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn text_search_finds_needs(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool.clone());
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "tsn@example.com",
+        "TSN Store",
+    )
+    .await;
+
+    let mut matching = sample_need(party_id);
+    matching.need_description = "Organic apple orchard".to_string();
+    repo.create_need(&matching).await.unwrap();
+
+    let mut other = sample_need(party_id);
+    other.need_description = "Concrete mixer".to_string();
+    repo.create_need(&other).await.unwrap();
+
+    sqlx::query!("SELECT set_limit(0.1)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        query: Some("apple".to_string()),
+        sort: CatalogSort::Relevance,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_needs(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].id, matching.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn text_search_finds_enhancements(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool.clone());
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "tse@example.com",
+        "TSE Services",
+    )
+    .await;
+
+    let mut matching = sample_enhancement(party_id);
+    matching
+        .set_name("Precision irrigation installation".to_string())
+        .unwrap();
+    repo.create_enhancement(&matching).await.unwrap();
+
+    let mut other = sample_enhancement(party_id);
+    other.set_name("General consulting".to_string()).unwrap();
+    repo.create_enhancement(&other).await.unwrap();
+
+    sqlx::query!("SELECT set_limit(0.1)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        query: Some("irrigation".to_string()),
+        sort: CatalogSort::Relevance,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_enhancements(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].id, matching.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn geo_search_finds_nearby_needs(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "gsn@example.com",
+        "GSN Store",
+    )
+    .await;
+
+    let mut nearby = sample_need(party_id);
+    nearby.set_location(Some(GeoPoint::new(37.7749, -122.4194).unwrap()));
+    repo.create_need(&nearby).await.unwrap();
+
+    let mut far = sample_need(party_id);
+    far.set_location(Some(GeoPoint::new(40.7128, -74.0060).unwrap()));
+    repo.create_need(&far).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        geo: Some(GeoSearch {
+            latitude: 37.7749,
+            longitude: -122.4194,
+            radius_km: 10.0,
+        }),
+        sort: CatalogSort::Nearest,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_needs(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].id, nearby.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn geo_search_finds_nearby_enhancements(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool.clone());
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "gse@example.com",
+        "GSE Services",
+    )
+    .await;
+
+    let mut nearby = sample_enhancement(party_id);
+    nearby.set_name("Nearby enhancement".to_string()).unwrap();
+    repo.create_enhancement(&nearby).await.unwrap();
+    sqlx::query!(
+        "UPDATE enhancements SET location_geo = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography WHERE id = $3",
+        -122.4194,
+        37.7749,
+        nearby.id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut far = sample_enhancement(party_id);
+    far.set_name("Far enhancement".to_string()).unwrap();
+    repo.create_enhancement(&far).await.unwrap();
+    sqlx::query!(
+        "UPDATE enhancements SET location_geo = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography WHERE id = $3",
+        -74.0060,
+        40.7128,
+        far.id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        geo: Some(GeoSearch {
+            latitude: 37.7749,
+            longitude: -122.4194,
+            radius_km: 10.0,
+        }),
+        sort: CatalogSort::Nearest,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_enhancements(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].id, nearby.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn featured_only_filter_works_for_needs_and_enhancements(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let consumer = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "foc@example.com",
+        "FOC Store",
+    )
+    .await;
+    let enhancer = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "foe@example.com",
+        "FOE Services",
+    )
+    .await;
+
+    let mut featured_need = sample_need(consumer);
+    featured_need.need_description = "Featured need".to_string();
+    featured_need.platform_featured = true;
+    repo.create_need(&featured_need).await.unwrap();
+
+    let mut normal_need = sample_need(consumer);
+    normal_need.need_description = "Normal need".to_string();
+    repo.create_need(&normal_need).await.unwrap();
+
+    let mut featured_enhancement = sample_enhancement(enhancer);
+    featured_enhancement
+        .set_name("Featured enhancement".to_string())
+        .unwrap();
+    featured_enhancement.platform_featured = true;
+    repo.create_enhancement(&featured_enhancement)
+        .await
+        .unwrap();
+
+    let mut normal_enhancement = sample_enhancement(enhancer);
+    normal_enhancement
+        .set_name("Normal enhancement".to_string())
+        .unwrap();
+    repo.create_enhancement(&normal_enhancement).await.unwrap();
+
+    let need_result = repo
+        .list_needs(&CatalogSearchCriteria {
+            featured_only: true,
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(need_result.items.len(), 1);
+    assert_eq!(need_result.items[0].id, featured_need.id);
+
+    let enhancement_result = repo
+        .list_enhancements(&CatalogSearchCriteria {
+            featured_only: true,
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(enhancement_result.items.len(), 1);
+    assert_eq!(enhancement_result.items[0].id, featured_enhancement.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn trust_score_sort_orders_resources(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let mut low_trust_party = sample_party("tss-low@example.com", "Low Trust Farm");
+    low_trust_party.trust_score = 0.2;
+    let low_id = low_trust_party.id;
+    party_repo.create(&low_trust_party).await.unwrap();
+    party_repo
+        .add_role(
+            low_id,
+            DealRole::Supplier,
+            RoleProfile::for_role(DealRole::Supplier),
+        )
+        .await
+        .unwrap();
+
+    let mut high_trust_party = sample_party("tss-high@example.com", "High Trust Farm");
+    high_trust_party.trust_score = 0.9;
+    let high_id = high_trust_party.id;
+    party_repo.create(&high_trust_party).await.unwrap();
+    party_repo
+        .add_role(
+            high_id,
+            DealRole::Supplier,
+            RoleProfile::for_role(DealRole::Supplier),
+        )
+        .await
+        .unwrap();
+
+    let high_resource = sample_resource(high_id);
+    let low_resource = sample_resource(low_id);
+    repo.create_resource(&high_resource).await.unwrap();
+    repo.create_resource(&low_resource).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        sort: CatalogSort::TrustScore,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_resources(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 2);
+    assert_eq!(result.items[0].id, high_resource.id);
+    assert_eq!(result.items[1].id, low_resource.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn trust_score_sort_orders_needs(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let mut low_trust_party = sample_party("tsn-low@example.com", "Low Trust Store");
+    low_trust_party.trust_score = 0.2;
+    let low_id = low_trust_party.id;
+    party_repo.create(&low_trust_party).await.unwrap();
+    party_repo
+        .add_role(
+            low_id,
+            DealRole::Consumer,
+            RoleProfile::for_role(DealRole::Consumer),
+        )
+        .await
+        .unwrap();
+
+    let mut high_trust_party = sample_party("tsn-high@example.com", "High Trust Store");
+    high_trust_party.trust_score = 0.9;
+    let high_id = high_trust_party.id;
+    party_repo.create(&high_trust_party).await.unwrap();
+    party_repo
+        .add_role(
+            high_id,
+            DealRole::Consumer,
+            RoleProfile::for_role(DealRole::Consumer),
+        )
+        .await
+        .unwrap();
+
+    let high_need = sample_need(high_id);
+    let low_need = sample_need(low_id);
+    repo.create_need(&high_need).await.unwrap();
+    repo.create_need(&low_need).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        sort: CatalogSort::TrustScore,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_needs(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 2);
+    assert_eq!(result.items[0].id, high_need.id);
+    assert_eq!(result.items[1].id, low_need.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn trust_score_sort_orders_enhancements(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let mut low_trust_party = sample_party("tse-low@example.com", "Low Trust Services");
+    low_trust_party.trust_score = 0.2;
+    let low_id = low_trust_party.id;
+    party_repo.create(&low_trust_party).await.unwrap();
+    party_repo
+        .add_role(
+            low_id,
+            DealRole::Enhancer,
+            RoleProfile::for_role(DealRole::Enhancer),
+        )
+        .await
+        .unwrap();
+
+    let mut high_trust_party = sample_party("tse-high@example.com", "High Trust Services");
+    high_trust_party.trust_score = 0.9;
+    let high_id = high_trust_party.id;
+    party_repo.create(&high_trust_party).await.unwrap();
+    party_repo
+        .add_role(
+            high_id,
+            DealRole::Enhancer,
+            RoleProfile::for_role(DealRole::Enhancer),
+        )
+        .await
+        .unwrap();
+
+    let high_enhancement = sample_enhancement(high_id);
+    let low_enhancement = sample_enhancement(low_id);
+    repo.create_enhancement(&high_enhancement).await.unwrap();
+    repo.create_enhancement(&low_enhancement).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        sort: CatalogSort::TrustScore,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_enhancements(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 2);
+    assert_eq!(result.items[0].id, high_enhancement.id);
+    assert_eq!(result.items[1].id, low_enhancement.id);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn relevance_sort_without_query_falls_back(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let supplier = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "rfb-s@example.com",
+        "RFB Farm",
+    )
+    .await;
+    let consumer = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "rfb-c@example.com",
+        "RFB Store",
+    )
+    .await;
+    let enhancer = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "rfb-e@example.com",
+        "RFB Services",
+    )
+    .await;
+
+    let resource = sample_resource(supplier);
+    let need = sample_need(consumer);
+    let enhancement = sample_enhancement(enhancer);
+    repo.create_resource(&resource).await.unwrap();
+    repo.create_need(&need).await.unwrap();
+    repo.create_enhancement(&enhancement).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        sort: CatalogSort::Relevance,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    assert_eq!(repo.list_resources(&criteria).await.unwrap().items.len(), 1);
+    assert_eq!(repo.list_needs(&criteria).await.unwrap().items.len(), 1);
+    assert_eq!(
+        repo.list_enhancements(&criteria).await.unwrap().items.len(),
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn nearest_sort_without_geo_falls_back(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let supplier = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "ngb-s@example.com",
+        "NGB Farm",
+    )
+    .await;
+    let consumer = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "ngb-c@example.com",
+        "NGB Store",
+    )
+    .await;
+    let enhancer = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "ngb-e@example.com",
+        "NGB Services",
+    )
+    .await;
+
+    let resource = sample_resource(supplier);
+    let need = sample_need(consumer);
+    let enhancement = sample_enhancement(enhancer);
+    repo.create_resource(&resource).await.unwrap();
+    repo.create_need(&need).await.unwrap();
+    repo.create_enhancement(&enhancement).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        sort: CatalogSort::Nearest,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    assert_eq!(repo.list_resources(&criteria).await.unwrap().items.len(), 1);
+    assert_eq!(repo.list_needs(&criteria).await.unwrap().items.len(), 1);
+    assert_eq!(
+        repo.list_enhancements(&criteria).await.unwrap().items.len(),
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn status_active_include_inactive_lists_both(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "sai@example.com",
+        "SAI Farm",
+    )
+    .await;
+
+    let mut active = sample_resource(party_id);
+    active.resource_name = "Active".to_string();
+    repo.create_resource(&active).await.unwrap();
+
+    let mut inactive = sample_resource(party_id);
+    inactive.resource_name = "Inactive".to_string();
+    inactive.set_active(false);
+    repo.create_resource(&inactive).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        status: Some(CatalogItemStatus::Active),
+        include_inactive: true,
+        include_hidden: true,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    let result = repo.list_resources(&criteria).await.unwrap();
+    assert_eq!(result.items.len(), 2);
+    assert!(result.items.iter().any(|r| r.id == active.id));
+    assert!(result.items.iter().any(|r| r.id == inactive.id));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn include_hidden_lists_hidden_items(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let supplier = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "ih-s@example.com",
+        "IH Farm",
+    )
+    .await;
+    let consumer = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "ih-c@example.com",
+        "IH Store",
+    )
+    .await;
+    let enhancer = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "ih-e@example.com",
+        "IH Services",
+    )
+    .await;
+
+    let mut hidden_resource = sample_resource(supplier);
+    hidden_resource.platform_hidden = true;
+    repo.create_resource(&hidden_resource).await.unwrap();
+
+    let mut hidden_need = sample_need(consumer);
+    hidden_need.platform_hidden = true;
+    repo.create_need(&hidden_need).await.unwrap();
+
+    let mut hidden_enhancement = sample_enhancement(enhancer);
+    hidden_enhancement.platform_hidden = true;
+    repo.create_enhancement(&hidden_enhancement).await.unwrap();
+
+    let criteria = CatalogSearchCriteria {
+        include_hidden: true,
+        limit: 10,
+        offset: 0,
+        ..Default::default()
+    };
+
+    assert_eq!(repo.list_resources(&criteria).await.unwrap().items.len(), 1);
+    assert_eq!(repo.list_needs(&criteria).await.unwrap().items.len(), 1);
+    assert_eq!(
+        repo.list_enhancements(&criteria).await.unwrap().items.len(),
+        1
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn creates_resource_with_condition(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Supplier,
+        "rwc@example.com",
+        "RWC Farm",
+    )
+    .await;
+
+    let mut resource = sample_resource(party_id);
+    resource.condition = Some(ResourceCondition::Good);
+    let id = resource.id;
+
+    repo.create_resource(&resource).await.unwrap();
+
+    let found = repo.find_resource_by_id(id).await.unwrap().unwrap();
+    assert_eq!(found.condition, Some(ResourceCondition::Good));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn creates_and_updates_need_with_priority(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "nwp@example.com",
+        "NWP Store",
+    )
+    .await;
+
+    let mut need = sample_need(party_id);
+    need.priority = Some(domain::entities::NeedPriority::High);
+    let id = need.id;
+
+    repo.create_need(&need).await.unwrap();
+
+    let found = repo.find_need_by_id(id).await.unwrap().unwrap();
+    assert_eq!(found.priority, Some(domain::entities::NeedPriority::High));
+
+    need.priority = Some(domain::entities::NeedPriority::Urgent);
+    repo.update_need(&need).await.unwrap();
+
+    let found = repo.find_need_by_id(id).await.unwrap().unwrap();
+    assert_eq!(found.priority, Some(domain::entities::NeedPriority::Urgent));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn lists_needs_with_category_and_domain_filters(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Consumer,
+        "lncf@example.com",
+        "LNCF Store",
+    )
+    .await;
+
+    let need = sample_need(party_id);
+    repo.create_need(&need).await.unwrap();
+
+    let by_category = repo
+        .list_needs(&CatalogSearchCriteria {
+            category_id: Some(crop_produce_need_type_id()),
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_category.items.len(), 1);
+    assert_eq!(by_category.total, 1);
+
+    let by_domain = repo
+        .list_needs(&CatalogSearchCriteria {
+            domain_category_id: Some(agriculture_domain_id()),
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_domain.items.len(), 1);
+    assert_eq!(by_domain.total, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn lists_enhancements_with_category_and_domain_filters(pool: PgPool) {
+    let party_repo = PostgresPartyRepository::new(pool.clone());
+    let repo = PostgresCatalogRepository::new(pool);
+
+    let party_id = create_party(
+        &party_repo,
+        DealRole::Enhancer,
+        "lecf@example.com",
+        "LECF Services",
+    )
+    .await;
+
+    let enhancement = sample_enhancement(party_id);
+    repo.create_enhancement(&enhancement).await.unwrap();
+
+    let by_category = repo
+        .list_enhancements(&CatalogSearchCriteria {
+            category_id: Some(agro_inputs_enhancement_type_id()),
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_category.items.len(), 1);
+    assert_eq!(by_category.total, 1);
+
+    let by_domain = repo
+        .list_enhancements(&CatalogSearchCriteria {
+            domain_category_id: Some(agriculture_domain_id()),
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_domain.items.len(), 1);
+    assert_eq!(by_domain.total, 1);
 }

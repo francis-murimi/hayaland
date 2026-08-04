@@ -42,3 +42,48 @@ impl RealtimePublisher for InMemoryRealtimePublisher {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use application::ports::MessageEvent;
+    use domain::entities::message::RecipientType;
+    use domain::entities::MessageType;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    fn sample_event() -> MessageEvent {
+        MessageEvent::MessageNew {
+            message_id: Uuid::now_v7(),
+            conversation_id: Uuid::now_v7(),
+            sender_user_id: Uuid::now_v7(),
+            sender_party_id: None,
+            recipient_type: RecipientType::User,
+            recipient_user_id: Some(Uuid::now_v7()),
+            recipient_party_id: None,
+            recipient_deal_id: None,
+            recipient_room_id: None,
+            message_type: MessageType::Text,
+            subject: None,
+            content: "hello".into(),
+            reply_to_message_id: None,
+            created_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    #[tokio::test]
+    async fn records_published_events() {
+        let publisher = InMemoryRealtimePublisher::new();
+        let event = sample_event();
+        publisher.publish(event.clone()).await.unwrap();
+        assert_eq!(publisher.snapshot().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn clear_removes_recorded_events() {
+        let publisher = InMemoryRealtimePublisher::new();
+        publisher.publish(sample_event()).await.unwrap();
+        publisher.clear();
+        assert!(publisher.snapshot().is_empty());
+    }
+}

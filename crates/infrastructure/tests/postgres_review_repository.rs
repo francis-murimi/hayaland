@@ -275,3 +275,266 @@ async fn duplicate_review_fails(pool: PgPool) {
     let err = repo.create(&duplicate).await.unwrap_err();
     assert!(matches!(err, domain::errors::DomainError::DuplicateReview));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_by_id_returns_none_for_unknown_review(pool: PgPool) {
+    let (_deal_id, _supplier_id, _consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    let missing = repo.find_by_id(Uuid::now_v7()).await.unwrap();
+    assert!(missing.is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_and_retrieve_review_with_all_rating_fields(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    let review = Review::new(
+        Uuid::now_v7(),
+        deal_id,
+        supplier_id,
+        consumer_id,
+        DealRole::Consumer,
+        ReviewRating::new(3).unwrap(),
+        Some(ReviewRating::new(1).unwrap()),
+        Some(ReviewRating::new(2).unwrap()),
+        Some(ReviewRating::new(3).unwrap()),
+        Some(ReviewRating::new(4).unwrap()),
+        Some(ReviewText::new("All ratings set").unwrap()),
+        true,
+    );
+    repo.create(&review).await.unwrap();
+
+    let found = repo.find_by_id(review.id).await.unwrap().unwrap();
+    assert_eq!(found.overall_rating.value(), 3);
+    assert_eq!(found.communication_rating.unwrap().value(), 1);
+    assert_eq!(found.reliability_rating.unwrap().value(), 2);
+    assert_eq!(found.quality_rating.unwrap().value(), 3);
+    assert_eq!(found.timeliness_rating.unwrap().value(), 4);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn count_with_reviewed_party_id_and_visibility_filter(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    repo.create(&sample_review(deal_id, supplier_id, consumer_id, true))
+        .await
+        .unwrap();
+    repo.create(&sample_review(deal_id, consumer_id, supplier_id, false))
+        .await
+        .unwrap();
+
+    let all = repo
+        .count(&ReviewSearchCriteria {
+            reviewed_party_id: Some(consumer_id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(all, 1);
+
+    let public_only = repo
+        .count(&ReviewSearchCriteria {
+            reviewed_party_id: Some(supplier_id),
+            is_public: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(public_only, 0);
+
+    let private_only = repo
+        .count(&ReviewSearchCriteria {
+            reviewer_party_id: Some(consumer_id),
+            is_public: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(private_only, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_filters_by_reviewed_party_id_and_private_only(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    repo.create(&sample_review(deal_id, supplier_id, consumer_id, true))
+        .await
+        .unwrap();
+    repo.create(&sample_review(deal_id, consumer_id, supplier_id, false))
+        .await
+        .unwrap();
+
+    let private_for_supplier = repo
+        .list(&ReviewSearchCriteria {
+            reviewed_party_id: Some(supplier_id),
+            is_public: Some(false),
+            limit: 10,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(private_for_supplier.total, 1);
+    assert!(!private_for_supplier.reviews[0].is_public);
+    assert_eq!(
+        private_for_supplier.reviews[0].reviewer_party_id,
+        consumer_id
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_pagination_offset_and_limit(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool.clone());
+
+    let third_party_id = Uuid::now_v7();
+    sqlx::query!(
+        r#"
+        INSERT INTO parties (
+            id, party_type, display_name, email, verification_status, is_active, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        third_party_id,
+        "ORGANIZATION",
+        "Pagination Third Party",
+        "pagination-third@example.com",
+        "UNVERIFIED",
+        true,
+        OffsetDateTime::now_utc(),
+        OffsetDateTime::now_utc()
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let base_time = OffsetDateTime::now_utc();
+    let mut review_configs = [
+        (supplier_id, consumer_id, true, 0),
+        (consumer_id, supplier_id, false, 1),
+        (supplier_id, third_party_id, true, 2),
+    ];
+    for (reviewer_id, reviewed_id, is_public, hour_offset) in &mut review_configs {
+        let mut review = sample_review(deal_id, *reviewer_id, *reviewed_id, *is_public);
+        review.created_at = base_time + time::Duration::hours(*hour_offset);
+        repo.create(&review).await.unwrap();
+    }
+
+    let page = repo
+        .list(&ReviewSearchCriteria {
+            deal_id: Some(deal_id),
+            limit: 1,
+            offset: 1,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(page.total, 3);
+    assert_eq!(page.reviews.len(), 1);
+    assert_eq!(page.limit, 1);
+    assert_eq!(page.offset, 1);
+    // Ordered by created_at DESC; offset 1 is the second newest (hour index 1).
+    assert!(!page.reviews[0].is_public);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn update_review(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    let mut review = sample_review(deal_id, supplier_id, consumer_id, true);
+    repo.create(&review).await.unwrap();
+
+    review.overall_rating = ReviewRating::new(2).unwrap();
+    review.communication_rating = Some(ReviewRating::new(3).unwrap());
+    review.review_text = Some("Updated text".to_owned());
+    review.is_public = false;
+    repo.update(&review).await.unwrap();
+
+    let updated = repo.find_by_id(review.id).await.unwrap().unwrap();
+    assert_eq!(updated.overall_rating.value(), 2);
+    assert_eq!(updated.communication_rating.unwrap().value(), 3);
+    assert_eq!(updated.review_text.as_deref(), Some("Updated text"));
+    assert!(!updated.is_public);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn hide_review_without_platform_response(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    let review = sample_review(deal_id, supplier_id, consumer_id, true);
+    repo.create(&review).await.unwrap();
+
+    repo.hide(review.id, None).await.unwrap();
+
+    let hidden = repo.find_by_id(review.id).await.unwrap().unwrap();
+    assert!(!hidden.is_public);
+    assert!(hidden.review_text.is_none());
+    assert!(hidden.platform_response.is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_review_for_nonexistent_deal_returns_repository_error(pool: PgPool) {
+    let (_deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool);
+
+    let review = sample_review(Uuid::now_v7(), supplier_id, consumer_id, true);
+    let err = repo.create(&review).await.unwrap_err();
+    assert!(matches!(
+        err,
+        domain::errors::DomainError::RepositoryError(_)
+    ));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_missing_review_pairs_excludes_existing(pool: PgPool) {
+    let (deal_id, supplier_id, consumer_id) = setup_deal(&pool).await;
+    let repo = PostgresReviewRepository::new(pool.clone());
+
+    let third_party_id = Uuid::now_v7();
+    sqlx::query!(
+        r#"
+        INSERT INTO parties (
+            id, party_type, display_name, email, verification_status, is_active, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        third_party_id,
+        "ORGANIZATION",
+        "Third Party",
+        "third@example.com",
+        "UNVERIFIED",
+        true,
+        OffsetDateTime::now_utc(),
+        OffsetDateTime::now_utc()
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let participations = [
+        (supplier_id, DealRole::Supplier),
+        (consumer_id, DealRole::Consumer),
+        (third_party_id, DealRole::Enhancer),
+    ];
+
+    let missing = repo
+        .find_missing_review_pairs(deal_id, &participations)
+        .await
+        .unwrap();
+    assert_eq!(missing.len(), 6);
+
+    repo.create(&sample_review(deal_id, supplier_id, consumer_id, true))
+        .await
+        .unwrap();
+
+    let missing = repo
+        .find_missing_review_pairs(deal_id, &participations)
+        .await
+        .unwrap();
+    assert_eq!(missing.len(), 5);
+    assert!(!missing.contains(&(supplier_id, consumer_id)));
+}

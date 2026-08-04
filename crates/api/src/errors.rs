@@ -252,3 +252,20 @@ impl From<validator::ValidationErrors> for ApiError {
         ApiError::Validation(messages.join("; "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::ResponseError;
+
+    #[test]
+    fn settlement_failed_maps_to_conflict() {
+        let err = ApiError::Application(ApplicationError::SettlementFailed {
+            reason: "insufficient escrow".to_string(),
+        });
+        assert_eq!(err.status_code(), StatusCode::CONFLICT);
+
+        let response = err.error_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+}

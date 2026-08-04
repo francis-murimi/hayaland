@@ -33,3 +33,26 @@ impl PushNotificationSender for NoOpPushSender {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn returns_success_for_each_token() {
+        let sender = NoOpPushSender::new();
+        let results = sender
+            .send(
+                &["token-a".into(), "token-b".into()],
+                "title",
+                "body",
+                serde_json::Value::Null,
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.success && r.error.is_none()));
+        assert_eq!(results[0].device_token, "token-a");
+        assert_eq!(results[1].device_token, "token-b");
+    }
+}

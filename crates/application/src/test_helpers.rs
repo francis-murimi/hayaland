@@ -1,56 +1,65 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use crate::email::queue::{EmailQueue, EmailQueueItem};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use crate::email::EmailSender;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use crate::errors::ApplicationError;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use crate::users::create_user::PasswordHasher;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use crate::users::token::{AuthContext, TokenGenerator, TokenVerifier};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use async_trait::async_trait;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
+use domain::entities::trust_score::{
+    DisputeInput, ResponseMetrics, ReviewInput, RoleDealInput, TrustScoreRow,
+};
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::entities::{
     Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Dispute, DisputeResponse,
-    DisputeStatus, Email, EmailVerification, Milestone, PasswordHash, PasswordResetToken,
-    PlatformWallet, Review, ReviewRating, Role, RoleProfile, Signature, Transaction,
-    TransactionApproval, TransactionStatus, TransactionType, User, Username,
+    DisputeStatus, Email, EmailVerification, Milestone, Notification, PasswordHash,
+    PasswordResetToken, PlatformWallet, Review, ReviewRating, Role, RoleProfile, Signature,
+    Transaction, TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
-#[cfg(test)]
-use domain::entities::{Party, UserPartyMembership};
-use domain::entities::{PartyVerification, PartyVerificationStatus, PartyVerificationType};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
+use domain::entities::{
+    NotificationChannel, NotificationStatus, NotificationType, Party, PartyVerification,
+    PartyVerificationStatus, PartyVerificationType, UserPartyMembership,
+};
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::errors::DomainError;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::repositories::PartySearchCriteria;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::repositories::{
-    AgreementRepository, DisputeFilters, DisputeListResult, DisputeRepository,
-    EmailVerificationRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
-    PasswordResetRepository, ReviewListResult, ReviewRepository, ReviewSearchCriteria,
-    RoleRepository, TransactionFilters, UserRepository, WalletRepository,
+    AgreementRepository, DeliveryResult, DisputeFilters, DisputeListResult, DisputeRepository,
+    EmailVerificationRepository, MilestoneRepository, NotificationRepository, PartyRepository,
+    PartyVerificationRepository, PasswordResetRepository, ReviewListResult, ReviewRepository,
+    ReviewSearchCriteria, RoleRepository, TransactionFilters, TrustScoreRepository, UserRepository,
+    WalletRepository,
 };
-#[cfg(test)]
-use domain::repositories::{DealAggregate, DealListResult, DealRepository, DealSearchCriteria};
-use domain::repositories::{VerificationListFilters, VerificationListResult};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
+use domain::repositories::{
+    DealAggregate, DealListResult, DealRepository, DealSearchCriteria, NotificationFilters,
+    NotificationListResult, Pagination, VerificationListFilters, VerificationListResult,
+};
+#[cfg(any(test, feature = "test-helpers"))]
 use rust_decimal::Decimal;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use std::collections::HashMap;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use std::sync::{Arc, Mutex};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use time::OffsetDateTime;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use uuid::Uuid;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct FakeRepo {
     pub users: Mutex<HashMap<Uuid, User>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl UserRepository for FakeRepo {
     async fn create(&self, user: &User) -> Result<(), DomainError> {
@@ -115,10 +124,10 @@ impl UserRepository for FakeRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct FakeHasher;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl PasswordHasher for FakeHasher {
     async fn hash_password(&self, password: &str) -> Result<String, ApplicationError> {
@@ -130,10 +139,10 @@ impl PasswordHasher for FakeHasher {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct FakeTokenGenerator;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl TokenGenerator for FakeTokenGenerator {
     async fn generate(&self, ctx: &AuthContext) -> Result<String, ApplicationError> {
@@ -141,10 +150,10 @@ impl TokenGenerator for FakeTokenGenerator {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct FakeTokenVerifier;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl TokenVerifier for FakeTokenVerifier {
     async fn verify(&self, token: &str) -> Result<AuthContext, ApplicationError> {
@@ -160,10 +169,10 @@ impl TokenVerifier for FakeTokenVerifier {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct FakeRoleRepo;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl RoleRepository for FakeRoleRepo {
     async fn find_by_name(&self, name: &str) -> Result<Option<Role>, DomainError> {
@@ -204,7 +213,7 @@ impl RoleRepository for FakeRoleRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn test_user(email: &str, username: &str, password: &str) -> User {
     User::new(
         Uuid::now_v7(),
@@ -214,7 +223,7 @@ pub fn test_user(email: &str, username: &str, password: &str) -> User {
     )
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn test_repo_with(user: User) -> Arc<FakeRepo> {
     let mut map = HashMap::new();
     map.insert(user.id, user);
@@ -223,13 +232,13 @@ pub fn test_repo_with(user: User) -> Arc<FakeRepo> {
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeEmailVerificationRepo {
     verifications: Mutex<HashMap<String, EmailVerification>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl FakeEmailVerificationRepo {
     pub async fn find_by_user_id(
         &self,
@@ -250,7 +259,7 @@ impl FakeEmailVerificationRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl EmailVerificationRepository for FakeEmailVerificationRepo {
     async fn save(&self, verification: &EmailVerification) -> Result<(), DomainError> {
@@ -282,13 +291,13 @@ impl EmailVerificationRepository for FakeEmailVerificationRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakePasswordResetRepo {
     tokens: Mutex<HashMap<String, PasswordResetToken>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl FakePasswordResetRepo {
     pub async fn count_for_user(&self, user_id: Uuid) -> usize {
         self.tokens
@@ -300,7 +309,7 @@ impl FakePasswordResetRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl PasswordResetRepository for FakePasswordResetRepo {
     async fn save(&self, token: &PasswordResetToken) -> Result<(), DomainError> {
@@ -332,14 +341,14 @@ impl PasswordResetRepository for FakePasswordResetRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeEmailQueue {
     pub items: Mutex<Vec<(String, String, String)>>,
     failing: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl FakeEmailQueue {
     pub fn failing() -> Self {
         Self {
@@ -349,7 +358,7 @@ impl FakeEmailQueue {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl EmailQueue for FakeEmailQueue {
     async fn enqueue(&self, item: EmailQueueItem) -> Result<(), ApplicationError> {
@@ -364,14 +373,14 @@ impl EmailQueue for FakeEmailQueue {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeEmailSender {
     pub sent: Mutex<Vec<(String, String, String)>>,
     failing: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl FakeEmailSender {
     pub fn failing() -> Self {
         Self {
@@ -381,7 +390,7 @@ impl FakeEmailSender {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl EmailSender for FakeEmailSender {
     async fn send(&self, to: &str, subject: &str, body: &str) -> Result<(), ApplicationError> {
@@ -396,7 +405,7 @@ impl EmailSender for FakeEmailSender {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakePartyRepo {
     pub parties: Mutex<HashMap<Uuid, Party>>,
@@ -404,7 +413,7 @@ pub struct FakePartyRepo {
     pub roles: Mutex<Vec<(Uuid, DealRole, RoleProfile)>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl PartyRepository for FakePartyRepo {
     async fn create(&self, party: &Party) -> Result<(), DomainError> {
@@ -578,7 +587,7 @@ impl PartyRepository for FakePartyRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeDealRepo {
     pub deals: std::sync::Mutex<HashMap<Uuid, domain::entities::Deal>>,
@@ -589,7 +598,7 @@ pub struct FakeDealRepo {
     reference_counter: std::sync::Mutex<i64>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl DealRepository for FakeDealRepo {
     async fn create(&self, aggregate: &DealAggregate) -> Result<(), DomainError> {
@@ -815,7 +824,7 @@ impl DealRepository for FakeDealRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeDisputeRepo {
     pub disputes: Mutex<HashMap<Uuid, Dispute>>,
@@ -823,7 +832,7 @@ pub struct FakeDisputeRepo {
     pub disputed_counts: Mutex<HashMap<Uuid, i64>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl DisputeRepository for FakeDisputeRepo {
     async fn create(&self, dispute: &Dispute) -> Result<(), DomainError> {
@@ -1043,14 +1052,14 @@ impl DisputeRepository for FakeDisputeRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeAgreementRepo {
     pub agreements: Mutex<HashMap<Uuid, Agreement>>,
     pub signatures: Mutex<Vec<Signature>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeWalletRepo {
     pub wallets: Mutex<HashMap<Uuid, PlatformWallet>>,
@@ -1058,7 +1067,7 @@ pub struct FakeWalletRepo {
     pub approvals: Mutex<Vec<TransactionApproval>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl WalletRepository for FakeWalletRepo {
     async fn create(&self, wallet: &PlatformWallet) -> Result<(), DomainError> {
@@ -1348,7 +1357,7 @@ impl WalletRepository for FakeWalletRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl AgreementRepository for FakeAgreementRepo {
     async fn create(&self, agreement: &Agreement) -> Result<(), DomainError> {
@@ -1433,13 +1442,13 @@ impl AgreementRepository for FakeAgreementRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeMilestoneRepo {
     pub milestones: Mutex<Vec<Milestone>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl MilestoneRepository for FakeMilestoneRepo {
     async fn create(&self, milestone: &Milestone) -> Result<(), DomainError> {
@@ -1520,13 +1529,13 @@ impl MilestoneRepository for FakeMilestoneRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeReviewRepo {
     pub reviews: Mutex<Vec<Review>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl ReviewRepository for FakeReviewRepo {
     async fn create(&self, review: &Review) -> Result<(), DomainError> {
@@ -1671,7 +1680,7 @@ impl ReviewRepository for FakeReviewRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn test_review(
     deal_id: Uuid,
     reviewer_party_id: Uuid,
@@ -1695,13 +1704,13 @@ pub fn test_review(
     )
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakePartyVerificationRepo {
     pub verifications: Mutex<Vec<PartyVerification>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl PartyVerificationRepository for FakePartyVerificationRepo {
     async fn create(&self, verification: &PartyVerification) -> Result<(), DomainError> {
@@ -1945,23 +1954,23 @@ impl PartyVerificationRepository for FakePartyVerificationRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use crate::ports::{EncryptionService, MessageEvent, RealtimePublisher};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::entities::{
     ChatRoom, ChatRoomMemberRole, ChatRoomMembership, ChatRoomType, Conversation, ConversationType,
     Message, MessageReaction, MessageRead, ReactionType, RecipientType,
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::repositories::{
     ChatRoomListQuery, ChatRoomRepository, ConversationSummary, MessageListQuery,
     MessageRepository, MessageWithMeta,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct FakeEncryptionService;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl EncryptionService for FakeEncryptionService {
     async fn encrypt(&self, plaintext: &str) -> Result<String, ApplicationError> {
@@ -1976,13 +1985,13 @@ impl EncryptionService for FakeEncryptionService {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct RecordingPublisher {
     pub events: Mutex<Vec<MessageEvent>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl RealtimePublisher for RecordingPublisher {
     async fn publish(&self, event: MessageEvent) -> Result<(), ApplicationError> {
@@ -1991,7 +2000,7 @@ impl RealtimePublisher for RecordingPublisher {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeMessageRepo {
     pub conversations: Mutex<HashMap<Uuid, Conversation>>,
@@ -2000,7 +2009,7 @@ pub struct FakeMessageRepo {
     pub reactions: Mutex<Vec<MessageReaction>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl MessageRepository for FakeMessageRepo {
     async fn create_conversation(&self, conversation: &Conversation) -> Result<(), DomainError> {
@@ -2358,14 +2367,14 @@ impl MessageRepository for FakeMessageRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeChatRoomRepo {
     pub rooms: Mutex<HashMap<Uuid, ChatRoom>>,
     pub memberships: Mutex<Vec<ChatRoomMembership>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl ChatRoomRepository for FakeChatRoomRepo {
     async fn create_room(&self, room: &ChatRoom) -> Result<(), DomainError> {
@@ -2582,15 +2591,15 @@ impl ChatRoomRepository for FakeChatRoomRepo {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::entities::{Enhancement, Need, Resource};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 use domain::repositories::{
     AdminFlags, CatalogItemStatus, CatalogItemType, CatalogListResult, CatalogRepository,
     CatalogSearchCriteria, CategoryItemCounts,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[derive(Default)]
 pub struct FakeCatalogRepository {
     pub resources: Mutex<HashMap<Uuid, Resource>>,
@@ -2598,14 +2607,14 @@ pub struct FakeCatalogRepository {
     pub enhancements: Mutex<HashMap<Uuid, Enhancement>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl FakeCatalogRepository {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait]
 impl CatalogRepository for FakeCatalogRepository {
     // Resources
@@ -2951,7 +2960,7 @@ impl CatalogRepository for FakeCatalogRepository {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 fn filter_items<T: CatalogItem>(items: Vec<T>, criteria: &CatalogSearchCriteria) -> Vec<T> {
     items
         .into_iter()
@@ -3003,7 +3012,7 @@ fn filter_items<T: CatalogItem>(items: Vec<T>, criteria: &CatalogSearchCriteria)
         .collect()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 trait CatalogItem {
     fn owner_party_id(&self) -> Uuid;
     fn matches_text(&self, query: &str) -> bool;
@@ -3013,7 +3022,7 @@ trait CatalogItem {
     fn is_featured(&self) -> bool;
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl CatalogItem for Resource {
     fn owner_party_id(&self) -> Uuid {
         self.supplier_party_id
@@ -3042,7 +3051,7 @@ impl CatalogItem for Resource {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl CatalogItem for Need {
     fn owner_party_id(&self) -> Uuid {
         self.consumer_party_id
@@ -3071,7 +3080,7 @@ impl CatalogItem for Need {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl CatalogItem for Enhancement {
     fn owner_party_id(&self) -> Uuid {
         self.enhancer_party_id
@@ -3100,7 +3109,7 @@ impl CatalogItem for Enhancement {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 fn apply_admin_flags<T: AdminFlagsTarget>(target: &mut T, flags: AdminFlags) {
     if let Some(hidden) = flags.platform_hidden {
         target.set_platform_hidden(hidden);
@@ -3116,7 +3125,7 @@ fn apply_admin_flags<T: AdminFlagsTarget>(target: &mut T, flags: AdminFlags) {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 trait AdminFlagsTarget {
     fn set_platform_hidden(&mut self, value: bool);
     fn set_platform_featured(&mut self, value: bool);
@@ -3124,7 +3133,7 @@ trait AdminFlagsTarget {
     fn set_admin_reviewed(&mut self, reviewer_id: Uuid);
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl AdminFlagsTarget for Resource {
     fn set_platform_hidden(&mut self, value: bool) {
         self.platform_hidden = value;
@@ -3141,7 +3150,7 @@ impl AdminFlagsTarget for Resource {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl AdminFlagsTarget for Need {
     fn set_platform_hidden(&mut self, value: bool) {
         self.platform_hidden = value;
@@ -3158,7 +3167,7 @@ impl AdminFlagsTarget for Need {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 impl AdminFlagsTarget for Enhancement {
     fn set_platform_hidden(&mut self, value: bool) {
         self.platform_hidden = value;
@@ -3175,7 +3184,7 @@ impl AdminFlagsTarget for Enhancement {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn test_resource(supplier_party_id: Uuid, resource_type_id: Uuid, name: &str) -> Resource {
     Resource::new(
         Uuid::now_v7(),
@@ -3188,7 +3197,7 @@ pub fn test_resource(supplier_party_id: Uuid, resource_type_id: Uuid, name: &str
     .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn test_need(consumer_party_id: Uuid, need_category_id: Uuid, description: &str) -> Need {
     Need::new(
         Uuid::now_v7(),
@@ -3201,7 +3210,7 @@ pub fn test_need(consumer_party_id: Uuid, need_category_id: Uuid, description: &
     .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub fn test_enhancement(
     enhancer_party_id: Uuid,
     enhancement_type_id: Uuid,
@@ -3214,4 +3223,381 @@ pub fn test_enhancement(
         name.to_string(),
     )
     .unwrap()
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+#[derive(Default)]
+pub struct FakeTrustScoreRepo {
+    pub rows: Mutex<HashMap<Uuid, TrustScoreRow>>,
+    pub public_cache: Mutex<HashMap<Uuid, f64>>,
+    pub review_inputs: Mutex<HashMap<Uuid, Vec<ReviewInput>>>,
+    pub dispute_inputs: Mutex<HashMap<Uuid, Vec<DisputeInput>>>,
+    pub role_deal_inputs: Mutex<HashMap<Uuid, HashMap<String, RoleDealInput>>>,
+    pub role_reviews: Mutex<HashMap<Uuid, HashMap<String, Vec<ReviewInput>>>>,
+    pub metrics: Mutex<HashMap<Uuid, ResponseMetrics>>,
+    pub account_age: Mutex<HashMap<Uuid, (i64, Option<i64>)>>,
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+fn default_trust_score_row(party_id: Uuid) -> TrustScoreRow {
+    TrustScoreRow {
+        id: Uuid::now_v7(),
+        party_id,
+        overall_score: 50.0,
+        as_supplier_score: Some(50.0),
+        as_consumer_score: Some(50.0),
+        as_enhancer_score: Some(50.0),
+        deals_completed_count: 0,
+        deals_cancelled_count: 0,
+        deals_disputed_count: 0,
+        timeouts_count: 0,
+        no_shows_count: 0,
+        total_completed_value: 0.0,
+        average_response_hours: None,
+        profile_completeness: 0.0,
+        verification_level: 0,
+        longevity_days: 0,
+        calculation_formula: serde_json::Value::Object(serde_json::Map::new()),
+        last_calculated_at: None,
+        next_calculation_at: None,
+    }
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+#[async_trait]
+impl TrustScoreRepository for FakeTrustScoreRepo {
+    async fn find_by_party_id(&self, party_id: Uuid) -> Result<Option<TrustScoreRow>, DomainError> {
+        Ok(self.rows.lock().unwrap().get(&party_id).cloned())
+    }
+
+    async fn create_default(&self, party_id: Uuid) -> Result<(), DomainError> {
+        self.rows
+            .lock()
+            .unwrap()
+            .insert(party_id, default_trust_score_row(party_id));
+        Ok(())
+    }
+
+    async fn upsert(&self, row: &TrustScoreRow) -> Result<(), DomainError> {
+        self.rows.lock().unwrap().insert(row.party_id, row.clone());
+        Ok(())
+    }
+
+    async fn increment_deals_completed_count(
+        &self,
+        party_id: Uuid,
+        deal_value: f64,
+    ) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.deals_completed_count += 1;
+        row.total_completed_value += deal_value;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn increment_deals_cancelled_count(&self, party_id: Uuid) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.deals_cancelled_count += 1;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn increment_deals_disputed_count(&self, party_id: Uuid) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.deals_disputed_count += 1;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn increment_timeouts_count(&self, party_id: Uuid) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.timeouts_count += 1;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn increment_no_shows_count(&self, party_id: Uuid) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.no_shows_count += 1;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn update_profile_completeness(
+        &self,
+        party_id: Uuid,
+        completeness: f64,
+    ) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.profile_completeness = completeness;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn update_response_hours(
+        &self,
+        party_id: Uuid,
+        hours: Option<f64>,
+    ) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.average_response_hours = hours;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn update_verification_level(
+        &self,
+        party_id: Uuid,
+        level: i32,
+    ) -> Result<(), DomainError> {
+        let mut rows = self.rows.lock().unwrap();
+        let mut row = rows
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_else(|| default_trust_score_row(party_id));
+        row.verification_level = level;
+        rows.insert(party_id, row);
+        Ok(())
+    }
+
+    async fn update_public_cache(&self, party_id: Uuid, score: f64) -> Result<(), DomainError> {
+        self.public_cache.lock().unwrap().insert(party_id, score);
+        Ok(())
+    }
+
+    async fn list_party_ids(&self, limit: i64, offset: i64) -> Result<Vec<Uuid>, DomainError> {
+        let rows = self.rows.lock().unwrap();
+        let mut ids: Vec<Uuid> = rows.keys().copied().collect();
+        ids.sort();
+        Ok(ids
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+
+    async fn find_review_inputs(&self, party_id: Uuid) -> Result<Vec<ReviewInput>, DomainError> {
+        Ok(self
+            .review_inputs
+            .lock()
+            .unwrap()
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn find_dispute_inputs(&self, party_id: Uuid) -> Result<Vec<DisputeInput>, DomainError> {
+        Ok(self
+            .dispute_inputs
+            .lock()
+            .unwrap()
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn find_role_deal_inputs(
+        &self,
+        party_id: Uuid,
+    ) -> Result<HashMap<String, RoleDealInput>, DomainError> {
+        Ok(self
+            .role_deal_inputs
+            .lock()
+            .unwrap()
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn find_role_reviews(
+        &self,
+        party_id: Uuid,
+    ) -> Result<HashMap<String, Vec<ReviewInput>>, DomainError> {
+        Ok(self
+            .role_reviews
+            .lock()
+            .unwrap()
+            .get(&party_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn compute_response_metrics(
+        &self,
+        party_id: Uuid,
+    ) -> Result<ResponseMetrics, DomainError> {
+        Ok(self
+            .metrics
+            .lock()
+            .unwrap()
+            .get(&party_id)
+            .cloned()
+            .unwrap_or(ResponseMetrics {
+                average_response_hours: None,
+                messages_received_90d: 0,
+                messages_responded_90d: 0,
+            }))
+    }
+
+    async fn find_account_age_and_activity(
+        &self,
+        party_id: Uuid,
+    ) -> Result<(i64, Option<i64>), DomainError> {
+        Ok(self
+            .account_age
+            .lock()
+            .unwrap()
+            .get(&party_id)
+            .copied()
+            .unwrap_or((0, None)))
+    }
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+#[derive(Default)]
+pub struct FakeNotificationRepo {
+    pub notifications: Mutex<HashMap<Uuid, Notification>>,
+    pub deliveries: Mutex<Vec<(Uuid, NotificationChannel, DeliveryResult)>>,
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+#[async_trait]
+impl NotificationRepository for FakeNotificationRepo {
+    async fn create(&self, notification: &Notification) -> Result<(), DomainError> {
+        self.notifications
+            .lock()
+            .unwrap()
+            .insert(notification.id, notification.clone());
+        Ok(())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Notification>, DomainError> {
+        Ok(self.notifications.lock().unwrap().get(&id).cloned())
+    }
+
+    async fn list_for_recipient(
+        &self,
+        _user_id: Option<Uuid>,
+        _party_id: Option<Uuid>,
+        _filters: NotificationFilters,
+        _pagination: Pagination,
+    ) -> Result<NotificationListResult, DomainError> {
+        Ok(NotificationListResult {
+            items: vec![],
+            total: 0,
+            unread_count: 0,
+        })
+    }
+
+    async fn count_unread_for_recipient(
+        &self,
+        _user_id: Option<Uuid>,
+        _party_id: Option<Uuid>,
+    ) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+
+    async fn mark_read(
+        &self,
+        _id: Uuid,
+        _user_id: Uuid,
+        _party_id: Option<Uuid>,
+        _read_at: OffsetDateTime,
+    ) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+
+    async fn mark_all_read(
+        &self,
+        _user_id: Option<Uuid>,
+        _party_id: Option<Uuid>,
+        _before: Option<OffsetDateTime>,
+        _notification_type: Option<NotificationType>,
+    ) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+
+    async fn mark_actioned(
+        &self,
+        _id: Uuid,
+        _user_id: Uuid,
+        _party_id: Option<Uuid>,
+        _actioned_at: OffsetDateTime,
+    ) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+
+    async fn delete(
+        &self,
+        _id: Uuid,
+        _user_id: Uuid,
+        _party_id: Option<Uuid>,
+    ) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+
+    async fn update_status(&self, id: Uuid, status: NotificationStatus) -> Result<(), DomainError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        if let Some(n) = notifications.get_mut(&id) {
+            n.status = status;
+            n.updated_at = OffsetDateTime::now_utc();
+        }
+        Ok(())
+    }
+
+    async fn record_delivery(
+        &self,
+        notification_id: Uuid,
+        channel: NotificationChannel,
+        result: DeliveryResult,
+    ) -> Result<(), DomainError> {
+        self.deliveries
+            .lock()
+            .unwrap()
+            .push((notification_id, channel, result));
+        Ok(())
+    }
+
+    async fn list_pending(
+        &self,
+        batch_size: usize,
+        _older_than: Option<OffsetDateTime>,
+    ) -> Result<Vec<Notification>, DomainError> {
+        let notifications = self.notifications.lock().unwrap();
+        let mut pending: Vec<Notification> = notifications
+            .values()
+            .filter(|n| n.status == NotificationStatus::Pending)
+            .cloned()
+            .collect();
+        pending.sort_by_key(|n| n.created_at);
+        Ok(pending.into_iter().take(batch_size).collect())
+    }
 }

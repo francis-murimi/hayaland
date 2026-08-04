@@ -6,6 +6,9 @@ authors.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+test-helpers = []
+
 [dependencies]
 domain = { workspace = true }
 serde.workspace = true

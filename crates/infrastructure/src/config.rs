@@ -631,6 +631,75 @@ mod tests {
             "postgres://existing@host/db"
         );
     }
+
+    #[test]
+    fn trust_score_default_functions() {
+        assert_eq!(default_weight_transaction_history(), 0.25);
+        assert_eq!(default_weight_review_ratings(), 0.20);
+        assert_eq!(default_weight_profile_completeness(), 0.10);
+        assert_eq!(default_weight_verification_level(), 0.15);
+        assert_eq!(default_weight_response_rate(), 0.10);
+        assert_eq!(default_weight_dispute_history(), 0.10);
+        assert_eq!(default_weight_longevity(), 0.05);
+        assert_eq!(default_weight_community(), 0.05);
+        assert_eq!(default_tier_bronze_max(), 39);
+        assert_eq!(default_tier_silver_max(), 59);
+        assert_eq!(default_tier_gold_max(), 74);
+        assert_eq!(default_tier_platinum_max(), 100);
+        assert_eq!(default_decay_inactivity_threshold_days(), 180);
+        assert_eq!(default_decay_inactivity_monthly_penalty(), 2.0);
+        assert_eq!(default_decay_penalty_halve_months(), 12);
+        assert_eq!(default_decay_penalty_expire_months(), 24);
+        assert_eq!(default_cold_start_neutral_score(), 50.0);
+        assert_eq!(default_cold_start_review_threshold(), 3);
+        assert_eq!(default_nightly_job_enabled(), true);
+        assert_eq!(default_nightly_job_interval_seconds(), 86400);
+        assert_eq!(default_nightly_job_batch_size(), 1000);
+    }
+
+    #[test]
+    fn notification_default_functions() {
+        assert_eq!(default_locale(), "en");
+        assert_eq!(default_notification_worker_enabled(), true);
+        assert_eq!(default_notification_worker_interval_seconds(), 30);
+        assert_eq!(default_notification_worker_batch_size(), 100);
+    }
+
+    #[test]
+    fn deal_timeout_default_functions() {
+        let _ = default_draft_timeout_seconds();
+        let _ = default_suggested_timeout_seconds();
+        let _ = default_pending_review_timeout_seconds();
+        let _ = default_negotiating_timeout_seconds();
+        let _ = default_awaiting_party_timeout_seconds();
+        let _ = default_terms_locked_timeout_seconds();
+        let _ = default_committed_timeout_seconds();
+        let _ = default_on_hold_timeout_seconds();
+        let _ = default_disputed_timeout_seconds();
+        assert_eq!(default_timeout_worker_enabled(), true);
+        assert_eq!(default_timeout_worker_interval_seconds(), 300);
+        assert_eq!(default_timeout_worker_batch_size(), 100);
+    }
+
+    #[test]
+    fn trust_score_settings_to_domain_config() {
+        let settings = TrustScoreSettings::default();
+        let config = settings.to_domain_config();
+        assert_eq!(
+            config.weights.transaction_history,
+            settings.weights.transaction_history
+        );
+        assert_eq!(config.tiers.silver, settings.tiers.bronze_max as f64 + 1.0);
+    }
+
+    #[test]
+    fn deal_timeout_settings_roundtrip_to_application_config() {
+        let settings = DealTimeoutSettings::default();
+        let app_config: application::deals::DealTimeoutConfig = settings.clone().into();
+        let back: DealTimeoutSettings = app_config.into();
+        assert_eq!(back.draft_seconds, settings.draft_seconds);
+        assert_eq!(back.suggested_seconds, settings.suggested_seconds);
+    }
 }
 
 pub fn configuration() -> Result<Settings, ConfigError> {

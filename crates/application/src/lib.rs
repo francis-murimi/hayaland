@@ -19,5 +19,5 @@ pub mod trust_scores;
 pub mod users;
 pub mod verifications;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub mod test_helpers;

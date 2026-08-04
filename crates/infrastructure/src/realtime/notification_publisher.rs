@@ -61,3 +61,50 @@ impl NotificationRealtimePublisher for RecordingNotificationPublisher {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use application::ports::NotificationEvent;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use uuid::Uuid;
+
+    #[derive(Default)]
+    struct CountingRegistry {
+        count: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl NotificationRegistry for CountingRegistry {
+        async fn notify(&self, _event: NotificationEvent) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn websocket_publisher_delegates_to_registry() {
+        let registry = CountingRegistry::default();
+        let publisher = NotificationWebSocketPublisher::new(registry);
+        let event = NotificationEvent::NotificationNew {
+            notification_id: Uuid::now_v7(),
+            user_id: Some(Uuid::now_v7()),
+            party_id: None,
+        };
+        publisher.publish(event).await.unwrap();
+        assert_eq!(publisher.registry.count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn recording_publisher_stores_events() {
+        let publisher = RecordingNotificationPublisher::new();
+        let event = NotificationEvent::UnreadCountChanged {
+            user_id: Some(Uuid::now_v7()),
+            party_id: None,
+            count: 3,
+        };
+        publisher.publish(event.clone()).await.unwrap();
+        assert_eq!(publisher.snapshot().len(), 1);
+        publisher.clear();
+        assert!(publisher.snapshot().is_empty());
+    }
+}

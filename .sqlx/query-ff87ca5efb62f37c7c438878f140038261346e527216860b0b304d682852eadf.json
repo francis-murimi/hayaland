@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                COALESCE(AVG(EXTRACT(EPOCH FROM (mr.read_at - m.created_at)) / 3600.0), 0.0::double precision) as \"avg_hours!: f64\",\n                COUNT(*) as \"responded!\"\n            FROM messages m\n            JOIN message_reads mr ON mr.message_id = m.id\n            WHERE m.recipient_party_id = $1\n              AND m.created_at > $2\n              AND m.message_type = 'TEXT'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "avg_hours!: f64",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "responded!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "ff87ca5efb62f37c7c438878f140038261346e527216860b0b304d682852eadf"
+}

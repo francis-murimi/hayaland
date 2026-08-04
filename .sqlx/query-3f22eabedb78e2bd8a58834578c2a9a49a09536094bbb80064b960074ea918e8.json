@@ -1,21 +1,10 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                r.reviewed_role as \"reviewed_role!\",\n                r.reviewer_party_id as \"reviewer_party_id!\",\n                r.overall_rating as \"overall_rating!: i32\",\n                r.communication_rating,\n                r.reliability_rating,\n                r.quality_rating,\n                r.timeliness_rating,\n                COALESCE(d.total_deal_value, 0.0) as \"deal_value!: f64\",\n                r.created_at as \"created_at!: OffsetDateTime\",\n                r.is_public as \"is_public!: bool\",\n                p.trust_score as \"reviewer_trust_score!: f64\"\n            FROM reviews r\n            LEFT JOIN deals d ON d.id = r.deal_id\n            LEFT JOIN parties p ON p.id = r.reviewer_party_id\n            WHERE r.reviewed_party_id = $1\n              AND r.is_public = true\n            ORDER BY r.created_at DESC\n            ",
+  "query": "\n            SELECT\n                r.reviewer_party_id as \"reviewer_party_id!\",\n                r.overall_rating as \"overall_rating!: i32\",\n                r.communication_rating,\n                r.reliability_rating,\n                r.quality_rating,\n                r.timeliness_rating,\n                COALESCE(d.total_deal_value, 0.0::double precision) as \"deal_value!: f64\",\n                r.created_at as \"created_at!: OffsetDateTime\",\n                r.is_public as \"is_public!: bool\",\n                p.trust_score as \"reviewer_trust_score!: f64\"\n            FROM reviews r\n            LEFT JOIN deals d ON d.id = r.deal_id\n            LEFT JOIN parties p ON p.id = r.reviewer_party_id\n            WHERE r.reviewed_party_id = $1\n            ORDER BY r.created_at DESC\n            ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "reviewed_role!",
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "reviews",
-            "name": "reviewed_role"
-          }
-        }
-      },
-      {
-        "ordinal": 1,
         "name": "reviewer_party_id!",
         "type_info": "Uuid",
         "origin": {
@@ -26,7 +15,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 1,
         "name": "overall_rating!: i32",
         "type_info": "Int4",
         "origin": {
@@ -37,7 +26,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "communication_rating",
         "type_info": "Int4",
         "origin": {
@@ -48,7 +37,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "reliability_rating",
         "type_info": "Int4",
         "origin": {
@@ -59,7 +48,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 4,
         "name": "quality_rating",
         "type_info": "Int4",
         "origin": {
@@ -70,7 +59,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 5,
         "name": "timeliness_rating",
         "type_info": "Int4",
         "origin": {
@@ -81,13 +70,13 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "deal_value!: f64",
-        "type_info": "Numeric",
+        "type_info": "Float8",
         "origin": "Expression"
       },
       {
-        "ordinal": 8,
+        "ordinal": 7,
         "name": "created_at!: OffsetDateTime",
         "type_info": "Timestamptz",
         "origin": {
@@ -98,7 +87,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 8,
         "name": "is_public!: bool",
         "type_info": "Bool",
         "origin": {
@@ -109,7 +98,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 9,
         "name": "reviewer_trust_score!: f64",
         "type_info": "Float8",
         "origin": {
@@ -128,7 +117,6 @@
     "nullable": [
       false,
       false,
-      false,
       true,
       true,
       true,
@@ -136,8 +124,8 @@
       null,
       false,
       false,
-      true
+      false
     ]
   },
-  "hash": "dbf8eb6cf1b6410bf572a218c5e0e0db9acedde6238db8c43c0f7c22789bee36"
+  "hash": "3f22eabedb78e2bd8a58834578c2a9a49a09536094bbb80064b960074ea918e8"
 }

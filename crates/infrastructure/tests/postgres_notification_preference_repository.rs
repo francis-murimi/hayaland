@@ -107,3 +107,80 @@ async fn save_and_get_round_trip(pool: PgPool) {
     assert_eq!(loaded.quiet_hours.timezone, "Africa/Nairobi");
     assert!(!loaded.quiet_hours.except_critical);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn save_with_all_channels_disabled(pool: PgPool) {
+    let user_repo = PostgresUserRepository::new(pool.clone());
+    let repo = PostgresNotificationPreferenceRepository::new(pool);
+    let user = sample_user("pref-disabled@example.com", "pref_disabled");
+    let user_id = user.id;
+    user_repo.create(&user).await.unwrap();
+
+    let mut prefs = NotificationPreference::new(user_id);
+    prefs.channels = ChannelPreferences {
+        in_app: false,
+        email: false,
+        push: false,
+        sms: false,
+    };
+
+    repo.save(&prefs).await.unwrap();
+
+    let loaded = repo.get(user_id).await.unwrap();
+    assert!(!loaded.channel_enabled(NotificationChannel::InApp));
+    assert!(!loaded.channel_enabled(NotificationChannel::Email));
+    assert!(!loaded.channel_enabled(NotificationChannel::Push));
+    assert!(!loaded.channel_enabled(NotificationChannel::Sms));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn get_returns_error_for_corrupt_channels_json(pool: PgPool) {
+    let user_repo = PostgresUserRepository::new(pool.clone());
+    let user = sample_user("pref-corrupt@example.com", "pref_corrupt");
+    let user_id = user.id;
+    user_repo.create(&user).await.unwrap();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO notification_preferences (user_id, channels, per_type, quiet_hours, updated_at)
+        VALUES ($1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
+        "#,
+        user_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let repo = PostgresNotificationPreferenceRepository::new(pool);
+    let result = repo.get(user_id).await;
+    assert!(result.is_err());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn get_filters_unknown_notification_types_and_channels(pool: PgPool) {
+    let user_repo = PostgresUserRepository::new(pool.clone());
+    let user = sample_user("pref-unknown@example.com", "pref_unknown");
+    let user_id = user.id;
+    user_repo.create(&user).await.unwrap();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO notification_preferences (user_id, channels, per_type, quiet_hours, updated_at)
+        VALUES (
+            $1,
+            '{"in_app": true, "email": true, "push": false, "sms": false}'::jsonb,
+            '{"UNKNOWN_TYPE": {"enabled": true, "channels": ["EMAIL", "UNKNOWN_CHANNEL"]}}'::jsonb,
+            '{"enabled": false, "start": "22:00", "end": "07:00", "timezone": "UTC", "except_critical": true}'::jsonb,
+            now()
+        )
+        "#,
+        user_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let repo = PostgresNotificationPreferenceRepository::new(pool);
+    let loaded = repo.get(user_id).await.unwrap();
+    assert!(loaded.type_enabled(NotificationType::SecurityAlert));
+}

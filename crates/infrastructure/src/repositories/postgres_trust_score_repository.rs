@@ -389,7 +389,7 @@ impl TrustScoreRepository for PostgresTrustScoreRepository {
         let row = sqlx::query!(
             r#"
             SELECT
-                COALESCE(AVG(EXTRACT(EPOCH FROM (mr.read_at - m.created_at)) / 3600.0), 0.0) as "avg_hours!: f64",
+                COALESCE(AVG(EXTRACT(EPOCH FROM (mr.read_at - m.created_at)) / 3600.0), 0.0::double precision) as "avg_hours!: f64",
                 COUNT(*) as "responded!"
             FROM messages m
             JOIN message_reads mr ON mr.message_id = m.id
@@ -425,7 +425,7 @@ impl TrustScoreRepository for PostgresTrustScoreRepository {
                 dp.role as "role!",
                 COUNT(*) FILTER (WHERE d.deal_status = 'COMPLETED') as "completed!: i64",
                 COUNT(*) FILTER (WHERE d.deal_status = 'CANCELLED') as "cancelled!: i64",
-                COALESCE(SUM(d.total_deal_value) FILTER (WHERE d.deal_status = 'COMPLETED'), 0.0) as "value!: f64"
+                COALESCE(SUM(d.total_deal_value) FILTER (WHERE d.deal_status = 'COMPLETED'), 0.0::double precision) as "value!: f64"
             FROM deal_participations dp
             JOIN deals d ON d.id = dp.deal_id
             WHERE dp.party_id = $1
@@ -466,7 +466,7 @@ impl TrustScoreRepository for PostgresTrustScoreRepository {
                 r.reliability_rating,
                 r.quality_rating,
                 r.timeliness_rating,
-                COALESCE(d.total_deal_value, 0.0) as "deal_value!: f64",
+                COALESCE(d.total_deal_value, 0.0::double precision) as "deal_value!: f64",
                 r.created_at as "created_at!: OffsetDateTime",
                 r.is_public as "is_public!: bool",
                 p.trust_score as "reviewer_trust_score!: f64"
@@ -561,7 +561,7 @@ impl TrustScoreRepository for PostgresTrustScoreRepository {
                 r.reliability_rating,
                 r.quality_rating,
                 r.timeliness_rating,
-                COALESCE(d.total_deal_value, 0.0) as "deal_value!: f64",
+                COALESCE(d.total_deal_value, 0.0::double precision) as "deal_value!: f64",
                 r.created_at as "created_at!: OffsetDateTime",
                 r.is_public as "is_public!: bool",
                 p.trust_score as "reviewer_trust_score!: f64"

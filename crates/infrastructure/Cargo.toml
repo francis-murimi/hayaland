@@ -32,6 +32,7 @@ aes-gcm.workspace = true
 base64.workspace = true
 
 [dev-dependencies]
+application = { workspace = true, features = ["test-helpers"] }
 sqlx.workspace = true
 tokio.workspace = true
 uuid.workspace = true

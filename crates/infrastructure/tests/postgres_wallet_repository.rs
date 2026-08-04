@@ -2,6 +2,7 @@ use domain::entities::{
     ApprovalDecision, Currency, PlatformWallet, Transaction, TransactionApproval,
     TransactionStatus, TransactionType,
 };
+use domain::errors::DomainError;
 use domain::repositories::{TransactionFilters, WalletRepository};
 use infrastructure::repositories::PostgresWalletRepository;
 use rust_decimal::Decimal;
@@ -542,4 +543,584 @@ async fn finds_pending_transactions_for_party(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(count, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn record_multi_party_transaction_updates_all_wallets(pool: PgPool) {
+    let supplier_owner = create_user(&pool).await;
+    let consumer_owner = create_user(&pool).await;
+    let enhancer_owner = create_user(&pool).await;
+    let supplier = create_party(&pool, supplier_owner).await;
+    let consumer = create_party(&pool, consumer_owner).await;
+    let enhancer = create_party(&pool, enhancer_owner).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    create_wallet(&pool, consumer).await;
+    seed_escrow(&pool, consumer, Decimal::from(10000), deal_id).await;
+    create_wallet(&pool, supplier).await;
+    create_wallet(&pool, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+
+    let mut consumer_wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    let mut supplier_wallet = repo.find_by_party_id(supplier).await.unwrap().unwrap();
+
+    consumer_wallet
+        .deduct_fee_from_escrow(Decimal::from(1000))
+        .unwrap();
+    consumer_wallet.debit_escrow(Decimal::from(6000)).unwrap();
+    supplier_wallet.credit_balance(Decimal::from(6000)).unwrap();
+
+    let release = Transaction::new(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::EscrowRelease,
+        Some(consumer),
+        Some(supplier),
+        Decimal::from(6000),
+        Some("supplier share".to_string()),
+        TransactionStatus::Verified,
+        None,
+        None,
+    );
+
+    repo.record_multi_party_transaction(
+        &[consumer_wallet.clone(), supplier_wallet.clone()],
+        &release,
+    )
+    .await
+    .unwrap();
+
+    let stored_consumer = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    assert_eq!(stored_consumer.escrow_balance, Decimal::from(3000));
+
+    let stored_supplier = repo.find_by_party_id(supplier).await.unwrap().unwrap();
+    assert_eq!(stored_supplier.balance, Decimal::from(6000));
+
+    let txns = repo
+        .find_transactions(
+            consumer,
+            &TransactionFilters {
+                deal_id: Some(deal_id),
+                transaction_type: Some("ESCROW_RELEASE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(txns.len(), 1);
+    assert_eq!(txns[0].amount, Decimal::from(6000));
+    assert_eq!(txns[0].status, TransactionStatus::Verified);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_by_party_id_returns_none_for_party_without_wallet(pool: PgPool) {
+    let owner = create_user(&pool).await;
+    let party = create_party(&pool, owner).await;
+    let repo = PostgresWalletRepository::new(pool);
+
+    assert!(repo.find_by_party_id(party).await.unwrap().is_none());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn update_persists_wallet_changes(pool: PgPool) {
+    let owner = create_user(&pool).await;
+    let party = create_party(&pool, owner).await;
+    let repo = PostgresWalletRepository::new(pool);
+
+    let wallet = PlatformWallet::new(Uuid::now_v7(), party);
+    repo.create(&wallet).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(party).await.unwrap().unwrap();
+    wallet.deposit(Decimal::from(250)).unwrap();
+    wallet.mark_inactive();
+    repo.update(&wallet).await.unwrap();
+
+    let stored = repo.find_by_party_id(party).await.unwrap().unwrap();
+    assert_eq!(stored.balance, Decimal::from(250));
+    assert_eq!(stored.total_deposited, Decimal::from(250));
+    assert!(!stored.is_active);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn records_withdrawal_and_filters_by_status_and_type(pool: PgPool) {
+    let owner = create_user(&pool).await;
+    let party = create_party(&pool, owner).await;
+    let supplier = create_party(&pool, create_user(&pool).await).await;
+    let consumer = create_party(&pool, create_user(&pool).await).await;
+    let enhancer = create_party(&pool, create_user(&pool).await).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    let wallet = PlatformWallet::new(Uuid::now_v7(), party);
+    repo.create(&wallet).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(party).await.unwrap().unwrap();
+    wallet.deposit(Decimal::from(500)).unwrap();
+    let deposit = Transaction::simple(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Deposit,
+        party,
+        Decimal::from(500),
+        None,
+    );
+    repo.record_transaction(&wallet, &deposit).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(party).await.unwrap().unwrap();
+    wallet.withdraw(Decimal::from(150)).unwrap();
+    let withdrawal = Transaction::simple(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Withdrawal,
+        party,
+        Decimal::from(150),
+        None,
+    );
+    repo.record_transaction(&wallet, &withdrawal).await.unwrap();
+
+    let verified = repo
+        .find_transactions(
+            party,
+            &TransactionFilters {
+                status: Some("VERIFIED".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(verified.len(), 2);
+
+    let count = repo
+        .count_transactions(
+            party,
+            &TransactionFilters {
+                status: Some("VERIFIED".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+
+    let deposits = repo
+        .find_transactions(
+            party,
+            &TransactionFilters {
+                transaction_type: Some("DEPOSIT".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(deposits[0].amount, Decimal::from(500));
+
+    let withdrawals = repo
+        .find_transactions(
+            party,
+            &TransactionFilters {
+                transaction_type: Some("WITHDRAWAL".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(withdrawals.len(), 1);
+    assert_eq!(withdrawals[0].amount, Decimal::from(150));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_transactions_pagination(pool: PgPool) {
+    let owner = create_user(&pool).await;
+    let party = create_party(&pool, owner).await;
+    let supplier = create_party(&pool, create_user(&pool).await).await;
+    let consumer = create_party(&pool, create_user(&pool).await).await;
+    let enhancer = create_party(&pool, create_user(&pool).await).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    let wallet = PlatformWallet::new(Uuid::now_v7(), party);
+    repo.create(&wallet).await.unwrap();
+
+    for amount in [Decimal::from(100), Decimal::from(200)] {
+        let mut wallet = repo.find_by_party_id(party).await.unwrap().unwrap();
+        wallet.deposit(amount).unwrap();
+        let txn = Transaction::simple(
+            Uuid::now_v7(),
+            deal_id,
+            TransactionType::Deposit,
+            party,
+            amount,
+            None,
+        );
+        repo.record_transaction(&wallet, &txn).await.unwrap();
+    }
+
+    let first = repo
+        .find_transactions(
+            party,
+            &TransactionFilters {
+                limit: 1,
+                offset: 0,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+
+    let second = repo
+        .find_transactions(
+            party,
+            &TransactionFilters {
+                limit: 1,
+                offset: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.len(), 1);
+
+    let beyond = repo
+        .find_transactions(
+            party,
+            &TransactionFilters {
+                limit: 10,
+                offset: 2,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(beyond.is_empty());
+
+    let count = repo
+        .count_transactions(party, &TransactionFilters::default())
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn compute_deal_wallet_with_all_transaction_types(pool: PgPool) {
+    let consumer_owner = create_user(&pool).await;
+    let consumer = create_party(&pool, consumer_owner).await;
+    let supplier = create_party(&pool, create_user(&pool).await).await;
+    let enhancer = create_party(&pool, create_user(&pool).await).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    let wallet = PlatformWallet::new(Uuid::now_v7(), consumer);
+    repo.create(&wallet).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.deposit(Decimal::from(1000)).unwrap();
+    let deposit = Transaction::simple(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Deposit,
+        consumer,
+        Decimal::from(500),
+        None,
+    );
+    repo.record_transaction(&wallet, &deposit).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.hold_escrow(Decimal::from(300)).unwrap();
+    let hold = Transaction::simple(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::EscrowHold,
+        consumer,
+        Decimal::from(300),
+        None,
+    );
+    repo.record_transaction(&wallet, &hold).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.withdraw(Decimal::from(100)).unwrap();
+    let withdrawal = Transaction::simple(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Withdrawal,
+        consumer,
+        Decimal::from(100),
+        None,
+    );
+    repo.record_transaction(&wallet, &withdrawal).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.deduct_fee_from_balance(Decimal::from(50)).unwrap();
+    let fee = Transaction::new(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Fee,
+        Some(consumer),
+        None,
+        Decimal::from(50),
+        None,
+        TransactionStatus::Verified,
+        None,
+        None,
+    );
+    repo.record_transaction(&wallet, &fee).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.credit_balance(Decimal::from(200)).unwrap();
+    let release = Transaction::new(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::EscrowRelease,
+        Some(supplier),
+        Some(consumer),
+        Decimal::from(200),
+        None,
+        TransactionStatus::Verified,
+        None,
+        None,
+    );
+    repo.record_transaction(&wallet, &release).await.unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.credit_balance(Decimal::from(25)).unwrap();
+    let adjustment_to = Transaction::new(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Adjustment,
+        None,
+        Some(consumer),
+        Decimal::from(25),
+        None,
+        TransactionStatus::Verified,
+        None,
+        None,
+    );
+    repo.record_transaction(&wallet, &adjustment_to)
+        .await
+        .unwrap();
+
+    let mut wallet = repo.find_by_party_id(consumer).await.unwrap().unwrap();
+    wallet.deduct_fee_from_balance(Decimal::from(15)).unwrap();
+    let adjustment_from = Transaction::new(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::Adjustment,
+        Some(consumer),
+        None,
+        Decimal::from(15),
+        None,
+        TransactionStatus::Verified,
+        None,
+        None,
+    );
+    repo.record_transaction(&wallet, &adjustment_from)
+        .await
+        .unwrap();
+
+    let deal_wallet = repo
+        .compute_deal_wallet(consumer, deal_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(deal_wallet.deposited, Decimal::from(500));
+    assert_eq!(deal_wallet.withdrawn, Decimal::from(100));
+    assert_eq!(deal_wallet.contributed, Decimal::from(715));
+    assert_eq!(deal_wallet.held_in_escrow, Decimal::from(100));
+    assert_eq!(deal_wallet.released, Decimal::from(225));
+    assert_eq!(deal_wallet.fees_paid, Decimal::from(50));
+    assert_eq!(deal_wallet.net_position, Decimal::from(-440));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_approvals_for_transaction_returns_recorded_approvals(pool: PgPool) {
+    let consumer_owner = create_user(&pool).await;
+    let supplier_owner = create_user(&pool).await;
+    let enhancer_owner = create_user(&pool).await;
+    let consumer = create_party(&pool, consumer_owner).await;
+    let supplier = create_party(&pool, supplier_owner).await;
+    let enhancer = create_party(&pool, enhancer_owner).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    create_wallet(&pool, consumer).await;
+    create_wallet(&pool, supplier).await;
+    create_wallet(&pool, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    let txn = Transaction::new_pending(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::EscrowRelease,
+        Some(consumer),
+        Some(supplier),
+        Decimal::from(100),
+        2,
+        vec![consumer, supplier],
+        None,
+        None,
+        None,
+    );
+    repo.record_pending_transaction(&txn).await.unwrap();
+
+    let empty = repo.find_approvals_for_transaction(txn.id).await.unwrap();
+    assert!(empty.is_empty());
+
+    let approval = TransactionApproval::new(
+        Uuid::now_v7(),
+        txn.id,
+        consumer,
+        consumer_owner,
+        ApprovalDecision::Approved,
+        Some("looks good".to_string()),
+    );
+    repo.record_approval_and_finalise(&txn, &approval, &[])
+        .await
+        .unwrap();
+
+    let approvals = repo.find_approvals_for_transaction(txn.id).await.unwrap();
+    assert_eq!(approvals.len(), 1);
+    assert_eq!(approvals[0].decision, ApprovalDecision::Approved);
+    assert_eq!(approvals[0].comment.as_deref(), Some("looks good"));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn intermediate_approval_keeps_transaction_pending(pool: PgPool) {
+    let consumer_owner = create_user(&pool).await;
+    let supplier_owner = create_user(&pool).await;
+    let enhancer_owner = create_user(&pool).await;
+    let consumer = create_party(&pool, consumer_owner).await;
+    let supplier = create_party(&pool, supplier_owner).await;
+    let enhancer = create_party(&pool, enhancer_owner).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    create_wallet(&pool, consumer).await;
+    create_wallet(&pool, supplier).await;
+    create_wallet(&pool, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    let txn = Transaction::new_pending(
+        Uuid::now_v7(),
+        deal_id,
+        TransactionType::EscrowRelease,
+        Some(consumer),
+        Some(supplier),
+        Decimal::from(100),
+        3,
+        vec![consumer, supplier, enhancer],
+        None,
+        None,
+        None,
+    );
+    repo.record_pending_transaction(&txn).await.unwrap();
+
+    let first = TransactionApproval::new(
+        Uuid::now_v7(),
+        txn.id,
+        consumer,
+        consumer_owner,
+        ApprovalDecision::Approved,
+        None,
+    );
+    repo.record_approval_and_finalise(&txn, &first, &[])
+        .await
+        .unwrap();
+
+    let stored = repo.find_transaction_by_id(txn.id).await.unwrap().unwrap();
+    assert_eq!(stored.status, TransactionStatus::Pending);
+    assert_eq!(stored.approvals_received, 1);
+
+    let second = TransactionApproval::new(
+        Uuid::now_v7(),
+        txn.id,
+        supplier,
+        supplier_owner,
+        ApprovalDecision::Approved,
+        None,
+    );
+    repo.record_approval_and_finalise(&stored, &second, &[])
+        .await
+        .unwrap();
+
+    let stored = repo.find_transaction_by_id(txn.id).await.unwrap().unwrap();
+    assert_eq!(stored.status, TransactionStatus::Pending);
+    assert_eq!(stored.approvals_received, 2);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn find_pending_transactions_pagination(pool: PgPool) {
+    let consumer_owner = create_user(&pool).await;
+    let supplier_owner = create_user(&pool).await;
+    let enhancer_owner = create_user(&pool).await;
+    let consumer = create_party(&pool, consumer_owner).await;
+    let supplier = create_party(&pool, supplier_owner).await;
+    let enhancer = create_party(&pool, enhancer_owner).await;
+    let deal_id = create_deal(&pool, supplier, consumer, enhancer).await;
+
+    create_wallet(&pool, consumer).await;
+    create_wallet(&pool, supplier).await;
+    create_wallet(&pool, enhancer).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    for i in 0..2 {
+        let txn = Transaction::new_pending(
+            Uuid::now_v7(),
+            deal_id,
+            TransactionType::EscrowRelease,
+            Some(consumer),
+            Some(supplier),
+            Decimal::from(10 + i),
+            3,
+            vec![consumer, supplier, enhancer],
+            None,
+            None,
+            None,
+        );
+        repo.record_pending_transaction(&txn).await.unwrap();
+    }
+
+    let first = repo
+        .find_pending_transactions_for_party(consumer, 1, 0)
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+
+    let second = repo
+        .find_pending_transactions_for_party(consumer, 1, 1)
+        .await
+        .unwrap();
+    assert_eq!(second.len(), 1);
+
+    let beyond = repo
+        .find_pending_transactions_for_party(consumer, 10, 2)
+        .await
+        .unwrap();
+    assert!(beyond.is_empty());
+
+    let count = repo
+        .count_pending_transactions_for_party(consumer)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_duplicate_wallet_id_returns_repository_error(pool: PgPool) {
+    let owner = create_user(&pool).await;
+    let party = create_party(&pool, owner).await;
+    let other_owner = create_user(&pool).await;
+    let other_party = create_party(&pool, other_owner).await;
+
+    let repo = PostgresWalletRepository::new(pool);
+    let id = Uuid::now_v7();
+
+    let wallet = PlatformWallet::new(id, party);
+    repo.create(&wallet).await.unwrap();
+
+    let duplicate = PlatformWallet::new(id, other_party);
+    let result = repo.create(&duplicate).await;
+    assert!(
+        matches!(result, Err(DomainError::RepositoryError(_))),
+        "expected repository error for duplicate wallet id, got {result:?}"
+    );
 }

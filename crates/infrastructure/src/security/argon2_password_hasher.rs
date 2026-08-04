@@ -42,3 +42,32 @@ impl PasswordHasher for Argon2PasswordHasher {
         .map_err(|e| ApplicationError::Infrastructure(e.to_string()))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn hashes_and_verifies_password() {
+        let hasher = Argon2PasswordHasher;
+        let hash = hasher.hash_password("secret123").await.unwrap();
+        assert!(!hash.is_empty());
+        assert!(hasher.verify_password("secret123", &hash).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn verifies_wrong_password_as_false() {
+        let hasher = Argon2PasswordHasher;
+        let hash = hasher.hash_password("secret123").await.unwrap();
+        assert!(!hasher.verify_password("wrong", &hash).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_invalid_hash() {
+        let hasher = Argon2PasswordHasher;
+        assert!(hasher
+            .verify_password("secret", "not-a-hash")
+            .await
+            .is_err());
+    }
+}
