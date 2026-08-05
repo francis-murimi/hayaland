@@ -256,4 +256,93 @@ mod tests {
         assert!(e.can_be_modified_by(other, true));
         assert!(!e.can_be_modified_by(other, false));
     }
+
+    #[test]
+    fn set_name_updates_when_valid() {
+        let mut e = sample_enhancement();
+        e.set_name("Updated Enhancement Name".to_string()).unwrap();
+        assert_eq!(e.enhancement_name, "Updated Enhancement Name");
+    }
+
+    #[test]
+    fn set_name_rejects_too_short() {
+        let mut e = sample_enhancement();
+        assert!(e.set_name("ab".to_string()).is_err());
+    }
+
+    #[test]
+    fn service_duration_rejects_negative() {
+        let mut e = sample_enhancement();
+        assert!(e
+            .set_service_duration_hours(Some(Decimal::NEGATIVE_ONE))
+            .is_err());
+    }
+
+    #[test]
+    fn service_duration_accepts_zero_and_positive() {
+        let mut e = sample_enhancement();
+        assert!(e.set_service_duration_hours(Some(Decimal::ZERO)).is_ok());
+        assert_eq!(e.service_duration_hours, Some(Decimal::ZERO));
+        assert!(e.set_service_duration_hours(Some(Decimal::ONE)).is_ok());
+        assert_eq!(e.service_duration_hours, Some(Decimal::ONE));
+    }
+
+    #[test]
+    fn set_active_toggles_flag() {
+        let mut e = sample_enhancement();
+        e.set_active(false);
+        assert!(!e.is_active);
+        e.set_active(true);
+        assert!(e.is_active);
+    }
+
+    #[test]
+    fn inactive_is_only_visible_to_owner() {
+        let mut e = sample_enhancement();
+        e.set_active(false);
+        assert!(!e.is_visible_to(None, false));
+        assert!(e.is_visible_to(Some(e.enhancer_party_id), false));
+        assert!(e.is_visible_to(None, true));
+    }
+
+    #[test]
+    fn active_non_hidden_is_publicly_visible() {
+        let e = sample_enhancement();
+        assert!(e.is_visible_to(None, false));
+        assert!(e.is_visible_to(Some(Uuid::now_v7()), false));
+    }
+
+    #[test]
+    fn can_contact_owner_requires_active_and_not_hidden() {
+        let mut e = sample_enhancement();
+        assert!(e.can_contact_owner(true));
+        assert!(!e.can_contact_owner(false));
+
+        e.platform_hidden = true;
+        assert!(!e.can_contact_owner(true));
+
+        e.platform_hidden = false;
+        e.set_active(false);
+        assert!(!e.can_contact_owner(true));
+    }
+
+    #[test]
+    fn deal_binding_check() {
+        let mut e = sample_enhancement();
+        assert!(e.is_catalogue_entry());
+        assert!(!e.is_deal_bound());
+
+        e.deal_id = Some(Uuid::now_v7());
+        assert!(!e.is_catalogue_entry());
+        assert!(e.is_deal_bound());
+    }
+
+    #[test]
+    fn completion_days_accepts_valid() {
+        let mut e = sample_enhancement();
+        assert!(e.set_completion_days(Some(1)).is_ok());
+        assert_eq!(e.estimated_completion_days, Some(1));
+        assert!(e.set_completion_days(None).is_ok());
+        assert_eq!(e.estimated_completion_days, None);
+    }
 }

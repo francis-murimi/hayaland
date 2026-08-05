@@ -552,4 +552,458 @@ mod tests {
         assert_eq!(approvals.len(), 1);
         assert_eq!(approvals[0].party_id, consumer);
     }
+
+    fn pending_txn(
+        txn_type: TransactionType,
+        from: Option<Uuid>,
+        to: Option<Uuid>,
+        amount: Decimal,
+    ) -> Transaction {
+        Transaction::new_pending(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            txn_type,
+            from,
+            to,
+            amount,
+            1,
+            vec![from.or(to).unwrap()],
+            None,
+            None,
+            None,
+        )
+    }
+
+    fn setup_single(party_repo: &Arc<FakePartyRepo>) -> (Uuid, Uuid) {
+        let user_id = Uuid::now_v7();
+        let party_id = Uuid::now_v7();
+        seed_party_user(party_repo, user_id, party_id);
+        (user_id, party_id)
+    }
+
+    async fn approve_once(
+        uc: &ApproveTransaction,
+        user_id: Uuid,
+        party_id: Uuid,
+        txn_id: Uuid,
+    ) -> Result<TransactionResult, ApplicationError> {
+        uc.execute(ApproveTransactionCommand {
+            actor_user_id: user_id,
+            actor_party_id: party_id,
+            is_admin: false,
+            transaction_id: txn_id,
+            decision: ApprovalDecision::Approved,
+            comment: None,
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn deposit_finalization_credits_destination_wallet() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+        seed_wallet(&wallet_repo, party_id, Decimal::ZERO, Decimal::ZERO);
+
+        let txn = pending_txn(
+            TransactionType::Deposit,
+            None,
+            Some(party_id),
+            Decimal::from(75),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        let result = approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        assert_eq!(result.status, "VERIFIED");
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.balance, Decimal::from(75));
+    }
+
+    #[tokio::test]
+    async fn deposit_without_destination_party_is_rejected_as_validation() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let mut txn = pending_txn(
+            TransactionType::Deposit,
+            None,
+            Some(party_id),
+            Decimal::from(75),
+        );
+        txn.to_party_id = None;
+        txn.involved_party_ids = vec![party_id];
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo);
+        let err = approve_once(&uc, user_id, party_id, txn.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ApplicationError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn withdrawal_finalization_debits_source_wallet() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+        seed_wallet(&wallet_repo, party_id, Decimal::from(200), Decimal::ZERO);
+
+        let txn = pending_txn(
+            TransactionType::Withdrawal,
+            Some(party_id),
+            None,
+            Decimal::from(40),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.balance, Decimal::from(160));
+    }
+
+    #[tokio::test]
+    async fn escrow_hold_finalization_moves_pending_to_escrow() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), party_id);
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_pending(Decimal::from(60)).unwrap();
+        wallet_repo.wallets.lock().unwrap().insert(party_id, wallet);
+
+        let txn = pending_txn(
+            TransactionType::EscrowHold,
+            Some(party_id),
+            None,
+            Decimal::from(60),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.escrow_balance, Decimal::from(60));
+        assert_eq!(wallet.pending_balance, Decimal::ZERO);
+    }
+
+    #[tokio::test]
+    async fn escrow_release_to_self_returns_escrow_to_balance() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+        seed_wallet(&wallet_repo, party_id, Decimal::from(0), Decimal::from(80));
+
+        let txn = pending_txn(
+            TransactionType::EscrowRelease,
+            Some(party_id),
+            Some(party_id),
+            Decimal::from(80),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.escrow_balance, Decimal::ZERO);
+        assert_eq!(wallet.balance, Decimal::from(80));
+    }
+
+    #[tokio::test]
+    async fn fee_finalization_commits_pending_and_deducts_fee() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), party_id);
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_pending(Decimal::from(30)).unwrap();
+        wallet_repo.wallets.lock().unwrap().insert(party_id, wallet);
+
+        let txn = pending_txn(TransactionType::Fee, Some(party_id), None, Decimal::from(30));
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.pending_balance, Decimal::ZERO);
+        assert_eq!(wallet.balance, Decimal::from(70));
+    }
+
+    #[tokio::test]
+    async fn adjustment_both_directions_mutates_both_wallets() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, from_party) = setup_single(&party_repo);
+        let to_party = Uuid::now_v7();
+        party_repo
+            .memberships
+            .lock()
+            .unwrap()
+            .push(domain::entities::UserPartyMembership::new(
+                Uuid::now_v7(),
+                user_id,
+                to_party,
+                domain::entities::PartyMembershipRole::Owner,
+            ));
+
+        let mut from_wallet = PlatformWallet::new(Uuid::now_v7(), from_party);
+        from_wallet.deposit(Decimal::from(100)).unwrap();
+        from_wallet.hold_pending(Decimal::from(25)).unwrap();
+        wallet_repo
+            .wallets
+            .lock()
+            .unwrap()
+            .insert(from_party, from_wallet);
+        seed_wallet(&wallet_repo, to_party, Decimal::ZERO, Decimal::ZERO);
+
+        let mut txn = pending_txn(
+            TransactionType::Adjustment,
+            Some(from_party),
+            Some(to_party),
+            Decimal::from(25),
+        );
+        txn.involved_party_ids = vec![from_party, to_party];
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        approve_once(&uc, user_id, from_party, txn.id).await.unwrap();
+
+        let from_wallet = wallet_repo
+            .find_by_party_id(from_party)
+            .await
+            .unwrap()
+            .unwrap();
+        let to_wallet = wallet_repo
+            .find_by_party_id(to_party)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(from_wallet.balance, Decimal::from(75));
+        assert_eq!(to_wallet.balance, Decimal::from(25));
+    }
+
+    #[tokio::test]
+    async fn adjustment_same_from_and_to_only_mutates_source() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), party_id);
+        wallet.deposit(Decimal::from(50)).unwrap();
+        wallet.hold_pending(Decimal::from(20)).unwrap();
+        wallet_repo.wallets.lock().unwrap().insert(party_id, wallet);
+
+        let txn = pending_txn(
+            TransactionType::Adjustment,
+            Some(party_id),
+            Some(party_id),
+            Decimal::from(20),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.pending_balance, Decimal::ZERO);
+    }
+
+    #[tokio::test]
+    async fn rejection_of_withdrawal_returns_pending_balance() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), party_id);
+        wallet.deposit(Decimal::from(100)).unwrap();
+        wallet.hold_pending(Decimal::from(40)).unwrap();
+        wallet_repo.wallets.lock().unwrap().insert(party_id, wallet);
+
+        let txn = pending_txn(
+            TransactionType::Withdrawal,
+            Some(party_id),
+            None,
+            Decimal::from(40),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        let result = uc
+            .execute(ApproveTransactionCommand {
+                actor_user_id: user_id,
+                actor_party_id: party_id,
+                is_admin: false,
+                transaction_id: txn.id,
+                decision: ApprovalDecision::Rejected,
+                comment: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.status, "REJECTED");
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.pending_balance, Decimal::ZERO);
+        assert_eq!(wallet.balance, Decimal::from(100));
+    }
+
+    #[tokio::test]
+    async fn rejection_of_escrow_hold_returns_pending_balance() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let mut wallet = PlatformWallet::new(Uuid::now_v7(), party_id);
+        wallet.deposit(Decimal::from(50)).unwrap();
+        wallet.hold_pending(Decimal::from(10)).unwrap();
+        wallet_repo.wallets.lock().unwrap().insert(party_id, wallet);
+
+        let txn = pending_txn(
+            TransactionType::EscrowHold,
+            Some(party_id),
+            None,
+            Decimal::from(10),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        uc.execute(ApproveTransactionCommand {
+            actor_user_id: user_id,
+            actor_party_id: party_id,
+            is_admin: false,
+            transaction_id: txn.id,
+            decision: ApprovalDecision::Rejected,
+            comment: None,
+        })
+        .await
+        .unwrap();
+        let wallet = wallet_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(wallet.pending_balance, Decimal::ZERO);
+    }
+
+    #[tokio::test]
+    async fn rejection_of_deposit_has_no_wallet_mutation() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+        seed_wallet(&wallet_repo, party_id, Decimal::ZERO, Decimal::ZERO);
+
+        let txn = pending_txn(
+            TransactionType::Deposit,
+            None,
+            Some(party_id),
+            Decimal::from(10),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
+        uc.execute(ApproveTransactionCommand {
+            actor_user_id: user_id,
+            actor_party_id: party_id,
+            is_admin: false,
+            transaction_id: txn.id,
+            decision: ApprovalDecision::Rejected,
+            comment: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn non_member_cannot_approve() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (_, party_id) = setup_single(&party_repo);
+
+        let txn = pending_txn(
+            TransactionType::Deposit,
+            None,
+            Some(party_id),
+            Decimal::from(10),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo);
+        let err = uc
+            .execute(ApproveTransactionCommand {
+                actor_user_id: Uuid::now_v7(),
+                actor_party_id: party_id,
+                is_admin: false,
+                transaction_id: txn.id,
+                decision: ApprovalDecision::Approved,
+                comment: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ApplicationError::Forbidden));
+    }
+
+    #[tokio::test]
+    async fn missing_transaction_returns_not_found() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo);
+        let err = approve_once(&uc, user_id, party_id, Uuid::now_v7())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ApplicationError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn already_finalized_transaction_is_rejected() {
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let wallet_repo = Arc::new(FakeWalletRepo::default());
+        let (user_id, party_id) = setup_single(&party_repo);
+        seed_wallet(&wallet_repo, party_id, Decimal::ZERO, Decimal::ZERO);
+
+        let txn = pending_txn(
+            TransactionType::Deposit,
+            None,
+            Some(party_id),
+            Decimal::from(10),
+        );
+        wallet_repo.record_pending_transaction(&txn).await.unwrap();
+
+        let uc = ApproveTransaction::new(party_repo, wallet_repo);
+        approve_once(&uc, user_id, party_id, txn.id).await.unwrap();
+        let err = approve_once(&uc, user_id, party_id, txn.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ApplicationError::Validation(_)));
+    }
 }

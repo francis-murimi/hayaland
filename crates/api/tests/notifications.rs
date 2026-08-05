@@ -509,3 +509,92 @@ async fn admin_template_endpoints_require_admin_scope(pool: PgPool) {
         .await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn get_notification_returns_notification(pool: PgPool) {
+    let state = common::build_state(pool.clone()).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let user = common::create_active_user(&pool, "notifygetuser@example.com").await;
+    let token = common::auth_token(user, vec!["notifications:read".to_string()]).await;
+    let notification_id = common::create_notification(
+        &pool,
+        user,
+        "Test Notification",
+        "This is a test notification",
+    )
+    .await;
+
+    let resp = test::TestRequest::get()
+        .uri(&format!("/api/v1/notifications/{notification_id}"))
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .send_request(&app)
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["id"], notification_id.to_string());
+    assert_eq!(body["title"], "Test Notification");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mark_all_notifications_read(pool: PgPool) {
+    let state = common::build_state(pool.clone()).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let user = common::create_active_user(&pool, "notifymarkalluser@example.com").await;
+    let read_token = common::auth_token(user, vec!["notifications:read".to_string()]).await;
+    let write_token = common::auth_token(user, vec!["notifications:write".to_string()]).await;
+
+    common::create_notification(
+        &pool,
+        user,
+        "Unread One",
+        "First unread notification",
+    )
+    .await;
+    common::create_notification(
+        &pool,
+        user,
+        "Unread Two",
+        "Second unread notification",
+    )
+    .await;
+
+    let resp = test::TestRequest::get()
+        .uri("/api/v1/notifications")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {read_token}")))
+        .send_request(&app)
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["unread_count"], 2);
+
+    let resp = test::TestRequest::post()
+        .uri("/api/v1/notifications/actions/mark-all-read")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {write_token}")))
+        .set_json(json!({}))
+        .send_request(&app)
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["marked_read"], 2);
+
+    let resp = test::TestRequest::get()
+        .uri("/api/v1/notifications")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {read_token}")))
+        .send_request(&app)
+        .await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["unread_count"], 0);
+}

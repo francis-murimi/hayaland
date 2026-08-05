@@ -71,3 +71,46 @@ impl EmailSender for SmtpEmailSender {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EmailSettings;
+    use secrecy::SecretString;
+
+    fn settings(host: &str, port: u16, from: &str, from_name: &str) -> EmailSettings {
+        EmailSettings {
+            smtp_host: host.to_string(),
+            smtp_port: port,
+            smtp_username: "user".to_string(),
+            smtp_password: SecretString::from("pass"),
+            from_address: from.to_string(),
+            from_name: from_name.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn send_rejects_invalid_from_address() {
+        let settings = settings("localhost", 587, "not-an-email", "");
+        let sender = SmtpEmailSender::new(&settings).unwrap();
+        let result = sender.send("to@example.com", "subject", "body").await;
+        assert!(matches!(result, Err(ApplicationError::Infrastructure(_))));
+    }
+
+    #[tokio::test]
+    async fn send_rejects_invalid_to_address() {
+        let settings = settings("localhost", 587, "test@example.com", "");
+        let sender = SmtpEmailSender::new(&settings).unwrap();
+        let result = sender.send("not-an-email", "subject", "body").await;
+        assert!(matches!(result, Err(ApplicationError::Infrastructure(_))));
+    }
+
+    #[tokio::test]
+    async fn send_reports_failure_when_server_is_unreachable() {
+        let settings = settings("127.0.0.1", 65534, "test@example.com", "Hayaland");
+        let sender = SmtpEmailSender::new(&settings).unwrap();
+        let result = sender.send("recipient@example.com", "subject", "body").await;
+        assert!(matches!(result, Err(ApplicationError::EmailSendFailed)));
+    }
+}

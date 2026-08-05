@@ -99,3 +99,85 @@ impl GetTrustScore {
         })
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+    use crate::test_helpers::{FakePartyRepo, FakeTrustScoreRepo};
+    use domain::entities::trust_score::TrustScoreRow;
+    use domain::entities::{DisplayName, Email, Party, PartyType};
+    use uuid::Uuid;
+
+    fn party(id: Uuid) -> Party {
+        Party::new(
+            id,
+            PartyType::Organization,
+            DisplayName::new("Acme Corp").unwrap(),
+            Email::new("acme@example.com").unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn get_returns_existing_row_with_formula_breakdown() {
+        let repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_id = Uuid::now_v7();
+        let mut row = TrustScoreRow::new(party_id);
+        row.overall_score = 73.0;
+        row.deals_completed_count = 3;
+        row.deals_cancelled_count = 1;
+        row.calculation_formula = serde_json::json!({
+            "tier": "GOLD",
+            "inputs": {"review_count": 4},
+            "components": {
+                "transaction_history": 80.0,
+                "review_ratings": 90.0,
+                "non_numeric": "skip"
+            }
+        });
+        repo.upsert(&row).await.unwrap();
+
+        let uc = GetTrustScore::new(repo);
+        let result = uc.execute(party_id).await.unwrap();
+        assert_eq!(result.trust_score_id, row.id);
+        assert_eq!(result.party_id, party_id);
+        assert_eq!(result.overall_score, 73.0);
+        assert!((result.score_out_of_5 - 3.65).abs() < 0.001);
+        assert_eq!(result.tier, "GOLD");
+        assert_eq!(result.detailed_metrics.total_reviews, 4);
+        assert_eq!(result.detailed_metrics.completion_rate, 0.75);
+        assert_eq!(result.detailed_metrics.average_rating, Some(4.5));
+        assert_eq!(result.component_breakdown.len(), 2);
+        assert!(result.role_scores.as_supplier.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_creates_default_when_missing() {
+        let repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_id = Uuid::now_v7();
+        let uc = GetTrustScore::new(repo.clone());
+        let result = uc.execute(party_id).await.unwrap();
+        assert_eq!(result.party_id, party_id);
+        assert_eq!(result.tier, "BRONZE");
+        assert_eq!(result.detailed_metrics.completion_rate, 0.0);
+        assert!(repo.find_by_party_id(party_id).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn get_uses_role_scores_and_response_metrics_when_present() {
+        let repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_id = Uuid::now_v7();
+        let mut row = TrustScoreRow::new(party_id);
+        row.as_supplier_score = Some(60.0);
+        row.as_consumer_score = Some(70.0);
+        row.as_enhancer_score = Some(80.0);
+        row.average_response_hours = Some(2.5);
+        repo.upsert(&row).await.unwrap();
+
+        let uc = GetTrustScore::new(repo);
+        let result = uc.execute(party_id).await.unwrap();
+        assert_eq!(result.role_scores.as_supplier.unwrap().score, 60.0);
+        assert_eq!(result.role_scores.as_consumer.unwrap().score, 70.0);
+        assert_eq!(result.role_scores.as_enhancer.unwrap().score, 80.0);
+        assert_eq!(result.detailed_metrics.average_response_hours, Some(2.5));
+    }
+}

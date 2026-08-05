@@ -64,3 +64,35 @@ impl PlatformMetric {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_metric_new_sets_fields() {
+        let metric = PlatformMetric::new(
+            Date::from_calendar_date(2026, time::Month::August, 4).unwrap(),
+            10,
+            5,
+            1,
+            2,
+            serde_json::json!({"DRAFT": 2}),
+            20,
+            15,
+            100,
+            80,
+            rust_decimal::Decimal::from(500),
+            rust_decimal::Decimal::from(1000),
+            rust_decimal::Decimal::from(50),
+            30,
+            rust_decimal::Decimal::from(4),
+        );
+
+        assert_eq!(metric.total_deals, 10);
+        assert_eq!(metric.deals_completed, 5);
+        assert_eq!(metric.total_parties, 20);
+        assert_eq!(metric.active_users, 80);
+        assert_eq!(metric.avg_deal_value, rust_decimal::Decimal::from(500));
+    }
+}

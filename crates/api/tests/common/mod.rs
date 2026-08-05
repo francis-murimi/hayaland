@@ -84,8 +84,10 @@ use infrastructure::{
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
 };
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 struct TestTokenService {
@@ -716,4 +718,268 @@ pub async fn create_active_user(pool: &PgPool, email: &str) -> Uuid {
         .await
         .unwrap();
     user_id
+}
+
+#[allow(dead_code)]
+pub async fn auth_token_with_roles(
+    user_id: Uuid,
+    roles: Vec<String>,
+    scopes: Vec<String>,
+) -> String {
+    let generator = JwtTokenService::new("test-secret".to_string(), 86400);
+    generator
+        .generate(&AuthContext {
+            user_id,
+            roles,
+            scopes,
+        })
+        .await
+        .unwrap()
+}
+
+#[allow(dead_code)]
+pub async fn create_category(pool: &PgPool, name: &str, code: &str, category_type: &str) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query!(
+        r#"
+        INSERT INTO categories (id, category_name, category_code, category_type, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $5)
+        "#,
+        id,
+        name,
+        code,
+        category_type,
+        OffsetDateTime::now_utc()
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+#[allow(dead_code)]
+pub async fn create_party_with_role(
+    pool: &PgPool,
+    owner_id: Uuid,
+    email: &str,
+    display_name: &str,
+    role: &str,
+) -> Uuid {
+    let party_id = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    sqlx::query!(
+        r#"
+        INSERT INTO parties (id, party_type, display_name, email, is_active, created_at, updated_at)
+        VALUES ($1, 'ORGANIZATION', $2, $3, true, $4, $4)
+        "#,
+        party_id,
+        display_name,
+        email,
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO user_party_memberships (id, user_id, party_id, member_role, is_active, created_at)
+        VALUES ($1, $2, $3, 'OWNER', true, $4)
+        "#,
+        Uuid::now_v7(),
+        owner_id,
+        party_id,
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO party_roles (id, party_id, role_type, profile, is_active, assigned_at)
+        VALUES ($1, $2, $3, '{}'::jsonb, true, $4)
+        "#,
+        Uuid::now_v7(),
+        party_id,
+        role,
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO platform_wallets (
+            id, party_id, balance, escrow_balance, pending_balance,
+            total_deposited, total_withdrawn, currency, is_active, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'POINTS', true, $8, $8)
+        "#,
+        Uuid::now_v7(),
+        party_id,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    party_id
+}
+
+#[allow(dead_code)]
+pub async fn create_deal_with_parties(
+    pool: &PgPool,
+    initiator_party_id: Uuid,
+    supplier_party_id: Uuid,
+    consumer_party_id: Uuid,
+    enhancer_party_id: Uuid,
+    category_id: Uuid,
+    status: &str,
+) -> Uuid {
+    let deal_id = Uuid::now_v7();
+    let reference = format!("REF-{deal_id}");
+    let now = OffsetDateTime::now_utc();
+    sqlx::query!(
+        r#"
+        INSERT INTO deals (
+            id, deal_reference, deal_title, deal_description, domain_category_id,
+            initiator_party_id, initiator_role, deal_status, is_public, total_deal_value,
+            created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'SUPPLIER', $7, false, 0, $8, $8)
+        "#,
+        deal_id,
+        reference,
+        "Test Deal",
+        "Test deal description",
+        category_id,
+        initiator_party_id,
+        status,
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+
+    for (party_id, role) in [
+        (supplier_party_id, "SUPPLIER"),
+        (consumer_party_id, "CONSUMER"),
+        (enhancer_party_id, "ENHANCER"),
+    ] {
+        let is_initiator = party_id == initiator_party_id;
+        sqlx::query!(
+            r#"
+            INSERT INTO deal_participations (
+                id, deal_id, party_id, role, participation_status, is_initiator, invited_at, created_at
+            )
+            VALUES ($1, $2, $3, $4, 'ACCEPTED', $5, $6, $6)
+            "#,
+            Uuid::now_v7(),
+            deal_id,
+            party_id,
+            role,
+            is_initiator,
+            now
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    deal_id
+}
+
+#[allow(dead_code)]
+pub async fn create_pending_transaction(
+    pool: &PgPool,
+    deal_id: Uuid,
+    from_party_id: Option<Uuid>,
+    to_party_id: Option<Uuid>,
+    involved_party_ids: Vec<Uuid>,
+    amount: Decimal,
+    approvals_required: i32,
+) -> Uuid {
+    let txn_id = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    sqlx::query!(
+        r#"
+        INSERT INTO transactions (
+            id, deal_id, transaction_type, from_party_id, to_party_id, amount, currency,
+            status, requires_approval, approvals_required, approvals_received,
+            involved_party_ids, created_at
+        )
+        VALUES (
+            $1, $2, 'DEPOSIT', $3, $4, $5, 'POINTS', 'PENDING', true, $6, 0,
+            $7::uuid[], $8
+        )
+        "#,
+        txn_id,
+        deal_id,
+        from_party_id,
+        to_party_id,
+        amount,
+        approvals_required,
+        involved_party_ids.as_slice(),
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    txn_id
+}
+
+#[allow(dead_code)]
+pub async fn create_notification(
+    pool: &PgPool,
+    user_id: Uuid,
+    title: &str,
+    body: &str,
+) -> Uuid {
+    let id = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    sqlx::query!(
+        r#"
+        INSERT INTO notifications (
+            id, user_id, notification_type, title, body, priority, status,
+            channels, created_at, updated_at
+        )
+        VALUES (
+            $1, $2, 'SYSTEM_MAINTENANCE', $3, $4, 'NORMAL', 'SENT',
+            ARRAY[]::TEXT[], $5, $5
+        )
+        "#,
+        id,
+        user_id,
+        title,
+        body,
+        now
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+#[allow(dead_code)]
+pub async fn set_wallet_balance(pool: &PgPool, party_id: Uuid, balance: Decimal) {
+    sqlx::query!(
+        r#"
+        UPDATE platform_wallets
+        SET balance = $1, updated_at = $2
+        WHERE party_id = $3
+        "#,
+        balance,
+        OffsetDateTime::now_utc(),
+        party_id
+    )
+    .execute(pool)
+    .await
+    .unwrap();
 }

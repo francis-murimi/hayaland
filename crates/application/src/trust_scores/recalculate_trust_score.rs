@@ -217,3 +217,128 @@ fn map_to_result(row: TrustScoreRow, score: TrustScore, display_name: String) ->
         calculation_formula: row.calculation_formula,
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+    use crate::test_helpers::{FakePartyRepo, FakeTrustScoreRepo};
+    use domain::entities::trust_score::{TrustScoreConfig, TrustScoreRow};
+    use domain::entities::{DisplayName, Email, Party, PartyType, ReviewInput, ResponseMetrics};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn party(id: Uuid) -> Party {
+        Party::new(
+            id,
+            PartyType::Organization,
+            DisplayName::new("Acme Corp").unwrap(),
+            Email::new("acme@example.com").unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn recalculate_creates_default_row_when_missing_and_updates_cache() {
+        let trust_repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let party_id = Uuid::now_v7();
+        party_repo.create(&party(party_id)).await.unwrap();
+
+        let uc = RecalculateTrustScore::new(
+            trust_repo.clone(),
+            party_repo,
+            TrustScoreConfig::default(),
+        );
+        let result = uc.execute(party_id).await.unwrap();
+        assert_eq!(result.party_id, party_id);
+        assert_eq!(result.party_name, "Acme Corp");
+        assert!(result.last_calculated_at.is_some());
+        assert!(result.next_calculation_at.is_some());
+
+        let stored = trust_repo.find_by_party_id(party_id).await.unwrap().unwrap();
+        assert_eq!(stored.party_id, party_id);
+        assert!(trust_repo
+            .public_cache
+            .lock()
+            .unwrap()
+            .contains_key(&party_id));
+    }
+
+    #[tokio::test]
+    async fn recalculate_reuses_existing_row_id_and_maps_components() {
+        let trust_repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let party_id = Uuid::now_v7();
+        party_repo.create(&party(party_id)).await.unwrap();
+
+        let mut row = TrustScoreRow::new(party_id);
+        row.deals_completed_count = 3;
+        row.deals_cancelled_count = 1;
+        trust_repo.upsert(&row).await.unwrap();
+        trust_repo
+            .review_inputs
+            .lock()
+            .unwrap()
+            .insert(party_id, vec![]);
+        trust_repo.metrics.lock().unwrap().insert(
+            party_id,
+            ResponseMetrics {
+                average_response_hours: Some(1.5),
+                messages_received_90d: 10,
+                messages_responded_90d: 9,
+            },
+        );
+
+        let uc = RecalculateTrustScore::new(
+            trust_repo.clone(),
+            party_repo,
+            TrustScoreConfig::default(),
+        );
+        let result = uc.execute(party_id).await.unwrap();
+        assert_eq!(result.trust_score_id, row.id);
+        assert_eq!(result.detailed_metrics.deals_completed_count, 3);
+        assert_eq!(result.detailed_metrics.deals_cancelled_count, 1);
+        assert_eq!(result.detailed_metrics.completion_rate, 0.75);
+        assert!(!result.component_breakdown.is_empty());
+    }
+
+    #[tokio::test]
+    async fn recalculate_fails_when_party_missing() {
+        let trust_repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let uc = RecalculateTrustScore::new(
+            trust_repo,
+            party_repo,
+            TrustScoreConfig::default(),
+        );
+        let err = uc.execute(Uuid::now_v7()).await.unwrap_err();
+        assert!(matches!(err, ApplicationError::PartyNotFound));
+    }
+
+    #[tokio::test]
+    async fn recalculate_with_review_inputs_uses_them() {
+        let trust_repo = Arc::new(FakeTrustScoreRepo::default());
+        let party_repo = Arc::new(FakePartyRepo::default());
+        let party_id = Uuid::now_v7();
+        party_repo.create(&party(party_id)).await.unwrap();
+        trust_repo.review_inputs.lock().unwrap().insert(
+            party_id,
+            vec![ReviewInput {
+                reviewer_party_id: Some(Uuid::now_v7()),
+                reviewer_overall_score: 80.0,
+                review_score: 5.0,
+                deal_value: 100.0,
+                is_public: true,
+                is_hidden: false,
+                created_at: time::OffsetDateTime::now_utc(),
+            }],
+        );
+
+        let uc = RecalculateTrustScore::new(
+            trust_repo,
+            party_repo,
+            TrustScoreConfig::default(),
+        );
+        let result = uc.execute(party_id).await.unwrap();
+        assert!(result.overall_score >= 0.0);
+    }
+}

@@ -270,4 +270,106 @@ mod tests {
         assert!(n.can_be_modified_by(other, true));
         assert!(!n.can_be_modified_by(other, false));
     }
+
+    #[test]
+    fn priority_as_str_covers_all_variants() {
+        assert_eq!(NeedPriority::Low.as_str(), "LOW");
+        assert_eq!(NeedPriority::Medium.as_str(), "MEDIUM");
+        assert_eq!(NeedPriority::High.as_str(), "HIGH");
+        assert_eq!(NeedPriority::Urgent.as_str(), "URGENT");
+    }
+
+    #[test]
+    fn set_description_valid_and_invalid() {
+        let mut n = sample_need();
+        n.set_description("A much longer updated need description that passes validation.".to_string())
+            .unwrap();
+        assert_eq!(
+            n.need_description,
+            "A much longer updated need description that passes validation."
+        );
+        assert!(n.set_description("short".to_string()).is_err());
+    }
+
+    #[test]
+    fn set_location_updates() {
+        let mut n = sample_need();
+        let point = GeoPoint::new(1.0, 2.0).unwrap();
+        n.set_location(Some(point));
+        assert_eq!(n.location, Some(point));
+    }
+
+    #[test]
+    fn set_active_toggles() {
+        let mut n = sample_need();
+        n.set_active(false);
+        assert!(!n.is_active);
+        n.set_active(true);
+        assert!(n.is_active);
+    }
+
+    #[test]
+    fn active_non_hidden_is_publicly_visible() {
+        let n = sample_need();
+        assert!(n.is_visible_to(None, false));
+        assert!(n.is_visible_to(Some(Uuid::now_v7()), false));
+    }
+
+    #[test]
+    fn inactive_only_visible_to_owner() {
+        let mut n = sample_need();
+        n.set_active(false);
+        assert!(!n.is_visible_to(None, false));
+        assert!(n.is_visible_to(Some(n.consumer_party_id), false));
+        assert!(n.is_visible_to(None, true));
+    }
+
+    #[test]
+    fn can_contact_owner_requires_inquiries_enabled() {
+        let n = sample_need();
+        assert!(n.can_contact_owner(true));
+        assert!(!n.can_contact_owner(false));
+
+        let mut hidden = n.clone();
+        hidden.platform_hidden = true;
+        assert!(!hidden.can_contact_owner(true));
+
+        let mut inactive = n.clone();
+        inactive.set_active(false);
+        assert!(!inactive.can_contact_owner(true));
+    }
+
+    #[test]
+    fn deal_binding_check() {
+        let mut n = sample_need();
+        assert!(n.is_catalogue_entry());
+        assert!(!n.is_deal_bound());
+
+        n.deal_id = Some(Uuid::now_v7());
+        assert!(!n.is_catalogue_entry());
+        assert!(n.is_deal_bound());
+    }
+
+    #[test]
+    fn new_rejects_invalid_unit() {
+        assert!(Need::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "I need organic produce for my store.".to_string(),
+            Decimal::ONE,
+            "".to_string(),
+        )
+        .is_err());
+
+        assert!(Need::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "I need organic produce for my store.".to_string(),
+            Decimal::ONE,
+            "a".repeat(51),
+        )
+        .is_err());
+    }
 }

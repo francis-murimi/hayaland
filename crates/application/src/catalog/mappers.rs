@@ -214,3 +214,90 @@ pub fn map_enhancement_to_summary(enhancement: Enhancement) -> EnhancementSummar
         created_at: enhancement.created_at,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domain::entities::GeoPoint;
+    use rust_decimal::Decimal;
+    use uuid::Uuid;
+
+    fn resource() -> Resource {
+        let mut r = Resource::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "Tractor".to_string(),
+            Decimal::new(2, 0),
+            "units".to_string(),
+        )
+        .unwrap();
+        r.location = Some(GeoPoint::new(45.0, 15.0).unwrap());
+        r.description = Some("A tractor".to_string());
+        r
+    }
+
+    fn need() -> Need {
+        let mut n = Need::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "Need wheat for milling".to_string(),
+            Decimal::new(10, 0),
+            "tons".to_string(),
+        )
+        .unwrap();
+        n.location = Some(GeoPoint::new(46.0, 16.0).unwrap());
+        n
+    }
+
+    fn enhancement() -> Enhancement {
+        Enhancement::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "Cold storage".to_string(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn resource_mappers_map_all_views() {
+        let full = map_resource_to_result(resource());
+        assert_eq!(full.resource_name, "Tractor");
+        assert_eq!(full.latitude, Some(45.0));
+        assert_eq!(full.longitude, Some(15.0));
+
+        let public = map_resource_to_public(resource());
+        assert_eq!(public.description.as_deref(), Some("A tractor"));
+
+        let summary = map_resource_to_summary(resource());
+        assert_eq!(summary.quantity, Decimal::new(2, 0));
+    }
+
+    #[test]
+    fn need_mappers_map_all_views() {
+        let full = map_need_to_result(need());
+        assert_eq!(full.need_description, "Need wheat for milling");
+        assert_eq!(full.latitude, Some(46.0));
+        assert_eq!(full.longitude, Some(16.0));
+
+        let public = map_need_to_public(need());
+        assert_eq!(public.required_quantity, Decimal::new(10, 0));
+
+        let summary = map_need_to_summary(need());
+        assert_eq!(summary.quantity_unit, "tons");
+    }
+
+    #[test]
+    fn enhancement_mappers_map_all_views() {
+        let full = map_enhancement_to_result(enhancement());
+        assert_eq!(full.enhancement_name, "Cold storage");
+
+        let public = map_enhancement_to_public(enhancement());
+        assert!(!public.is_complete);
+
+        let summary = map_enhancement_to_summary(enhancement());
+        assert!(summary.is_active);
+    }
+}

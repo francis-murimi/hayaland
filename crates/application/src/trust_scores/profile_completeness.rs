@@ -220,4 +220,133 @@ mod tests {
             ProfileCompletenessCalculator::calculate(&party, &[role_pair], &default_config());
         assert!(score >= 90.0);
     }
+
+    #[test]
+    fn phone_only_adds_quarter_of_basic_points() {
+        let mut party = empty_party();
+        party.phone = Some(domain::entities::Phone::new("+1234567890").unwrap());
+        // 15 (name+email) + 5 (phone) = 20 (capped at basic_info_points)
+        let score = ProfileCompletenessCalculator::calculate(&party, &[], &default_config());
+        assert_eq!(score, 20.0);
+    }
+
+    #[test]
+    fn location_and_business_details_add_points() {
+        let mut party = empty_party();
+        party.location = Some(GeoPoint::new(1.0, 2.0).unwrap());
+        party.tax_id = Some("TAX".to_string());
+        party.primary_domain_id = Some(Uuid::now_v7());
+        party.service_radius_km = Some(5.0);
+        // 15 basic + 20 location + 20 business + 5 radius (no preferences) = 60
+        let score = ProfileCompletenessCalculator::calculate(&party, &[], &default_config());
+        assert_eq!(score, 60.0);
+    }
+
+    #[test]
+    fn consumer_profile_with_preferences_scores_role_and_radius_bonus() {
+        let mut party = empty_party();
+        party.service_radius_km = Some(5.0);
+        let consumer = RoleProfile::Consumer(domain::entities::ConsumerProfile {
+            need_category_ids: vec![Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()],
+            typical_volume: Some("10 tons".to_string()),
+            preferred_quality_standard: Some("organic".to_string()),
+            budget_range_min: Some(100.0),
+            budget_range_max: None,
+            preferred_payment_terms: vec!["net30".to_string()],
+        });
+        let score = ProfileCompletenessCalculator::calculate(
+            &party,
+            &[(domain::entities::DealRole::Consumer, consumer)],
+            &default_config(),
+        );
+        // 15 basic + 5 radius + 5 radius-bonus + 25 role (5/6 fields) = 50
+        assert_eq!(score, 50.0);
+    }
+
+    #[test]
+    fn enhancer_profile_full_scores_full_role_points() {
+        let party = empty_party();
+        let enhancer = RoleProfile::Enhancer(domain::entities::EnhancerProfile {
+            enhancement_type_ids: vec![Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()],
+            skills: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            certifications: Some(serde_json::json!(["ISO"])),
+            hourly_rate: Some(50.0),
+            fixed_rate: None,
+            equipment_owned: vec!["drill".to_string()],
+            availability: Some(serde_json::json!({"days": "weekdays"})),
+            typical_engagement_duration: Some("2 weeks".to_string()),
+        });
+        let score = ProfileCompletenessCalculator::calculate(
+            &party,
+            &[(domain::entities::DealRole::Enhancer, enhancer)],
+            &default_config(),
+        );
+        // 15 basic + 5 radius-bonus + 26.25 role (7/8 fields) = 46.25
+        assert_eq!(score, 46.25);
+    }
+
+    #[test]
+    fn empty_role_profiles_score_zero_role_points() {
+        let party = empty_party();
+        let supplier = RoleProfile::Supplier(domain::entities::SupplierProfile::default());
+        let score = ProfileCompletenessCalculator::calculate(
+            &party,
+            &[(domain::entities::DealRole::Supplier, supplier)],
+            &default_config(),
+        );
+        assert_eq!(score, 15.0);
+    }
+
+    #[test]
+    fn supplier_partial_fields_scale_role_points() {
+        let party = empty_party();
+        let supplier = RoleProfile::Supplier(domain::entities::SupplierProfile {
+            resource_type_ids: vec![Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()],
+            typical_capacity: None,
+            availability_schedule: None,
+            preferred_compensation: vec![],
+            insurance_verified: false,
+        });
+        // 1 of 5 supplier fields => 6 role points
+        let score = ProfileCompletenessCalculator::calculate(
+            &party,
+            &[(domain::entities::DealRole::Supplier, supplier)],
+            &default_config(),
+        );
+        assert_eq!(score, 21.0);
+    }
+
+    #[test]
+    fn multiple_roles_average_across_roles() {
+        let party = empty_party();
+        let full_supplier = RoleProfile::Supplier(domain::entities::SupplierProfile {
+            resource_type_ids: vec![Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()],
+            typical_capacity: Some("x".to_string()),
+            availability_schedule: Some(serde_json::json!({})),
+            preferred_compensation: vec!["cash".to_string()],
+            insurance_verified: true,
+        });
+        let empty_consumer = RoleProfile::Consumer(domain::entities::ConsumerProfile::default());
+        let score = ProfileCompletenessCalculator::calculate(
+            &party,
+            &[
+                (domain::entities::DealRole::Supplier, full_supplier),
+                (domain::entities::DealRole::Consumer, empty_consumer),
+            ],
+            &default_config(),
+        );
+        // 15 basic + 5 radius-bonus + (30 supplier + 0 consumer) = 50
+        assert_eq!(score, 50.0);
+    }
+
+    #[test]
+    fn score_is_clamped_to_100() {
+        let mut config = default_config();
+        config.profile_completeness.basic_info_points = 200.0;
+        let mut party = empty_party();
+        party.phone = Some(domain::entities::Phone::new("+1234567890").unwrap());
+        party.location = Some(GeoPoint::new(1.0, 2.0).unwrap());
+        let score = ProfileCompletenessCalculator::calculate(&party, &[], &config);
+        assert_eq!(score, 100.0);
+    }
 }

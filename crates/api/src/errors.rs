@@ -292,4 +292,428 @@ mod tests {
         let response = err.error_response();
         assert_eq!(response.status(), StatusCode::CONFLICT);
     }
+
+    fn all_application_errors() -> Vec<(ApplicationError, StatusCode, &'static str)> {
+        vec![
+            (
+                ApplicationError::Validation(vec!["x".to_string()]),
+                StatusCode::BAD_REQUEST,
+                "validation_error",
+            ),
+            (
+                ApplicationError::WeakPassword {
+                    message: "x".to_string(),
+                },
+                StatusCode::BAD_REQUEST,
+                "weak_password",
+            ),
+            (
+                ApplicationError::InvalidMessageContent("x".to_string()),
+                StatusCode::BAD_REQUEST,
+                "invalid_message_content",
+            ),
+            (
+                ApplicationError::InvalidRecipient("x".to_string()),
+                StatusCode::BAD_REQUEST,
+                "invalid_recipient",
+            ),
+            (
+                ApplicationError::InvalidReactionType("x".to_string()),
+                StatusCode::BAD_REQUEST,
+                "invalid_reaction_type",
+            ),
+            (
+                ApplicationError::DuplicateEmail,
+                StatusCode::CONFLICT,
+                "duplicate_email",
+            ),
+            (
+                ApplicationError::DuplicateUsername,
+                StatusCode::CONFLICT,
+                "duplicate_username",
+            ),
+            (
+                ApplicationError::DuplicatePartyEmail,
+                StatusCode::CONFLICT,
+                "duplicate_party_email",
+            ),
+            (
+                ApplicationError::DuplicatePartyRole,
+                StatusCode::CONFLICT,
+                "duplicate_party_role",
+            ),
+            (
+                ApplicationError::DuplicateReview,
+                StatusCode::CONFLICT,
+                "duplicate_review",
+            ),
+            (
+                ApplicationError::DuplicateVerification,
+                StatusCode::CONFLICT,
+                "duplicate_verification",
+            ),
+            (
+                ApplicationError::DisputeAlreadyExists,
+                StatusCode::CONFLICT,
+                "dispute_already_exists",
+            ),
+            (
+                ApplicationError::DuplicateNotificationTemplate,
+                StatusCode::CONFLICT,
+                "duplicate_notification_template",
+            ),
+            (
+                ApplicationError::NotFound,
+                StatusCode::NOT_FOUND,
+                "not_found",
+            ),
+            (
+                ApplicationError::PartyNotFound,
+                StatusCode::NOT_FOUND,
+                "party_not_found",
+            ),
+            (
+                ApplicationError::VerificationNotFound,
+                StatusCode::NOT_FOUND,
+                "verification_not_found",
+            ),
+            (
+                ApplicationError::RoleNotFound,
+                StatusCode::NOT_FOUND,
+                "role_not_found",
+            ),
+            (
+                ApplicationError::DealNotFound,
+                StatusCode::NOT_FOUND,
+                "deal_not_found",
+            ),
+            (
+                ApplicationError::DisputeNotFound,
+                StatusCode::NOT_FOUND,
+                "dispute_not_found",
+            ),
+            (
+                ApplicationError::DealParticipationNotFound,
+                StatusCode::NOT_FOUND,
+                "deal_participation_not_found",
+            ),
+            (
+                ApplicationError::MessageNotFound,
+                StatusCode::NOT_FOUND,
+                "message_not_found",
+            ),
+            (
+                ApplicationError::ConversationNotFound,
+                StatusCode::NOT_FOUND,
+                "conversation_not_found",
+            ),
+            (
+                ApplicationError::ChatRoomNotFound,
+                StatusCode::NOT_FOUND,
+                "chat_room_not_found",
+            ),
+            (
+                ApplicationError::ChatRoomMembershipNotFound,
+                StatusCode::NOT_FOUND,
+                "chat_room_membership_not_found",
+            ),
+            (
+                ApplicationError::NotificationNotFound,
+                StatusCode::NOT_FOUND,
+                "notification_not_found",
+            ),
+            (
+                ApplicationError::NotificationTemplateNotFound,
+                StatusCode::NOT_FOUND,
+                "notification_template_not_found",
+            ),
+            (
+                ApplicationError::ResourceNotFound,
+                StatusCode::NOT_FOUND,
+                "resource_not_found",
+            ),
+            (
+                ApplicationError::NeedNotFound,
+                StatusCode::NOT_FOUND,
+                "need_not_found",
+            ),
+            (
+                ApplicationError::EnhancementNotFound,
+                StatusCode::NOT_FOUND,
+                "enhancement_not_found",
+            ),
+            (
+                ApplicationError::MatchNotFound,
+                StatusCode::NOT_FOUND,
+                "match_not_found",
+            ),
+            (
+                ApplicationError::InvalidCredentials,
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+            ),
+            (
+                ApplicationError::AccountInactive,
+                StatusCode::UNAUTHORIZED,
+                "account_inactive",
+            ),
+            (
+                ApplicationError::Unauthorized,
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+            ),
+            (
+                ApplicationError::Forbidden,
+                StatusCode::FORBIDDEN,
+                "forbidden",
+            ),
+            (
+                ApplicationError::CannotDeactivateAdmin,
+                StatusCode::FORBIDDEN,
+                "cannot_deactivate_admin",
+            ),
+            (
+                ApplicationError::CannotRemoveFirstAdmin,
+                StatusCode::FORBIDDEN,
+                "cannot_remove_first_admin",
+            ),
+            (
+                ApplicationError::AlreadyVerified,
+                StatusCode::FORBIDDEN,
+                "already_verified",
+            ),
+            (
+                ApplicationError::CannotEditMessage,
+                StatusCode::FORBIDDEN,
+                "cannot_edit_message",
+            ),
+            (
+                ApplicationError::CannotDeleteMessage,
+                StatusCode::FORBIDDEN,
+                "cannot_delete_message",
+            ),
+            (
+                ApplicationError::CannotManageChatRoom,
+                StatusCode::FORBIDDEN,
+                "cannot_manage_chat_room",
+            ),
+            (
+                ApplicationError::PartyHasActiveDeals,
+                StatusCode::CONFLICT,
+                "party_has_active_deals",
+            ),
+            (
+                ApplicationError::PartyRoleHasActiveDeals,
+                StatusCode::CONFLICT,
+                "party_role_has_active_deals",
+            ),
+            (
+                ApplicationError::InvalidStateTransition {
+                    from: "A".to_string(),
+                    to: "B".to_string(),
+                },
+                StatusCode::CONFLICT,
+                "invalid_state_transition",
+            ),
+            (
+                ApplicationError::InvalidValueDistribution {
+                    message: "x".to_string(),
+                },
+                StatusCode::CONFLICT,
+                "invalid_value_distribution",
+            ),
+            (
+                ApplicationError::WinWinWinValidationFailed {
+                    violations: vec!["x".to_string()],
+                },
+                StatusCode::CONFLICT,
+                "win_win_win_validation_failed",
+            ),
+            (
+                ApplicationError::ChatRoomAlreadyExists,
+                StatusCode::CONFLICT,
+                "chat_room_already_exists",
+            ),
+            (
+                ApplicationError::AlreadyChatRoomMember,
+                StatusCode::CONFLICT,
+                "already_chat_room_member",
+            ),
+            (
+                ApplicationError::ReplyNotInSameContext,
+                StatusCode::CONFLICT,
+                "reply_not_in_same_context",
+            ),
+            (
+                ApplicationError::CatalogItemHasActiveDeals,
+                StatusCode::CONFLICT,
+                "catalog_item_has_active_deals",
+            ),
+            (
+                ApplicationError::DealAccessDenied,
+                StatusCode::FORBIDDEN,
+                "deal_access_denied",
+            ),
+            (
+                ApplicationError::DisputeAccessDenied,
+                StatusCode::FORBIDDEN,
+                "dispute_access_denied",
+            ),
+            (
+                ApplicationError::CatalogAccessDenied,
+                StatusCode::FORBIDDEN,
+                "catalog_access_denied",
+            ),
+            (
+                ApplicationError::PartyNotMatchParticipant,
+                StatusCode::FORBIDDEN,
+                "party_not_match_participant",
+            ),
+            (
+                ApplicationError::EmailSendFailed,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "email_send_failed",
+            ),
+            (
+                ApplicationError::PushSendFailed,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "push_send_failed",
+            ),
+            (
+                ApplicationError::SmsSendFailed,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "sms_send_failed",
+            ),
+            (
+                ApplicationError::Infrastructure("x".to_string()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+            ),
+            (
+                ApplicationError::InvalidOrExpiredVerificationToken,
+                StatusCode::BAD_REQUEST,
+                "invalid_or_expired_token",
+            ),
+            (
+                ApplicationError::InvalidOrExpiredPasswordResetToken,
+                StatusCode::BAD_REQUEST,
+                "invalid_or_expired_token",
+            ),
+            (
+                ApplicationError::InvalidMatchStatus("x".to_string()),
+                StatusCode::BAD_REQUEST,
+                "invalid_match_status",
+            ),
+            (
+                ApplicationError::InvalidMatchResponse("x".to_string()),
+                StatusCode::BAD_REQUEST,
+                "invalid_match_response",
+            ),
+            (
+                ApplicationError::MatchExpired,
+                StatusCode::BAD_REQUEST,
+                "match_expired",
+            ),
+            (
+                ApplicationError::InvalidMediaContentType {
+                    message: "x".to_string(),
+                },
+                StatusCode::BAD_REQUEST,
+                "invalid_media_content_type",
+            ),
+            (
+                ApplicationError::MediaTooLarge,
+                StatusCode::BAD_REQUEST,
+                "media_too_large",
+            ),
+            (
+                ApplicationError::InvalidSearchTarget {
+                    message: "x".to_string(),
+                },
+                StatusCode::BAD_REQUEST,
+                "invalid_search_target",
+            ),
+            (
+                ApplicationError::MediaNotFound,
+                StatusCode::NOT_FOUND,
+                "media_not_found",
+            ),
+            (
+                ApplicationError::AuditLogNotFound,
+                StatusCode::NOT_FOUND,
+                "audit_log_not_found",
+            ),
+            (
+                ApplicationError::MediaStorageFailed {
+                    message: "x".to_string(),
+                },
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "media_storage_failed",
+            ),
+            (
+                ApplicationError::AnalyticsError {
+                    message: "x".to_string(),
+                },
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analytics_error",
+            ),
+            (
+                ApplicationError::InsufficientEscrowFunds,
+                StatusCode::PAYMENT_REQUIRED,
+                "insufficient_escrow_funds",
+            ),
+            (
+                ApplicationError::SettlementFailed {
+                    reason: "x".to_string(),
+                },
+                StatusCode::CONFLICT,
+                "settlement_failed",
+            ),
+        ]
+    }
+
+    #[actix_rt::test]
+    async fn every_application_error_maps_to_status_and_code() {
+        for (app_err, expected_status, expected_code) in all_application_errors() {
+            let err = ApiError::Application(app_err);
+            assert_eq!(err.status_code(), expected_status, "status for {err:?}");
+
+            let response = err.error_response();
+            assert_eq!(response.status(), expected_status);
+            let body = response.into_body();
+            let bytes = actix_web::body::to_bytes(body).await.unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(
+                json["code"].as_str().unwrap(),
+                expected_code,
+                "code for {err:?}"
+            );
+            assert!(!json["message"].as_str().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn validation_and_forbidden_variants() {
+        let err = ApiError::Validation("bad field".to_string());
+        assert_eq!(err.status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            err.error_response().status(),
+            StatusCode::BAD_REQUEST
+        );
+
+        let err = ApiError::Forbidden;
+        assert_eq!(err.status_code(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn from_validator_errors_flattens_field_messages() {
+        let mut errors = validator::ValidationErrors::new();
+        let error = validator::ValidationError::new("length");
+        errors.add("email", error);
+
+        let api_err = ApiError::from(errors);
+        assert_eq!(api_err.status_code(), StatusCode::BAD_REQUEST);
+        assert!(matches!(api_err, ApiError::Validation(_)));
+        assert!(api_err.to_string().contains("email"));
+    }
 }

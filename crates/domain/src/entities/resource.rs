@@ -329,4 +329,73 @@ mod tests {
 
         assert!(!r.can_contact_owner(false));
     }
+
+    #[test]
+    fn set_name_valid_and_invalid() {
+        let mut r = sample_resource();
+        r.set_name("Updated Resource Name".to_string()).unwrap();
+        assert_eq!(r.resource_name, "Updated Resource Name");
+        assert!(r.set_name("ab".to_string()).is_err());
+    }
+
+    #[test]
+    fn set_condition_and_location_update() {
+        let mut r = sample_resource();
+        r.set_condition(Some(ResourceCondition::Good));
+        assert_eq!(r.condition, Some(ResourceCondition::Good));
+
+        let point = GeoPoint::new(1.0, 2.0).unwrap();
+        r.set_location(Some(point));
+        assert_eq!(r.location, Some(point));
+    }
+
+    #[test]
+    fn set_active_toggles() {
+        let mut r = sample_resource();
+        r.set_active(false);
+        assert!(!r.is_active);
+        r.set_active(true);
+        assert!(r.is_active);
+    }
+
+    #[test]
+    fn active_non_hidden_is_publicly_visible() {
+        let r = sample_resource();
+        assert!(r.is_visible_to(None, false));
+        assert!(r.is_visible_to(Some(Uuid::now_v7()), false));
+    }
+
+    #[test]
+    fn deal_binding_check() {
+        let mut r = sample_resource();
+        assert!(r.is_catalogue_entry());
+        assert!(!r.is_deal_bound());
+
+        r.deal_id = Some(Uuid::now_v7());
+        assert!(!r.is_catalogue_entry());
+        assert!(r.is_deal_bound());
+    }
+
+    #[test]
+    fn new_rejects_invalid_unit() {
+        assert!(Resource::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "Valid Name".to_string(),
+            Decimal::ONE,
+            "".to_string(),
+        )
+        .is_err());
+
+        assert!(Resource::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            "Valid Name".to_string(),
+            Decimal::ONE,
+            "a".repeat(51),
+        )
+        .is_err());
+    }
 }

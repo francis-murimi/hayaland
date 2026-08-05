@@ -31,4 +31,4 @@ pub use send_notification::SendNotification;
 pub use update_preferences::UpdateNotificationPreferences;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;

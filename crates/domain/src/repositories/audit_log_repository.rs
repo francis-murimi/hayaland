@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Default)]
+/// Filters for paginating and querying admin audit log entries.
+#[derive(Debug, Clone)]
 pub struct AuditLogFilters {
     pub admin_user_id: Option<Uuid>,
     pub action_type: Option<AdminActionType>,
@@ -14,6 +15,21 @@ pub struct AuditLogFilters {
     pub to: Option<OffsetDateTime>,
     pub limit: i64,
     pub offset: i64,
+}
+
+impl Default for AuditLogFilters {
+    fn default() -> Self {
+        Self {
+            admin_user_id: None,
+            action_type: None,
+            target_type: None,
+            target_id: None,
+            from: None,
+            to: None,
+            limit: 50,
+            offset: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

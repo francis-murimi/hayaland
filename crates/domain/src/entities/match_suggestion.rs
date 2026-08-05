@@ -477,4 +477,123 @@ mod tests {
         assert_eq!(s.match_status, MatchStatus::ConvertedToDeal);
         assert_eq!(s.converted_deal_id, Some(deal_id));
     }
+
+    #[test]
+    fn counter_propose_sets_status() {
+        let mut s = MatchSuggestion::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            sample_breakdown(),
+            "reason".to_string(),
+        )
+        .unwrap();
+        s.counter_propose(Some("different terms".to_string()));
+        assert_eq!(s.match_status, MatchStatus::CounterProposed);
+        assert_eq!(s.counter_notes, Some("different terms".to_string()));
+        assert!(s.responded_at.is_some());
+    }
+
+    #[test]
+    fn all_parties_accepted_reflects_status() {
+        let mut s = MatchSuggestion::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            sample_breakdown(),
+            "reason".to_string(),
+        )
+        .unwrap();
+        assert!(!s.all_parties_accepted());
+        s.accept();
+        assert!(s.all_parties_accepted());
+    }
+
+    #[test]
+    fn set_categories_and_value() {
+        let mut s = MatchSuggestion::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            sample_breakdown(),
+            "reason".to_string(),
+        )
+        .unwrap();
+        let rid = Uuid::now_v7();
+        let nid = Uuid::now_v7();
+        let eid = Uuid::now_v7();
+        s.set_categories(Some(rid), Some(nid), Some(eid));
+        assert_eq!(s.resource_category_id, Some(rid));
+        assert_eq!(s.need_category_id, Some(nid));
+        assert_eq!(s.enhancement_category_id, Some(eid));
+
+        s.set_suggested_deal_value(Decimal::from(1000));
+        assert_eq!(s.suggested_deal_value, Some(Decimal::from(1000)));
+    }
+
+    #[test]
+    fn set_expires_at_and_can_respond_rejects_expired() {
+        let mut s = MatchSuggestion::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            sample_breakdown(),
+            "reason".to_string(),
+        )
+        .unwrap();
+        s.set_expires_at(OffsetDateTime::now_utc() - time::Duration::seconds(1));
+        assert!(s.can_respond().is_err());
+    }
+
+    #[test]
+    fn can_respond_allows_pending_and_counter_proposed() {
+        let s = MatchSuggestion::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            sample_breakdown(),
+            "reason".to_string(),
+        )
+        .unwrap();
+        assert!(s.can_respond().is_ok());
+
+        let mut countered = s.clone();
+        countered.counter_propose(None);
+        assert!(countered.can_respond().is_ok());
+    }
+
+    #[test]
+    fn decline_rejects_response() {
+        let mut s = MatchSuggestion::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            sample_breakdown(),
+            "reason".to_string(),
+        )
+        .unwrap();
+        s.decline();
+        assert!(s.can_respond().is_err());
+    }
+
+    #[test]
+    fn match_status_helpers() {
+        assert!(MatchStatus::Declined.is_terminal());
+        assert!(MatchStatus::Expired.is_terminal());
+        assert!(MatchStatus::ConvertedToDeal.is_terminal());
+        assert!(!MatchStatus::Pending.is_terminal());
+        assert!(!MatchStatus::Accepted.is_terminal());
+        assert!(!MatchStatus::CounterProposed.is_terminal());
+
+        assert!(MatchStatus::Pending.allows_response());
+        assert!(MatchStatus::CounterProposed.allows_response());
+        assert!(!MatchStatus::Accepted.allows_response());
+        assert!(!MatchStatus::Declined.allows_response());
+    }
 }

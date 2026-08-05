@@ -22,8 +22,30 @@ impl PostgresAnalyticsRepository {
 #[async_trait]
 impl AnalyticsRepository for PostgresAnalyticsRepository {
     async fn refresh_daily_metrics(&self, date: Date) -> Result<(), DomainError> {
+        let total_deals: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM deals WHERE created_at::DATE <= $1"#,
+        )
+        .bind(date)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_err)?;
+
+        if total_deals == 0 {
+            return Err(DomainError::RepositoryError(
+                "no metrics refreshed".to_string(),
+            ));
+        }
+
         let result = sqlx::query(
             r#"
+            WITH filtered_deals AS (
+                SELECT * FROM deals WHERE created_at::DATE <= $1
+            ),
+            status_counts AS (
+                SELECT deal_status::TEXT AS status, COUNT(*)::INTEGER AS cnt
+                FROM filtered_deals
+                GROUP BY deal_status
+            )
             INSERT INTO platform_metrics (
                 date,
                 total_deals,
@@ -43,27 +65,21 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
             )
             SELECT
                 $1,
-                COUNT(*)::INTEGER,
-                COUNT(*) FILTER (WHERE deal_status = 'COMPLETED')::INTEGER,
-                COUNT(*) FILTER (WHERE deal_status = 'DISPUTED')::INTEGER,
-                COUNT(*) FILTER (WHERE deal_status IN ('CANCELLED', 'EXPIRED'))::INTEGER,
-                COALESCE(jsonb_object_agg(status_counts.status, status_counts.cnt) FILTER (WHERE status_counts.status IS NOT NULL), '{}'),
+                (SELECT COUNT(*)::INTEGER FROM filtered_deals),
+                (SELECT COUNT(*)::INTEGER FROM filtered_deals WHERE deal_status = 'COMPLETED'),
+                (SELECT COUNT(*)::INTEGER FROM filtered_deals WHERE deal_status = 'DISPUTED'),
+                (SELECT COUNT(*)::INTEGER FROM filtered_deals WHERE deal_status IN ('CANCELLED', 'EXPIRED')),
+                COALESCE((SELECT jsonb_object_agg(status, cnt) FROM status_counts), '{}'),
                 (SELECT COUNT(*)::INTEGER FROM parties),
                 (SELECT COUNT(*)::INTEGER FROM parties WHERE is_active = true),
                 (SELECT COUNT(*)::INTEGER FROM users),
                 (SELECT COUNT(*)::INTEGER FROM users WHERE is_active = true),
-                COALESCE(AVG(total_deal_value) FILTER (WHERE total_deal_value IS NOT NULL), 0),
+                COALESCE((SELECT AVG(total_deal_value) FROM filtered_deals WHERE total_deal_value IS NOT NULL), 0),
                 COALESCE((SELECT SUM(escrow_balance) FROM platform_wallets), 0),
                 COALESCE((SELECT SUM(amount) FROM transactions WHERE transaction_type = 'FEE'), 0),
                 (SELECT COUNT(*)::INTEGER FROM reviews),
                 COALESCE((SELECT AVG(overall_rating)::DECIMAL(3,2) FROM reviews), 0)
-            FROM deals
-            LEFT JOIN (
-                SELECT deal_status AS status, COUNT(*) AS cnt
-                FROM deals
-                GROUP BY deal_status
-            ) AS status_counts ON TRUE
-            WHERE created_at::DATE <= $1
+            FROM (SELECT 1) AS dummy
             ON CONFLICT (date) DO UPDATE SET
                 total_deals = EXCLUDED.total_deals,
                 deals_completed = EXCLUDED.deals_completed,
@@ -100,19 +116,19 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
         let row = sqlx::query(
             r#"
             SELECT
-                total_deals,
-                (total_deals - deals_completed - deals_cancelled - deals_disputed) AS active_deals,
-                deals_completed,
-                deals_disputed,
-                total_parties,
-                active_parties,
-                total_users,
-                active_users,
+                total_deals::BIGINT AS total_deals,
+                (total_deals - deals_completed - deals_cancelled - deals_disputed)::BIGINT AS active_deals,
+                deals_completed::BIGINT AS deals_completed,
+                deals_disputed::BIGINT AS deals_disputed,
+                total_parties::BIGINT AS total_parties,
+                active_parties::BIGINT AS active_parties,
+                total_users::BIGINT AS total_users,
+                active_users::BIGINT AS active_users,
                 avg_deal_value,
                 total_escrow_held,
                 total_fees_collected,
-                total_reviews,
-                avg_review_score
+                total_reviews::BIGINT AS total_reviews,
+                avg_review_score::DOUBLE PRECISION AS avg_review_score
             FROM platform_metrics
             ORDER BY date DESC
             LIMIT 1
@@ -149,10 +165,10 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
             r#"
             SELECT
                 date,
-                total_deals,
-                deals_completed,
-                deals_disputed,
-                deals_cancelled,
+                total_deals::BIGINT AS total_deals,
+                deals_completed::BIGINT AS deals_completed,
+                deals_disputed::BIGINT AS deals_disputed,
+                deals_cancelled::BIGINT AS deals_cancelled,
                 avg_deal_value
             FROM platform_metrics
             WHERE date BETWEEN $1 AND $2
@@ -187,8 +203,8 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
             r#"
             SELECT
                 date,
-                total_parties,
-                active_parties,
+                total_parties::BIGINT AS total_parties,
+                active_parties::BIGINT AS active_parties,
                 '{}'::JSONB AS parties_by_role
             FROM platform_metrics
             WHERE date BETWEEN $1 AND $2

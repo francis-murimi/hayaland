@@ -637,4 +637,250 @@ mod tests {
             ApplicationError::Infrastructure("boom".to_string())
         );
     }
+
+    #[test]
+    fn remaining_validation_domain_errors_map_to_validation() {
+        let cases = vec![
+            DomainError::InvalidResourceCondition {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidNeedPriority {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidCatalogSearchParameters {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidVerificationType {
+                message: "bad".to_string(),
+            },
+            DomainError::MissingRejectionReason,
+            DomainError::InvalidVerificationStateTransition {
+                from: "PENDING".to_string(),
+                to: "VERIFIED".to_string(),
+            },
+            DomainError::MissingVerificationEvidence,
+            DomainError::InvalidDisputeType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidDisputeStatus {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidDisputeResolution {
+                message: "bad".to_string(),
+            },
+            DomainError::Validation(vec!["bad".to_string()]),
+            DomainError::InvalidNotificationType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidNotificationChannel {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidNotificationStatus {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidNotificationPriority {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidAdminActionType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidAdminActionTargetType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidMediaContentType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidMediaPurpose {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidMediaRelatedEntityType {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidMediaSize {
+                message: "bad".to_string(),
+            },
+            DomainError::InvalidSearchTarget {
+                message: "bad".to_string(),
+            },
+        ];
+
+        for case in cases {
+            let app_err: ApplicationError = case.into();
+            assert!(
+                matches!(app_err, ApplicationError::Validation(_)),
+                "expected Validation variant for {app_err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn remaining_direct_domain_errors_map_correctly() {
+        let cases: Vec<(DomainError, ApplicationError)> = vec![
+            (
+                DomainError::ResourceNotFound,
+                ApplicationError::ResourceNotFound,
+            ),
+            (DomainError::NeedNotFound, ApplicationError::NeedNotFound),
+            (
+                DomainError::EnhancementNotFound,
+                ApplicationError::EnhancementNotFound,
+            ),
+            (
+                DomainError::DuplicateVerification,
+                ApplicationError::DuplicateVerification,
+            ),
+            (
+                DomainError::VerificationNotFound,
+                ApplicationError::VerificationNotFound,
+            ),
+            (DomainError::PartyNotFound, ApplicationError::PartyNotFound),
+            (DomainError::RoleNotFound, ApplicationError::RoleNotFound),
+            (
+                DomainError::PartyRoleHasActiveDeals,
+                ApplicationError::PartyRoleHasActiveDeals,
+            ),
+            (
+                DomainError::PartyHasActiveDeals,
+                ApplicationError::PartyHasActiveDeals,
+            ),
+            (
+                DomainError::CatalogItemHasActiveDeals,
+                ApplicationError::CatalogItemHasActiveDeals,
+            ),
+            (
+                DomainError::CatalogAccessDenied,
+                ApplicationError::CatalogAccessDenied,
+            ),
+            (
+                DomainError::DisputeNotFound,
+                ApplicationError::DisputeNotFound,
+            ),
+            (
+                DomainError::DisputeAlreadyExists,
+                ApplicationError::DisputeAlreadyExists,
+            ),
+            (
+                DomainError::DisputeAccessDenied,
+                ApplicationError::DisputeAccessDenied,
+            ),
+            (
+                DomainError::NotificationNotFound,
+                ApplicationError::NotificationNotFound,
+            ),
+            (
+                DomainError::NotificationTemplateNotFound,
+                ApplicationError::NotificationTemplateNotFound,
+            ),
+            (
+                DomainError::DuplicateNotificationTemplate,
+                ApplicationError::DuplicateNotificationTemplate,
+            ),
+            (DomainError::MediaNotFound, ApplicationError::MediaNotFound),
+        ];
+
+        for (domain_err, expected) in cases {
+            assert_eq!(ApplicationError::from(domain_err), expected);
+        }
+    }
+
+    #[test]
+    fn every_application_error_variant_formats() {
+        let variants: Vec<ApplicationError> = vec![
+            ApplicationError::Validation(vec!["x".to_string()]),
+            ApplicationError::NotFound,
+            ApplicationError::PartyNotFound,
+            ApplicationError::RoleNotFound,
+            ApplicationError::DuplicateEmail,
+            ApplicationError::DuplicateUsername,
+            ApplicationError::DuplicatePartyEmail,
+            ApplicationError::DuplicatePartyRole,
+            ApplicationError::DuplicateReview,
+            ApplicationError::DuplicateVerification,
+            ApplicationError::VerificationNotFound,
+            ApplicationError::PartyRoleHasActiveDeals,
+            ApplicationError::PartyHasActiveDeals,
+            ApplicationError::DealNotFound,
+            ApplicationError::DealParticipationNotFound,
+            ApplicationError::InvalidStateTransition {
+                from: "A".to_string(),
+                to: "B".to_string(),
+            },
+            ApplicationError::InvalidValueDistribution {
+                message: "x".to_string(),
+            },
+            ApplicationError::WinWinWinValidationFailed {
+                violations: vec!["x".to_string()],
+            },
+            ApplicationError::InsufficientEscrowFunds,
+            ApplicationError::SettlementFailed {
+                reason: "x".to_string(),
+            },
+            ApplicationError::DealAccessDenied,
+            ApplicationError::ResourceNotFound,
+            ApplicationError::NeedNotFound,
+            ApplicationError::EnhancementNotFound,
+            ApplicationError::CatalogAccessDenied,
+            ApplicationError::CatalogItemHasActiveDeals,
+            ApplicationError::DisputeNotFound,
+            ApplicationError::DisputeAlreadyExists,
+            ApplicationError::DisputeAccessDenied,
+            ApplicationError::WeakPassword {
+                message: "x".to_string(),
+            },
+            ApplicationError::InvalidCredentials,
+            ApplicationError::AccountInactive,
+            ApplicationError::Unauthorized,
+            ApplicationError::Forbidden,
+            ApplicationError::CannotDeactivateAdmin,
+            ApplicationError::CannotRemoveFirstAdmin,
+            ApplicationError::EmailSendFailed,
+            ApplicationError::InvalidOrExpiredVerificationToken,
+            ApplicationError::InvalidOrExpiredPasswordResetToken,
+            ApplicationError::AlreadyVerified,
+            ApplicationError::MessageNotFound,
+            ApplicationError::ConversationNotFound,
+            ApplicationError::ChatRoomNotFound,
+            ApplicationError::ChatRoomAlreadyExists,
+            ApplicationError::ChatRoomMembershipNotFound,
+            ApplicationError::MatchNotFound,
+            ApplicationError::InvalidMatchStatus("x".to_string()),
+            ApplicationError::InvalidMatchResponse("x".to_string()),
+            ApplicationError::MatchExpired,
+            ApplicationError::PartyNotMatchParticipant,
+            ApplicationError::AlreadyChatRoomMember,
+            ApplicationError::InvalidMessageContent("x".to_string()),
+            ApplicationError::InvalidRecipient("x".to_string()),
+            ApplicationError::InvalidReactionType("x".to_string()),
+            ApplicationError::CannotEditMessage,
+            ApplicationError::CannotDeleteMessage,
+            ApplicationError::CannotManageChatRoom,
+            ApplicationError::ReplyNotInSameContext,
+            ApplicationError::NotificationNotFound,
+            ApplicationError::NotificationTemplateNotFound,
+            ApplicationError::DuplicateNotificationTemplate,
+            ApplicationError::PushSendFailed,
+            ApplicationError::SmsSendFailed,
+            ApplicationError::MediaNotFound,
+            ApplicationError::InvalidMediaContentType {
+                message: "x".to_string(),
+            },
+            ApplicationError::MediaTooLarge,
+            ApplicationError::MediaStorageFailed {
+                message: "x".to_string(),
+            },
+            ApplicationError::AuditLogNotFound,
+            ApplicationError::AnalyticsError {
+                message: "x".to_string(),
+            },
+            ApplicationError::InvalidSearchTarget {
+                message: "x".to_string(),
+            },
+            ApplicationError::Infrastructure("x".to_string()),
+        ];
+
+        for variant in variants {
+            let rendered = variant.to_string();
+            assert!(!rendered.is_empty());
+        }
+    }
 }
