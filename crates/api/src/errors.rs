@@ -696,10 +696,7 @@ mod tests {
     fn validation_and_forbidden_variants() {
         let err = ApiError::Validation("bad field".to_string());
         assert_eq!(err.status_code(), StatusCode::BAD_REQUEST);
-        assert_eq!(
-            err.error_response().status(),
-            StatusCode::BAD_REQUEST
-        );
+        assert_eq!(err.error_response().status(), StatusCode::BAD_REQUEST);
 
         let err = ApiError::Forbidden;
         assert_eq!(err.status_code(), StatusCode::FORBIDDEN);

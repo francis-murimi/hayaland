@@ -2235,71 +2235,71 @@ pub struct FakeMessageRepo;
 #[async_trait]
 impl MessageRepository for FakeMessageRepo {
     async fn create_conversation(&self, _conversation: &Conversation) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn find_conversation_by_id(
         &self,
         _id: Uuid,
     ) -> Result<Option<Conversation>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_direct_user_conversation(
         &self,
         _user_a_id: Uuid,
         _user_b_id: Uuid,
     ) -> Result<Option<Conversation>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_direct_party_conversation(
         &self,
         _party_a_id: Uuid,
         _party_b_id: Uuid,
     ) -> Result<Option<Conversation>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_party_members_conversation(
         &self,
         _party_id: Uuid,
     ) -> Result<Option<Conversation>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_deal_conversation(
         &self,
         _deal_id: Uuid,
     ) -> Result<Option<Conversation>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_room_conversation(
         &self,
         _room_id: Uuid,
     ) -> Result<Option<Conversation>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn touch_conversation(
         &self,
         _conversation_id: Uuid,
         _last_message_at: OffsetDateTime,
     ) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn create_message(&self, _message: &Message) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn find_message_by_id(&self, _id: Uuid) -> Result<Option<Message>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn list_messages(
         &self,
         _conversation_id: Uuid,
         _query: &MessageListQuery,
     ) -> Result<Vec<domain::repositories::MessageWithMeta>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn update_message(&self, _message: &Message) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn soft_delete_message(&self, _id: Uuid) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn set_message_pinned(
         &self,
@@ -2307,30 +2307,30 @@ impl MessageRepository for FakeMessageRepo {
         _is_pinned: bool,
         _pinned_at: Option<OffsetDateTime>,
     ) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn list_pinned_messages(
         &self,
         _conversation_id: Uuid,
     ) -> Result<Vec<domain::repositories::MessageWithMeta>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn mark_read(&self, _read: &MessageRead) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn find_read(
         &self,
         _message_id: Uuid,
         _user_id: Uuid,
     ) -> Result<Option<MessageRead>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn unread_count_for_user(
         &self,
         _user_id: Uuid,
         _party_id: Option<Uuid>,
     ) -> Result<i64, DomainError> {
-        unimplemented!()
+        Ok(0)
     }
     async fn list_conversations_for_user(
         &self,
@@ -2339,26 +2339,26 @@ impl MessageRepository for FakeMessageRepo {
         _limit: i64,
         _offset: i64,
     ) -> Result<Vec<domain::repositories::ConversationSummary>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn toggle_reaction(
         &self,
         _reaction: &MessageReaction,
     ) -> Result<Option<MessageReaction>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn list_reactions_for_message(
         &self,
         _message_id: Uuid,
     ) -> Result<Vec<MessageReaction>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn count_messages_by_recipient(
         &self,
         _recipient_type: RecipientType,
         _recipient_id: Uuid,
     ) -> Result<i64, DomainError> {
-        unimplemented!()
+        Ok(0)
     }
 }
 
@@ -2368,79 +2368,79 @@ pub struct FakeChatRoomRepo;
 #[async_trait]
 impl ChatRoomRepository for FakeChatRoomRepo {
     async fn create_room(&self, _room: &ChatRoom) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn find_room_by_id(&self, _id: Uuid) -> Result<Option<ChatRoom>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_room_by_name(&self, _name: &str) -> Result<Option<ChatRoom>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn update_room(&self, _room: &ChatRoom) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn soft_delete_room(&self, _id: Uuid) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn list_rooms(
         &self,
         _query: &ChatRoomListQuery,
         _visible_room_ids: &[Uuid],
     ) -> Result<Vec<ChatRoom>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn count_rooms(
         &self,
         _query: &ChatRoomListQuery,
         _visible_room_ids: &[Uuid],
     ) -> Result<i64, DomainError> {
-        unimplemented!()
+        Ok(0)
     }
     async fn add_membership(&self, _membership: &ChatRoomMembership) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn remove_membership(&self, _membership_id: Uuid) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn find_membership_by_id(
         &self,
         _membership_id: Uuid,
     ) -> Result<Option<ChatRoomMembership>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_membership_for_user(
         &self,
         _room_id: Uuid,
         _user_id: Uuid,
     ) -> Result<Option<ChatRoomMembership>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn find_membership_for_party(
         &self,
         _room_id: Uuid,
         _party_id: Uuid,
     ) -> Result<Option<ChatRoomMembership>, DomainError> {
-        unimplemented!()
+        Ok(None)
     }
     async fn update_membership_role(
         &self,
         _membership_id: Uuid,
         _role: ChatRoomMemberRole,
     ) -> Result<(), DomainError> {
-        unimplemented!()
+        Ok(())
     }
     async fn list_memberships_for_room(
         &self,
         _room_id: Uuid,
     ) -> Result<Vec<ChatRoomMembership>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn list_room_ids_for_user(
         &self,
         _user_id: Uuid,
         _party_ids: &[Uuid],
     ) -> Result<Vec<Uuid>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
     async fn is_user_in_room(
         &self,
@@ -2448,21 +2448,21 @@ impl ChatRoomRepository for FakeChatRoomRepo {
         _user_id: Uuid,
         _party_ids: &[Uuid],
     ) -> Result<bool, DomainError> {
-        unimplemented!()
+        Ok(false)
     }
     async fn is_party_in_room(
         &self,
         _room_id: Uuid,
         _party_ids: &[Uuid],
     ) -> Result<bool, DomainError> {
-        unimplemented!()
+        Ok(false)
     }
     async fn list_rooms_for_user(
         &self,
         _user_id: Uuid,
         _party_ids: &[Uuid],
     ) -> Result<Vec<ChatRoom>, DomainError> {
-        unimplemented!()
+        Ok(Vec::new())
     }
 }
 
@@ -2476,7 +2476,10 @@ pub struct FakeCatalogRepository {
 #[async_trait]
 impl CatalogRepository for FakeCatalogRepository {
     async fn create_resource(&self, resource: &Resource) -> Result<(), DomainError> {
-        self.resources.lock().unwrap().insert(resource.id, resource.clone());
+        self.resources
+            .lock()
+            .unwrap()
+            .insert(resource.id, resource.clone());
         Ok(())
     }
     async fn update_resource(&self, resource: &Resource) -> Result<(), DomainError> {
@@ -2504,8 +2507,16 @@ impl CatalogRepository for FakeCatalogRepository {
             .values()
             .filter(|r| criteria.include_inactive || r.is_active)
             .filter(|r| !r.platform_hidden || criteria.include_hidden)
-            .filter(|r| criteria.party_id.is_none_or(|pid| r.supplier_party_id == pid))
-            .filter(|r| criteria.category_id.is_none_or(|cid| r.resource_type_id == cid))
+            .filter(|r| {
+                criteria
+                    .party_id
+                    .is_none_or(|pid| r.supplier_party_id == pid)
+            })
+            .filter(|r| {
+                criteria
+                    .category_id
+                    .is_none_or(|cid| r.resource_type_id == cid)
+            })
             .cloned()
             .collect();
         let total = items.len() as i64;
@@ -2558,8 +2569,16 @@ impl CatalogRepository for FakeCatalogRepository {
             .values()
             .filter(|n| criteria.include_inactive || n.is_active)
             .filter(|n| !n.platform_hidden || criteria.include_hidden)
-            .filter(|n| criteria.party_id.is_none_or(|pid| n.consumer_party_id == pid))
-            .filter(|n| criteria.category_id.is_none_or(|cid| n.need_category_id == cid))
+            .filter(|n| {
+                criteria
+                    .party_id
+                    .is_none_or(|pid| n.consumer_party_id == pid)
+            })
+            .filter(|n| {
+                criteria
+                    .category_id
+                    .is_none_or(|cid| n.need_category_id == cid)
+            })
             .cloned()
             .collect();
         let total = items.len() as i64;
@@ -2603,10 +2622,7 @@ impl CatalogRepository for FakeCatalogRepository {
         self.enhancements.lock().unwrap().remove(&id);
         Ok(())
     }
-    async fn find_enhancement_by_id(
-        &self,
-        id: Uuid,
-    ) -> Result<Option<Enhancement>, DomainError> {
+    async fn find_enhancement_by_id(&self, id: Uuid) -> Result<Option<Enhancement>, DomainError> {
         Ok(self.enhancements.lock().unwrap().get(&id).cloned())
     }
     async fn list_enhancements(
@@ -2618,8 +2634,16 @@ impl CatalogRepository for FakeCatalogRepository {
             .values()
             .filter(|e| criteria.include_inactive || e.is_active)
             .filter(|e| !e.platform_hidden || criteria.include_hidden)
-            .filter(|e| criteria.party_id.is_none_or(|pid| e.enhancer_party_id == pid))
-            .filter(|e| criteria.category_id.is_none_or(|cid| e.enhancement_type_id == cid))
+            .filter(|e| {
+                criteria
+                    .party_id
+                    .is_none_or(|pid| e.enhancer_party_id == pid)
+            })
+            .filter(|e| {
+                criteria
+                    .category_id
+                    .is_none_or(|cid| e.enhancement_type_id == cid)
+            })
             .cloned()
             .collect();
         let total = items.len() as i64;
@@ -2668,7 +2692,11 @@ impl CatalogRepository for FakeCatalogRepository {
             Err(DomainError::ResourceNotFound)
         }
     }
-    async fn update_need_admin_flags(&self, id: Uuid, flags: AdminFlags) -> Result<(), DomainError> {
+    async fn update_need_admin_flags(
+        &self,
+        id: Uuid,
+        flags: AdminFlags,
+    ) -> Result<(), DomainError> {
         let mut needs = self.needs.lock().unwrap();
         if let Some(n) = needs.get_mut(&id) {
             if let Some(v) = flags.platform_hidden {
@@ -3365,7 +3393,11 @@ pub fn extract_reset_token_for_email(queue: &FakeEmailQueue, email: &str) -> Str
     extract_token_for_email_with_path(queue, email, "/auth/reset-password?token=")
 }
 
-pub fn extract_token_for_email_with_path(queue: &FakeEmailQueue, email: &str, path: &str) -> String {
+pub fn extract_token_for_email_with_path(
+    queue: &FakeEmailQueue,
+    email: &str,
+    path: &str,
+) -> String {
     let items = queue.items.lock().unwrap();
     let (_, _, body) = items
         .iter()

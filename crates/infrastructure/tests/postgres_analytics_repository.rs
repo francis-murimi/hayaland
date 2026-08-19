@@ -1,6 +1,4 @@
-use domain::entities::{
-    DisplayName, Email, Party, PartyType, PasswordHash, User, Username,
-};
+use domain::entities::{DisplayName, Email, Party, PartyType, PasswordHash, User, Username};
 use domain::errors::DomainError;
 use domain::repositories::{AnalyticsRepository, MetricFilters, PartyRepository, UserRepository};
 use infrastructure::repositories::{
@@ -90,7 +88,15 @@ async fn refresh_and_dashboard_summary(pool: PgPool) {
     let created_at = start_of_day(date);
 
     insert_deal(&pool, party, "REF-1", "Draft Deal", "DRAFT", created_at).await;
-    insert_deal(&pool, party, "REF-2", "Completed Deal", "COMPLETED", created_at).await;
+    insert_deal(
+        &pool,
+        party,
+        "REF-2",
+        "Completed Deal",
+        "COMPLETED",
+        created_at,
+    )
+    .await;
 
     let repo = PostgresAnalyticsRepository::new(pool.clone());
     repo.refresh_daily_metrics(date).await.unwrap();
@@ -100,20 +106,32 @@ async fn refresh_and_dashboard_summary(pool: PgPool) {
         .await
         .unwrap()
         .unwrap();
-    let row = sqlx::query!("SELECT date, total_deals, deals_completed FROM platform_metrics WHERE date = $1", date)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    eprintln!("DEBUG dashboard: deals={count}, metrics date={:?} total={} completed={}", row.date, row.total_deals, row.deals_completed);
+    let row = sqlx::query!(
+        "SELECT date, total_deals, deals_completed FROM platform_metrics WHERE date = $1",
+        date
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    eprintln!(
+        "DEBUG dashboard: deals={count}, metrics date={:?} total={} completed={}",
+        row.date, row.total_deals, row.deals_completed
+    );
 
     let raw_summary = sqlx::query!("SELECT date, total_deals, deals_completed FROM platform_metrics ORDER BY date DESC LIMIT 1")
         .fetch_one(&pool)
         .await
         .unwrap();
-    eprintln!("DEBUG raw latest: date={:?} total={} completed={}", raw_summary.date, raw_summary.total_deals, raw_summary.deals_completed);
+    eprintln!(
+        "DEBUG raw latest: date={:?} total={} completed={}",
+        raw_summary.date, raw_summary.total_deals, raw_summary.deals_completed
+    );
 
     let summary = repo.get_dashboard_summary().await.unwrap();
-    eprintln!("DEBUG summary: total_deals={} completed_deals={}", summary.total_deals, summary.completed_deals);
+    eprintln!(
+        "DEBUG summary: total_deals={} completed_deals={}",
+        summary.total_deals, summary.completed_deals
+    );
     assert_eq!(summary.total_deals, 2);
     assert_eq!(summary.completed_deals, 1);
     assert_eq!(summary.active_deals, 1);
@@ -189,7 +207,15 @@ async fn list_daily_metrics_with_filters(pool: PgPool) {
     let party = create_party(&pool, "metrics_party@example.com", "Metrics Farm").await;
 
     let date = date_at(2998, Month::January, 1);
-    insert_deal(&pool, party, "METRICS-1", "Metrics Deal", "DRAFT", start_of_day(date)).await;
+    insert_deal(
+        &pool,
+        party,
+        "METRICS-1",
+        "Metrics Deal",
+        "DRAFT",
+        start_of_day(date),
+    )
+    .await;
 
     let repo = PostgresAnalyticsRepository::new(pool);
     repo.refresh_daily_metrics(date).await.unwrap();

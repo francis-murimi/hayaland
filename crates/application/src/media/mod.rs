@@ -364,12 +364,7 @@ mod tests {
     async fn upload_media_happy_path() {
         let repo = Arc::new(FakeMediaRepo::new());
         let storage = Arc::new(FakeStorage::new());
-        let uc = UploadMedia::new(
-            repo.clone(),
-            storage,
-            1024,
-            vec!["image/*".to_string()],
-        );
+        let uc = UploadMedia::new(repo.clone(), storage, 1024, vec!["image/*".to_string()]);
         let result = uc
             .execute(upload_cmd("image/png"), b"data".to_vec())
             .await
@@ -556,10 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_media_not_found() {
-        let uc = DeleteMedia::new(
-            Arc::new(FakeMediaRepo::new()),
-            Arc::new(FakeStorage::new()),
-        );
+        let uc = DeleteMedia::new(Arc::new(FakeMediaRepo::new()), Arc::new(FakeStorage::new()));
         let err = uc
             .execute(
                 Uuid::now_v7(),

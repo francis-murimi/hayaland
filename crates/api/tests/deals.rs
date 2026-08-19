@@ -8,19 +8,17 @@ use uuid::Uuid;
 
 mod common;
 
-async fn create_party_for_deals(
-    pool: &PgPool,
-    owner_id: Uuid,
-    email: &str,
-    role: &str,
-) -> Uuid {
+async fn create_party_for_deals(pool: &PgPool, owner_id: Uuid, email: &str, role: &str) -> Uuid {
     common::create_party_with_role(pool, owner_id, email, role, role).await
 }
 
 async fn create_three_party_deal(pool: &PgPool, owner_id: Uuid) -> (Uuid, Uuid, Uuid, Uuid, Uuid) {
-    let supplier = create_party_for_deals(pool, owner_id, "dealsupplier@example.com", "SUPPLIER").await;
-    let consumer = create_party_for_deals(pool, owner_id, "dealconsumer@example.com", "CONSUMER").await;
-    let enhancer = create_party_for_deals(pool, owner_id, "dealenhancer@example.com", "ENHANCER").await;
+    let supplier =
+        create_party_for_deals(pool, owner_id, "dealsupplier@example.com", "SUPPLIER").await;
+    let consumer =
+        create_party_for_deals(pool, owner_id, "dealconsumer@example.com", "CONSUMER").await;
+    let enhancer =
+        create_party_for_deals(pool, owner_id, "dealenhancer@example.com", "ENHANCER").await;
     let category = common::create_category(pool, "Deal Domain", "DEAL-DOM", "DOMAIN").await;
     let deal_id = common::create_deal_with_parties(
         pool, supplier, supplier, consumer, enhancer, category, "DRAFT",
@@ -40,8 +38,10 @@ async fn create_deal_requires_x_party_id(pool: PgPool) {
     .await;
 
     let category = common::create_category(&pool, "Create Domain", "CREATE-DOM", "DOMAIN").await;
-    let consumer = create_party_for_deals(&pool, user_id, "createconsumer@example.com", "CONSUMER").await;
-    let enhancer = create_party_for_deals(&pool, user_id, "createenhancer@example.com", "ENHANCER").await;
+    let consumer =
+        create_party_for_deals(&pool, user_id, "createconsumer@example.com", "CONSUMER").await;
+    let enhancer =
+        create_party_for_deals(&pool, user_id, "createenhancer@example.com", "ENHANCER").await;
 
     let state = common::build_state(pool).await;
     let app = test::init_service(
@@ -75,9 +75,12 @@ async fn create_deal_rejects_invalid_timeout_overrides(pool: PgPool) {
     )
     .await;
 
-    let supplier = create_party_for_deals(&pool, user_id, "invalidsupplier@example.com", "SUPPLIER").await;
-    let consumer = create_party_for_deals(&pool, user_id, "invalidconsumer@example.com", "CONSUMER").await;
-    let enhancer = create_party_for_deals(&pool, user_id, "invalidenhancer@example.com", "ENHANCER").await;
+    let supplier =
+        create_party_for_deals(&pool, user_id, "invalidsupplier@example.com", "SUPPLIER").await;
+    let consumer =
+        create_party_for_deals(&pool, user_id, "invalidconsumer@example.com", "CONSUMER").await;
+    let enhancer =
+        create_party_for_deals(&pool, user_id, "invalidenhancer@example.com", "ENHANCER").await;
     let category = common::create_category(&pool, "Invalid Domain", "INVALID-DOM", "DOMAIN").await;
 
     let state = common::build_state(pool).await;
@@ -241,7 +244,9 @@ async fn terms_lifecycle(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let reject_req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/terms/{parent_term_id}/reject"))
+        .uri(&format!(
+            "/api/v1/deals/{deal_id}/terms/{parent_term_id}/reject"
+        ))
         .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .insert_header(("X-Party-ID", supplier.to_string()))
         .to_request();
@@ -264,7 +269,9 @@ async fn terms_lifecycle(pool: PgPool) {
     let term2_id = body["id"].as_str().unwrap();
 
     let withdraw_req = test::TestRequest::post()
-        .uri(&format!("/api/v1/deals/{deal_id}/terms/{term2_id}/withdraw"))
+        .uri(&format!(
+            "/api/v1/deals/{deal_id}/terms/{term2_id}/withdraw"
+        ))
         .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
         .insert_header(("X-Party-ID", supplier.to_string()))
         .to_request();

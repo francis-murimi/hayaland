@@ -223,7 +223,7 @@ mod coverage_tests {
     use super::*;
     use crate::test_helpers::{FakePartyRepo, FakeTrustScoreRepo};
     use domain::entities::trust_score::{TrustScoreConfig, TrustScoreRow};
-    use domain::entities::{DisplayName, Email, Party, PartyType, ReviewInput, ResponseMetrics};
+    use domain::entities::{DisplayName, Email, Party, PartyType, ResponseMetrics, ReviewInput};
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -243,18 +243,19 @@ mod coverage_tests {
         let party_id = Uuid::now_v7();
         party_repo.create(&party(party_id)).await.unwrap();
 
-        let uc = RecalculateTrustScore::new(
-            trust_repo.clone(),
-            party_repo,
-            TrustScoreConfig::default(),
-        );
+        let uc =
+            RecalculateTrustScore::new(trust_repo.clone(), party_repo, TrustScoreConfig::default());
         let result = uc.execute(party_id).await.unwrap();
         assert_eq!(result.party_id, party_id);
         assert_eq!(result.party_name, "Acme Corp");
         assert!(result.last_calculated_at.is_some());
         assert!(result.next_calculation_at.is_some());
 
-        let stored = trust_repo.find_by_party_id(party_id).await.unwrap().unwrap();
+        let stored = trust_repo
+            .find_by_party_id(party_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stored.party_id, party_id);
         assert!(trust_repo
             .public_cache
@@ -288,11 +289,8 @@ mod coverage_tests {
             },
         );
 
-        let uc = RecalculateTrustScore::new(
-            trust_repo.clone(),
-            party_repo,
-            TrustScoreConfig::default(),
-        );
+        let uc =
+            RecalculateTrustScore::new(trust_repo.clone(), party_repo, TrustScoreConfig::default());
         let result = uc.execute(party_id).await.unwrap();
         assert_eq!(result.trust_score_id, row.id);
         assert_eq!(result.detailed_metrics.deals_completed_count, 3);
@@ -305,11 +303,7 @@ mod coverage_tests {
     async fn recalculate_fails_when_party_missing() {
         let trust_repo = Arc::new(FakeTrustScoreRepo::default());
         let party_repo = Arc::new(FakePartyRepo::default());
-        let uc = RecalculateTrustScore::new(
-            trust_repo,
-            party_repo,
-            TrustScoreConfig::default(),
-        );
+        let uc = RecalculateTrustScore::new(trust_repo, party_repo, TrustScoreConfig::default());
         let err = uc.execute(Uuid::now_v7()).await.unwrap_err();
         assert!(matches!(err, ApplicationError::PartyNotFound));
     }
@@ -333,11 +327,7 @@ mod coverage_tests {
             }],
         );
 
-        let uc = RecalculateTrustScore::new(
-            trust_repo,
-            party_repo,
-            TrustScoreConfig::default(),
-        );
+        let uc = RecalculateTrustScore::new(trust_repo, party_repo, TrustScoreConfig::default());
         let result = uc.execute(party_id).await.unwrap();
         assert!(result.overall_score >= 0.0);
     }

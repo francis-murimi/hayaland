@@ -739,7 +739,12 @@ mod tests {
         wallet.hold_pending(Decimal::from(30)).unwrap();
         wallet_repo.wallets.lock().unwrap().insert(party_id, wallet);
 
-        let txn = pending_txn(TransactionType::Fee, Some(party_id), None, Decimal::from(30));
+        let txn = pending_txn(
+            TransactionType::Fee,
+            Some(party_id),
+            None,
+            Decimal::from(30),
+        );
         wallet_repo.record_pending_transaction(&txn).await.unwrap();
 
         let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
@@ -790,7 +795,9 @@ mod tests {
         wallet_repo.record_pending_transaction(&txn).await.unwrap();
 
         let uc = ApproveTransaction::new(party_repo, wallet_repo.clone());
-        approve_once(&uc, user_id, from_party, txn.id).await.unwrap();
+        approve_once(&uc, user_id, from_party, txn.id)
+            .await
+            .unwrap();
 
         let from_wallet = wallet_repo
             .find_by_party_id(from_party)

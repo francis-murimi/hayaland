@@ -81,7 +81,11 @@ mod tests {
             Ok(DashboardSummary::default())
         }
 
-        async fn get_deal_trends(&self, _from: Date, _to: Date) -> Result<Vec<DealTrend>, DomainError> {
+        async fn get_deal_trends(
+            &self,
+            _from: Date,
+            _to: Date,
+        ) -> Result<Vec<DealTrend>, DomainError> {
             Ok(vec![])
         }
 
@@ -109,10 +113,7 @@ mod tests {
         let repo = Arc::new(CountingAnalyticsRepo::new());
         let refresh = Arc::new(RefreshDailyMetrics::new(repo.clone()));
 
-        let handle = tokio::spawn(run_analytics_worker(
-            refresh,
-            Duration::from_millis(10),
-        ));
+        let handle = tokio::spawn(run_analytics_worker(refresh, Duration::from_millis(10)));
 
         tokio::time::sleep(Duration::from_millis(50)).await;
         handle.abort();
@@ -129,10 +130,7 @@ mod tests {
         let repo = Arc::new(CountingAnalyticsRepo::failing());
         let refresh = Arc::new(RefreshDailyMetrics::new(repo.clone()));
 
-        let handle = tokio::spawn(run_analytics_worker(
-            refresh,
-            Duration::from_millis(10),
-        ));
+        let handle = tokio::spawn(run_analytics_worker(refresh, Duration::from_millis(10)));
 
         tokio::time::sleep(Duration::from_millis(50)).await;
         handle.abort();

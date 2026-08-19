@@ -282,8 +282,10 @@ mod tests {
     #[test]
     fn set_description_valid_and_invalid() {
         let mut n = sample_need();
-        n.set_description("A much longer updated need description that passes validation.".to_string())
-            .unwrap();
+        n.set_description(
+            "A much longer updated need description that passes validation.".to_string(),
+        )
+        .unwrap();
         assert_eq!(
             n.need_description,
             "A much longer updated need description that passes validation."

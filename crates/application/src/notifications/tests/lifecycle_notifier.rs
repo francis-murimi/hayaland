@@ -3,8 +3,8 @@ use uuid::Uuid;
 
 use crate::errors::ApplicationError;
 use crate::notifications::tests::fake_repos::{
-    test_deal, test_deal_aggregate, test_membership, test_party, test_template,
-    FakeDealRepo, FakeEmailQueue, FakeNotificationPreferenceRepo, FakeNotificationPublisher,
+    test_deal, test_deal_aggregate, test_membership, test_party, test_template, FakeDealRepo,
+    FakeEmailQueue, FakeNotificationPreferenceRepo, FakeNotificationPublisher,
     FakeNotificationRepo, FakeNotificationTemplateRepo, FakePartyRepo, FakePushSender,
     FakeSmsSender, FakeUserRepo,
 };

@@ -4,7 +4,6 @@ use application::users::token::AuthContext;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
-use crate::handlers::matches::services;
 use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 
@@ -26,8 +25,8 @@ pub async fn list_matches(
     let actor_party_id = resolve_actor_party_id(&req, &ctx).ok();
     let is_admin = ctx.has_scope("admin:matches") || ctx.has_scope("admin:*");
 
-    let use_case = services::list_matches(state.db_pool.clone());
-    let result = use_case
+    let result = state
+        .list_matches
         .execute(ctx.user_id, actor_party_id, is_admin, query.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(result))

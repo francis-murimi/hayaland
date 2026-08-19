@@ -104,9 +104,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use domain::errors::DomainError;
-    use domain::repositories::{
-        SearchableCatalogItem, SearchableDeal, SearchableParty,
-    };
+    use domain::repositories::{SearchableCatalogItem, SearchableDeal, SearchableParty};
     use time::OffsetDateTime;
 
     struct FakeSearchRepo {
@@ -118,12 +116,7 @@ mod tests {
         fn new(items: Vec<SearchResultItem>) -> Self {
             Self {
                 result_items: items,
-                last_query: std::sync::Mutex::new((
-                    String::new(),
-                    SearchTarget::Resource,
-                    0,
-                    0,
-                )),
+                last_query: std::sync::Mutex::new((String::new(), SearchTarget::Resource, 0, 0)),
             }
         }
     }
@@ -212,10 +205,7 @@ mod tests {
         assert_eq!(result.total, 5);
         assert_eq!(result.limit, 10);
         assert_eq!(result.items.len(), 5);
-        assert!(matches!(
-            result.items[0],
-            SearchResultItemDto::Party { .. }
-        ));
+        assert!(matches!(result.items[0], SearchResultItemDto::Party { .. }));
         assert!(matches!(
             result.items[1],
             SearchResultItemDto::Resource { .. }

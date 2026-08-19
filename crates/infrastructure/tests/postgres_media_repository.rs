@@ -89,12 +89,7 @@ async fn list_media_with_filters(pool: PgPool) {
     );
     repo.create(&upload_b).await.unwrap();
 
-    let upload_other = sample_upload(
-        other_owner,
-        "other.txt",
-        None,
-        None,
-    );
+    let upload_other = sample_upload(other_owner, "other.txt", None, None);
     repo.create(&upload_other).await.unwrap();
 
     let by_owner = repo

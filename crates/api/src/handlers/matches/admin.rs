@@ -5,7 +5,6 @@ use domain::repositories::MatchFilters;
 use uuid::Uuid;
 
 use crate::errors::ApiError;
-use crate::handlers::matches::services;
 use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 
@@ -29,8 +28,10 @@ pub async fn list_all_matches(
 
     require_scope_or_admin(&ctx, "matches:read", "admin:matches")?;
 
-    let use_case = services::admin_match_controls(state.db_pool.clone());
-    let result = use_case.list_all(&MatchFilters::default()).await?;
+    let result = state
+        .admin_match_controls
+        .list_all(&MatchFilters::default())
+        .await?;
     Ok(HttpResponse::Ok().json(result))
 }
 
@@ -57,8 +58,7 @@ pub async fn update_match_status(
         reason: body.reason.clone(),
     };
 
-    let use_case = services::admin_match_controls(state.db_pool.clone());
-    use_case.update_status(cmd).await?;
+    state.admin_match_controls.update_status(cmd).await?;
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -83,8 +83,7 @@ pub async fn delete_match_suggestions_for_party(
         status: None,
     };
 
-    let use_case = services::admin_match_controls(state.db_pool.clone());
-    let deleted = use_case.delete_for_party(cmd).await?;
+    let deleted = state.admin_match_controls.delete_for_party(cmd).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "deleted": deleted })))
 }
 
@@ -102,8 +101,7 @@ pub async fn delete_all_match_suggestions(
 
     require_scope_or_admin(&ctx, "matches:write", "admin:matches")?;
 
-    let use_case = services::admin_match_controls(state.db_pool.clone());
-    let deleted = use_case.delete_all(ctx.user_id).await?;
+    let deleted = state.admin_match_controls.delete_all(ctx.user_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "deleted": deleted })))
 }
 
@@ -121,7 +119,6 @@ pub async fn get_platform_status_counts(
 
     require_scope_or_admin(&ctx, "matches:read", "admin:matches")?;
 
-    let use_case = services::admin_match_controls(state.db_pool.clone());
-    let result = use_case.count_platform().await?;
+    let result = state.admin_match_controls.count_platform().await?;
     Ok(HttpResponse::Ok().json(result))
 }

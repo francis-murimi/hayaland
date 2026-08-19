@@ -5,7 +5,6 @@ use uuid::Uuid;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
-use crate::handlers::matches::services;
 use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 
@@ -43,7 +42,6 @@ pub async fn respond_to_match(
         counter_value: body.counter_value,
     };
 
-    let use_case = services::respond_to_match(state.db_pool.clone());
-    use_case.execute(cmd).await?;
+    state.respond_to_match.execute(cmd).await?;
     Ok(HttpResponse::NoContent().finish())
 }

@@ -164,7 +164,8 @@ async fn admin_analytics_endpoints_return_metrics(pool: PgPool) {
         "ENHANCER",
     )
     .await;
-    let category = common::create_category(&pool, "Analytics Domain", "ANALYTICS-DOM", "DOMAIN").await;
+    let category =
+        common::create_category(&pool, "Analytics Domain", "ANALYTICS-DOM", "DOMAIN").await;
     let _deal_id = common::create_deal_with_parties(
         &pool, supplier, supplier, consumer, enhancer, category, "DRAFT",
     )
@@ -179,10 +180,7 @@ async fn admin_analytics_endpoints_return_metrics(pool: PgPool) {
 
     let today = time::OffsetDateTime::now_utc().date();
     let from = today - time::Duration::days(7);
-    let trends_uri = format!(
-        "/api/v1/admin/analytics/trends?from={}&to={}",
-        from, today
-    );
+    let trends_uri = format!("/api/v1/admin/analytics/trends?from={}&to={}", from, today);
     let resp = test::TestRequest::get()
         .uri(&trends_uri)
         .insert_header((header::AUTHORIZATION, format!("Bearer {admin_token}")))

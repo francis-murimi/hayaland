@@ -21,6 +21,7 @@ use application::deals::{
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
 use application::errors::ApplicationError;
+use application::matching::{AdminMatchControls, GenerateMatches, ListMatches, RespondToMatch};
 use application::messages::{
     AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
     MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
@@ -65,7 +66,7 @@ use async_trait::async_trait;
 use domain::repositories::{
     AgreementRepository, AnalyticsRepository, AuditLogRepository, CatalogRepository,
     ChatRoomRepository, DealRepository, DisputeRepository, EmailVerificationRepository,
-    MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
+    MatchRepository, MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
     SearchRepository, TrustScoreRepository, UserRepository, WalletRepository,
 };
@@ -76,11 +77,12 @@ use infrastructure::{
     repositories::{
         PostgresAgreementRepository, PostgresAnalyticsRepository, PostgresAuditLogRepository,
         PostgresCatalogRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMediaRepository,
-        PostgresMessageRepository, PostgresMilestoneRepository, PostgresPartyRepository,
-        PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
-        PostgresReviewRepository, PostgresRoleRepository, PostgresSearchRepository,
-        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMatchRepository,
+        PostgresMediaRepository, PostgresMessageRepository, PostgresMilestoneRepository,
+        PostgresPartyRepository, PostgresPartyVerificationRepository,
+        PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
+        PostgresSearchRepository, PostgresTrustScoreRepository, PostgresUserRepository,
+        PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
 };
@@ -177,6 +179,12 @@ pub fn build_state_sync(pool: PgPool) -> AppState {
     let media_repo: Arc<dyn MediaRepository> = Arc::new(PostgresMediaRepository::new(pool.clone()));
     let search_repo: Arc<dyn SearchRepository> =
         Arc::new(PostgresSearchRepository::new(pool.clone()));
+    let match_repo: Arc<dyn MatchRepository> = Arc::new(PostgresMatchRepository::new(pool.clone()));
+    let generate_matches =
+        GenerateMatches::new(match_repo.clone(), party_repo.clone(), catalog_repo.clone());
+    let list_matches = ListMatches::new(match_repo.clone(), party_repo.clone());
+    let respond_to_match = RespondToMatch::new(match_repo.clone(), party_repo.clone());
+    let admin_match_controls = AdminMatchControls::new(match_repo.clone());
     let media_storage: Arc<dyn MediaStorage> = Arc::new(LocalFileStorage::new(
         "./test-uploads".to_string(),
         "/uploads".to_string(),
@@ -637,11 +645,16 @@ pub fn build_state_sync(pool: PgPool) -> AppState {
         db_pool: pool.clone(),
         send_notification,
         lifecycle_notifier,
+        generate_matches,
+        list_matches,
+        respond_to_match,
+        admin_match_controls,
         notification_realtime_publisher,
         encryption_service,
         realtime_publisher,
         message_repository: message_repo,
         chat_room_repository: chat_room_repo,
+        media_repo: media_repo.clone(),
         websocket_registry: SessionRegistry::new(),
         token_validator: token_service,
         get_dashboard_summary: application::analytics::GetDashboardSummary::new(
@@ -936,12 +949,7 @@ pub async fn create_pending_transaction(
 }
 
 #[allow(dead_code)]
-pub async fn create_notification(
-    pool: &PgPool,
-    user_id: Uuid,
-    title: &str,
-    body: &str,
-) -> Uuid {
+pub async fn create_notification(pool: &PgPool, user_id: Uuid, title: &str, body: &str) -> Uuid {
     let id = Uuid::now_v7();
     let now = OffsetDateTime::now_utc();
     sqlx::query!(

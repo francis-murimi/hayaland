@@ -1,16 +1,15 @@
-
 use crate::deals::dto::{ExecuteTransitionCommand, ProposeTermCommand};
 use crate::deals::{ExecuteTransition, ProposeTerm};
 use crate::errors::ApplicationError;
 use crate::milestones::dto::{CreateMilestoneCommand, MilestoneActionCommand};
 use crate::milestones::{CompleteMilestone, CreateMilestone, StartMilestone, VerifyMilestone};
-use crate::notifications::LifecycleNotifier;
 use crate::notifications::tests::fake_repos::{
     test_template, FakeDealRepo as NotificationFakeDealRepo, FakeEmailQueue,
     FakeNotificationPreferenceRepo, FakeNotificationPublisher, FakeNotificationRepo,
     FakeNotificationTemplateRepo, FakePartyRepo as NotificationFakePartyRepo, FakePushSender,
     FakeSmsSender, FakeUserRepo as NotificationFakeUserRepo,
 };
+use crate::notifications::LifecycleNotifier;
 use crate::notifications::SendNotification;
 use crate::parties::dto::CreatePartyCommand;
 use crate::parties::CreateParty;
@@ -127,13 +126,19 @@ async fn three_party_fixture() -> (
         created_at: OffsetDateTime::now_utc(),
         updated_at: OffsetDateTime::now_utc(),
     };
-    deal_repo.set_value_distribution(&distribution).await.unwrap();
+    deal_repo
+        .set_value_distribution(&distribution)
+        .await
+        .unwrap();
 
     (party_repo, deal_repo, deal_id, supplier, consumer, enhancer)
 }
 
 async fn accept_all_participations(deal_repo: &Arc<FakeDealRepo>, deal_id: Uuid) {
-    let participations = deal_repo.find_participations_by_deal(deal_id).await.unwrap();
+    let participations = deal_repo
+        .find_participations_by_deal(deal_id)
+        .await
+        .unwrap();
     for mut p in participations {
         p.participation_status = ParticipationStatus::Accepted;
         p.responded_at = Some(OffsetDateTime::now_utc());
@@ -163,7 +168,12 @@ fn transition_use_case(
     party_repo: Arc<FakePartyRepo>,
     agreement_repo: Arc<FakeAgreementRepo>,
 ) -> ExecuteTransition {
-    ExecuteTransition::new(deal_repo, party_repo, agreement_repo, ValidationConfig::default())
+    ExecuteTransition::new(
+        deal_repo,
+        party_repo,
+        agreement_repo,
+        ValidationConfig::default(),
+    )
 }
 
 fn transition_cmd(actor_party_id: Uuid, new_status: DealStatus) -> ExecuteTransitionCommand {
@@ -185,7 +195,10 @@ async fn deal_not_found_returns_error() {
 
     let use_case = transition_use_case(deal_repo, party_repo, agreement_repo);
     let err = use_case
-        .execute(Uuid::now_v7(), transition_cmd(Uuid::now_v7(), DealStatus::Negotiating))
+        .execute(
+            Uuid::now_v7(),
+            transition_cmd(Uuid::now_v7(), DealStatus::Negotiating),
+        )
         .await
         .unwrap_err();
 
@@ -256,7 +269,10 @@ async fn negotiating_from_non_pending_review_fails() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::InvalidStateTransition { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::InvalidStateTransition { .. }
+    ));
 }
 
 #[tokio::test]
@@ -291,7 +307,10 @@ async fn terms_locked_from_non_negotiating_fails() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::InvalidStateTransition { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::InvalidStateTransition { .. }
+    ));
 }
 
 #[tokio::test]
@@ -301,7 +320,11 @@ async fn terms_locked_requires_value_distribution() {
     let agreement_repo = Arc::new(FakeAgreementRepo::default());
 
     // Remove value distribution.
-    deal_repo.value_distributions.lock().unwrap().remove(&deal_id);
+    deal_repo
+        .value_distributions
+        .lock()
+        .unwrap()
+        .remove(&deal_id);
 
     let mut deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
     deal.deal_status = DealStatus::Negotiating;
@@ -313,7 +336,10 @@ async fn terms_locked_requires_value_distribution() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::WinWinWinValidationFailed { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::WinWinWinValidationFailed { .. }
+    ));
 }
 
 #[tokio::test]
@@ -346,7 +372,10 @@ async fn terms_locked_rejects_unaccepted_mandatory_term() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::WinWinWinValidationFailed { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::WinWinWinValidationFailed { .. }
+    ));
 }
 
 #[tokio::test]
@@ -365,7 +394,10 @@ async fn committed_from_non_terms_locked_fails() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::InvalidStateTransition { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::InvalidStateTransition { .. }
+    ));
 }
 
 #[tokio::test]
@@ -377,7 +409,11 @@ async fn committed_requires_value_distribution() {
     let mut deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
     deal.deal_status = DealStatus::TermsLocked;
     deal_repo.update(&deal).await.unwrap();
-    deal_repo.value_distributions.lock().unwrap().remove(&deal_id);
+    deal_repo
+        .value_distributions
+        .lock()
+        .unwrap()
+        .remove(&deal_id);
 
     let use_case = transition_use_case(deal_repo, party_repo, agreement_repo);
     let err = use_case
@@ -385,7 +421,10 @@ async fn committed_requires_value_distribution() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::WinWinWinValidationFailed { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::WinWinWinValidationFailed { .. }
+    ));
 }
 
 #[tokio::test]
@@ -491,23 +530,27 @@ async fn completed_requires_all_milestones_verified() {
     deal_repo.update(&deal).await.unwrap();
 
     let milestone_repo = Arc::new(FakeMilestoneRepo::default());
-    CreateMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(CreateMilestoneCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            deal_id,
-            milestone_name: "Milestone One".to_string(),
-            description: None,
-            assigned_to_party_id: supplier,
-            verified_by_party_id: consumer,
-            due_date: None,
-            completion_criteria: "done".to_string(),
-            payment_trigger_amount: None,
-            display_order: 1,
-        })
-        .await
-        .unwrap();
+    CreateMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(CreateMilestoneCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        deal_id,
+        milestone_name: "Milestone One".to_string(),
+        description: None,
+        assigned_to_party_id: supplier,
+        verified_by_party_id: consumer,
+        due_date: None,
+        completion_criteria: "done".to_string(),
+        payment_trigger_amount: None,
+        display_order: 1,
+    })
+    .await
+    .unwrap();
 
     let use_case = ExecuteTransition::new_with_milestones(
         deal_repo,
@@ -537,51 +580,69 @@ async fn completed_requires_reviews() {
     deal_repo.update(&deal).await.unwrap();
 
     let milestone_repo = Arc::new(FakeMilestoneRepo::default());
-    CreateMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(CreateMilestoneCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            deal_id,
-            milestone_name: "Milestone One".to_string(),
-            description: None,
-            assigned_to_party_id: supplier,
-            verified_by_party_id: consumer,
-            due_date: None,
-            completion_criteria: "done".to_string(),
-            payment_trigger_amount: None,
-            display_order: 1,
-        })
-        .await
-        .unwrap();
+    CreateMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(CreateMilestoneCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        deal_id,
+        milestone_name: "Milestone One".to_string(),
+        description: None,
+        assigned_to_party_id: supplier,
+        verified_by_party_id: consumer,
+        due_date: None,
+        completion_criteria: "done".to_string(),
+        payment_trigger_amount: None,
+        display_order: 1,
+    })
+    .await
+    .unwrap();
 
-    StartMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(MilestoneActionCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            milestone_id: {
-                let list = milestone_repo.find_by_deal(deal_id, i64::MAX, 0).await.unwrap();
-                list[0].id
-            },
-            comment: None,
-        })
-        .await
-        .unwrap();
+    StartMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(MilestoneActionCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        milestone_id: {
+            let list = milestone_repo
+                .find_by_deal(deal_id, i64::MAX, 0)
+                .await
+                .unwrap();
+            list[0].id
+        },
+        comment: None,
+    })
+    .await
+    .unwrap();
 
-    CompleteMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(MilestoneActionCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            milestone_id: {
-                let list = milestone_repo.find_by_deal(deal_id, i64::MAX, 0).await.unwrap();
-                list[0].id
-            },
-            comment: None,
-        })
-        .await
-        .unwrap();
+    CompleteMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(MilestoneActionCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        milestone_id: {
+            let list = milestone_repo
+                .find_by_deal(deal_id, i64::MAX, 0)
+                .await
+                .unwrap();
+            list[0].id
+        },
+        comment: None,
+    })
+    .await
+    .unwrap();
 
     VerifyMilestone::new(
         party_repo.clone(),
@@ -594,7 +655,10 @@ async fn completed_requires_reviews() {
         actor_party_id: consumer,
         is_admin: false,
         milestone_id: {
-            let list = milestone_repo.find_by_deal(deal_id, i64::MAX, 0).await.unwrap();
+            let list = milestone_repo
+                .find_by_deal(deal_id, i64::MAX, 0)
+                .await
+                .unwrap();
             list[0].id
         },
         comment: None,
@@ -633,51 +697,69 @@ async fn completed_without_review_repo_errors() {
 
     let milestone_repo = Arc::new(FakeMilestoneRepo::default());
     let wallet_repo = Arc::new(FakeWalletRepo::default());
-    CreateMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(CreateMilestoneCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            deal_id,
-            milestone_name: "Milestone One".to_string(),
-            description: None,
-            assigned_to_party_id: supplier,
-            verified_by_party_id: consumer,
-            due_date: None,
-            completion_criteria: "done".to_string(),
-            payment_trigger_amount: None,
-            display_order: 1,
-        })
-        .await
-        .unwrap();
+    CreateMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(CreateMilestoneCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        deal_id,
+        milestone_name: "Milestone One".to_string(),
+        description: None,
+        assigned_to_party_id: supplier,
+        verified_by_party_id: consumer,
+        due_date: None,
+        completion_criteria: "done".to_string(),
+        payment_trigger_amount: None,
+        display_order: 1,
+    })
+    .await
+    .unwrap();
 
-    StartMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(MilestoneActionCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            milestone_id: {
-                let list = milestone_repo.find_by_deal(deal_id, i64::MAX, 0).await.unwrap();
-                list[0].id
-            },
-            comment: None,
-        })
-        .await
-        .unwrap();
+    StartMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(MilestoneActionCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        milestone_id: {
+            let list = milestone_repo
+                .find_by_deal(deal_id, i64::MAX, 0)
+                .await
+                .unwrap();
+            list[0].id
+        },
+        comment: None,
+    })
+    .await
+    .unwrap();
 
-    CompleteMilestone::new(party_repo.clone(), deal_repo.clone(), milestone_repo.clone())
-        .execute(MilestoneActionCommand {
-            actor_user_id: actor_user_id(),
-            actor_party_id: supplier,
-            is_admin: false,
-            milestone_id: {
-                let list = milestone_repo.find_by_deal(deal_id, i64::MAX, 0).await.unwrap();
-                list[0].id
-            },
-            comment: None,
-        })
-        .await
-        .unwrap();
+    CompleteMilestone::new(
+        party_repo.clone(),
+        deal_repo.clone(),
+        milestone_repo.clone(),
+    )
+    .execute(MilestoneActionCommand {
+        actor_user_id: actor_user_id(),
+        actor_party_id: supplier,
+        is_admin: false,
+        milestone_id: {
+            let list = milestone_repo
+                .find_by_deal(deal_id, i64::MAX, 0)
+                .await
+                .unwrap();
+            list[0].id
+        },
+        comment: None,
+    })
+    .await
+    .unwrap();
 
     VerifyMilestone::new(
         party_repo.clone(),
@@ -690,7 +772,10 @@ async fn completed_without_review_repo_errors() {
         actor_party_id: consumer,
         is_admin: false,
         milestone_id: {
-            let list = milestone_repo.find_by_deal(deal_id, i64::MAX, 0).await.unwrap();
+            let list = milestone_repo
+                .find_by_deal(deal_id, i64::MAX, 0)
+                .await
+                .unwrap();
             list[0].id
         },
         comment: None,
@@ -745,7 +830,10 @@ async fn cancellation_from_terminal_state_fails() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, ApplicationError::InvalidStateTransition { .. }));
+    assert!(matches!(
+        err,
+        ApplicationError::InvalidStateTransition { .. }
+    ));
 }
 
 #[tokio::test]
@@ -814,8 +902,8 @@ async fn transition_emits_notification_via_notifier() {
     ));
     let notifier = Arc::new(LifecycleNotifier::new(send));
 
-    let use_case = transition_use_case(deal_repo.clone(), party_repo, agreement_repo)
-        .with_notifier(notifier);
+    let use_case =
+        transition_use_case(deal_repo.clone(), party_repo, agreement_repo).with_notifier(notifier);
 
     let mut deal = deal_repo.find_by_id(deal_id).await.unwrap().unwrap();
     deal.deal_status = DealStatus::Negotiating;

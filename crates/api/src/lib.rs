@@ -31,6 +31,7 @@ use application::disputes::{
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::matching::{AdminMatchControls, GenerateMatches, ListMatches, RespondToMatch};
 use application::media::{DeleteMedia, ListMedia, UploadMedia};
 use application::milestones::{
     CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
@@ -85,7 +86,9 @@ use application::{
     },
     ports::{EncryptionService, MediaStorage, NotificationRealtimePublisher, RealtimePublisher},
 };
-use domain::repositories::{CatalogRepository, ChatRoomRepository, MessageRepository};
+use domain::repositories::{
+    CatalogRepository, ChatRoomRepository, MediaRepository, MessageRepository,
+};
 use sqlx::PgPool;
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -218,6 +221,10 @@ pub struct AppState {
     pub admin_delete_template: AdminDeleteTemplate,
     pub send_notification: Arc<SendNotification>,
     pub lifecycle_notifier: Arc<LifecycleNotifier>,
+    pub generate_matches: GenerateMatches,
+    pub list_matches: ListMatches,
+    pub respond_to_match: RespondToMatch,
+    pub admin_match_controls: AdminMatchControls,
     pub create_resource: CreateResource,
     pub update_resource: UpdateResource,
     pub delete_resource: DeleteResource,
@@ -245,6 +252,7 @@ pub struct AppState {
     pub notification_realtime_publisher: Arc<dyn NotificationRealtimePublisher>,
     pub message_repository: Arc<dyn MessageRepository>,
     pub chat_room_repository: Arc<dyn ChatRoomRepository>,
+    pub media_repo: Arc<dyn MediaRepository>,
     pub websocket_registry: crate::websocket::SessionRegistry,
     pub token_validator: Arc<dyn TokenVerifier>,
     // Platform services

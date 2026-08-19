@@ -110,7 +110,9 @@ mod tests {
     async fn send_reports_failure_when_server_is_unreachable() {
         let settings = settings("127.0.0.1", 65534, "test@example.com", "Hayaland");
         let sender = SmtpEmailSender::new(&settings).unwrap();
-        let result = sender.send("recipient@example.com", "subject", "body").await;
+        let result = sender
+            .send("recipient@example.com", "subject", "body")
+            .await;
         assert!(matches!(result, Err(ApplicationError::EmailSendFailed)));
     }
 }

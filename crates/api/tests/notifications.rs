@@ -556,20 +556,8 @@ async fn mark_all_notifications_read(pool: PgPool) {
     let read_token = common::auth_token(user, vec!["notifications:read".to_string()]).await;
     let write_token = common::auth_token(user, vec!["notifications:write".to_string()]).await;
 
-    common::create_notification(
-        &pool,
-        user,
-        "Unread One",
-        "First unread notification",
-    )
-    .await;
-    common::create_notification(
-        &pool,
-        user,
-        "Unread Two",
-        "Second unread notification",
-    )
-    .await;
+    common::create_notification(&pool, user, "Unread One", "First unread notification").await;
+    common::create_notification(&pool, user, "Unread Two", "Second unread notification").await;
 
     let resp = test::TestRequest::get()
         .uri("/api/v1/notifications")

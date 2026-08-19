@@ -1,8 +1,9 @@
 use domain::entities::{
-    DisplayName, Email, Enhancement, Need, Party, PartyType, PasswordHash, Resource, User,
-    Username,
+    DisplayName, Email, Enhancement, Need, Party, PartyType, PasswordHash, Resource, User, Username,
 };
-use domain::repositories::{CatalogRepository, PartyRepository, SearchRepository, SearchTarget, UserRepository};
+use domain::repositories::{
+    CatalogRepository, PartyRepository, SearchRepository, SearchTarget, UserRepository,
+};
 use infrastructure::repositories::{
     PostgresCatalogRepository, PostgresPartyRepository, PostgresSearchRepository,
     PostgresUserRepository,
@@ -116,19 +117,31 @@ async fn search_parties_by_name_and_email(pool: PgPool) {
     let party_id = create_party(&pool, "sunrise@example.com", "Sunrise Farm").await;
     let repo = PostgresSearchRepository::new(pool);
 
-    let by_name = repo.search("Sunrise", SearchTarget::Party, 10, 0).await.unwrap();
+    let by_name = repo
+        .search("Sunrise", SearchTarget::Party, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(by_name.total, 1);
-    assert!(matches!(&by_name.items[0], domain::repositories::SearchResultItem::Party(p) if p.id == party_id));
+    assert!(
+        matches!(&by_name.items[0], domain::repositories::SearchResultItem::Party(p) if p.id == party_id)
+    );
 
-    let by_word = repo.search("Farm", SearchTarget::Party, 10, 0).await.unwrap();
+    let by_word = repo
+        .search("Farm", SearchTarget::Party, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(by_word.total, 1);
 
-    let by_email = repo.search("sunrise@example.com", SearchTarget::Party, 10, 0)
+    let by_email = repo
+        .search("sunrise@example.com", SearchTarget::Party, 10, 0)
         .await
         .unwrap();
     assert_eq!(by_email.total, 1);
 
-    let empty = repo.search("NoSuchParty", SearchTarget::Party, 10, 0).await.unwrap();
+    let empty = repo
+        .search("NoSuchParty", SearchTarget::Party, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(empty.total, 0);
     assert!(empty.items.is_empty());
 }
@@ -143,14 +156,25 @@ async fn search_resources_by_name_and_description(pool: PgPool) {
 
     let repo = PostgresSearchRepository::new(pool);
 
-    let by_name = repo.search("Farmland", SearchTarget::Resource, 10, 0).await.unwrap();
+    let by_name = repo
+        .search("Farmland", SearchTarget::Resource, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(by_name.total, 1);
-    assert!(matches!(&by_name.items[0], domain::repositories::SearchResultItem::Resource(r) if r.id == resource.id));
+    assert!(
+        matches!(&by_name.items[0], domain::repositories::SearchResultItem::Resource(r) if r.id == resource.id)
+    );
 
-    let by_desc = repo.search("organic", SearchTarget::Resource, 10, 0).await.unwrap();
+    let by_desc = repo
+        .search("organic", SearchTarget::Resource, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(by_desc.total, 1);
 
-    let empty = repo.search("concrete", SearchTarget::Resource, 10, 0).await.unwrap();
+    let empty = repo
+        .search("concrete", SearchTarget::Resource, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(empty.total, 0);
 }
 
@@ -163,11 +187,19 @@ async fn search_needs_by_description(pool: PgPool) {
 
     let repo = PostgresSearchRepository::new(pool);
 
-    let result = repo.search("organic", SearchTarget::Need, 10, 0).await.unwrap();
+    let result = repo
+        .search("organic", SearchTarget::Need, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(result.total, 1);
-    assert!(matches!(&result.items[0], domain::repositories::SearchResultItem::Need(n) if n.id == need.id));
+    assert!(
+        matches!(&result.items[0], domain::repositories::SearchResultItem::Need(n) if n.id == need.id)
+    );
 
-    let empty = repo.search("machinery", SearchTarget::Need, 10, 0).await.unwrap();
+    let empty = repo
+        .search("machinery", SearchTarget::Need, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(empty.total, 0);
 }
 
@@ -180,13 +212,19 @@ async fn search_enhancements_by_name(pool: PgPool) {
 
     let repo = PostgresSearchRepository::new(pool);
 
-    let result = repo.search("agricultural", SearchTarget::Enhancement, 10, 0)
+    let result = repo
+        .search("agricultural", SearchTarget::Enhancement, 10, 0)
         .await
         .unwrap();
     assert_eq!(result.total, 1);
-    assert!(matches!(&result.items[0], domain::repositories::SearchResultItem::Enhancement(e) if e.id == enhancement.id));
+    assert!(
+        matches!(&result.items[0], domain::repositories::SearchResultItem::Enhancement(e) if e.id == enhancement.id)
+    );
 
-    let empty = repo.search("plumbing", SearchTarget::Enhancement, 10, 0).await.unwrap();
+    let empty = repo
+        .search("plumbing", SearchTarget::Enhancement, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(empty.total, 0);
 }
 
@@ -196,18 +234,29 @@ async fn search_deals_by_title(pool: PgPool) {
     let public_deal_id = create_public_deal(&pool, "Community Farming Partnership", party).await;
     let _private_deal_id = create_public_deal(&pool, "Private Agriculture Deal", party).await;
     // Flip the private deal back to is_public = false so only the public one is searchable.
-    sqlx::query!("UPDATE deals SET is_public = false WHERE deal_title = $1", "Private Agriculture Deal")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query!(
+        "UPDATE deals SET is_public = false WHERE deal_title = $1",
+        "Private Agriculture Deal"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let repo = PostgresSearchRepository::new(pool);
 
-    let result = repo.search("farming", SearchTarget::Deal, 10, 0).await.unwrap();
+    let result = repo
+        .search("farming", SearchTarget::Deal, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(result.total, 1);
-    assert!(matches!(&result.items[0], domain::repositories::SearchResultItem::Deal(d) if d.id == public_deal_id));
+    assert!(
+        matches!(&result.items[0], domain::repositories::SearchResultItem::Deal(d) if d.id == public_deal_id)
+    );
 
-    let empty = repo.search("real estate", SearchTarget::Deal, 10, 0).await.unwrap();
+    let empty = repo
+        .search("real estate", SearchTarget::Deal, 10, 0)
+        .await
+        .unwrap();
     assert_eq!(empty.total, 0);
 }
 
@@ -229,12 +278,15 @@ async fn search_pagination_and_empty_query(pool: PgPool) {
     assert_eq!(page_two.items.len(), 1);
     assert_eq!(page_two.total, 2);
 
-    let ids: Vec<Uuid> = page.items.iter().chain(page_two.items.iter()).map(|item| {
-        match item {
+    let ids: Vec<Uuid> = page
+        .items
+        .iter()
+        .chain(page_two.items.iter())
+        .map(|item| match item {
             domain::repositories::SearchResultItem::Party(p) => p.id,
             _ => panic!("expected party"),
-        }
-    }).collect();
+        })
+        .collect();
     assert!(ids.contains(&first));
     assert!(ids.contains(&second));
 }

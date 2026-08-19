@@ -240,7 +240,11 @@ mod tests {
             })
         }
 
-        async fn get_deal_trends(&self, from: Date, to: Date) -> Result<Vec<DealTrend>, DomainError> {
+        async fn get_deal_trends(
+            &self,
+            from: Date,
+            to: Date,
+        ) -> Result<Vec<DealTrend>, DomainError> {
             assert!(from <= to);
             if self.fail {
                 return Err(DomainError::RepositoryError("boom".to_string()));
@@ -281,9 +285,7 @@ mod tests {
             }
             Ok(MetricsListResult {
                 items: vec![PlatformMetric {
-                    date: filters
-                        .from_date
-                        .unwrap_or_else(|| date(2026, 8, 1)),
+                    date: filters.from_date.unwrap_or_else(|| date(2026, 8, 1)),
                     total_deals: 10,
                     deals_completed: 5,
                     deals_disputed: 1,
@@ -323,10 +325,7 @@ mod tests {
     async fn refresh_daily_metrics_propagates_error() {
         let uc = RefreshDailyMetrics::new(Arc::new(FakeAnalyticsRepo::failing()));
         let err = uc.execute(date(2026, 8, 1)).await.unwrap_err();
-        assert!(matches!(
-            err,
-            ApplicationError::Infrastructure(_)
-        ));
+        assert!(matches!(err, ApplicationError::Infrastructure(_)));
     }
 
     #[tokio::test]
@@ -378,7 +377,10 @@ mod tests {
         assert_eq!(default_result[0].active_parties, 4);
 
         let from = date(2026, 6, 1);
-        let explicit = uc.execute(Some(from), Some(date(2026, 6, 30))).await.unwrap();
+        let explicit = uc
+            .execute(Some(from), Some(date(2026, 6, 30)))
+            .await
+            .unwrap();
         assert_eq!(explicit[0].date, from);
         assert_eq!(
             explicit[0].parties_by_role,

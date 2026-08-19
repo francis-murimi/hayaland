@@ -22,13 +22,12 @@ impl PostgresAnalyticsRepository {
 #[async_trait]
 impl AnalyticsRepository for PostgresAnalyticsRepository {
     async fn refresh_daily_metrics(&self, date: Date) -> Result<(), DomainError> {
-        let total_deals: i64 = sqlx::query_scalar(
-            r#"SELECT COUNT(*) FROM deals WHERE created_at::DATE <= $1"#,
-        )
-        .bind(date)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_err)?;
+        let total_deals: i64 =
+            sqlx::query_scalar(r#"SELECT COUNT(*) FROM deals WHERE created_at::DATE <= $1"#)
+                .bind(date)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(map_err)?;
 
         if total_deals == 0 {
             return Err(DomainError::RepositoryError(

@@ -17,6 +17,7 @@ use application::deals::{
 };
 use application::email::resend_verification::ResendVerificationEmail;
 use application::email::verify_email::VerifyEmail;
+use application::matching::{AdminMatchControls, GenerateMatches, ListMatches, RespondToMatch};
 use application::milestones::{
     CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
     StartMilestone, UpdateMilestone, VerifyMilestone,
@@ -58,7 +59,7 @@ use application::{
 use domain::repositories::{
     AgreementRepository, AnalyticsRepository, AuditLogRepository, CatalogRepository,
     ChatRoomRepository, DealRepository, DisputeRepository, EmailVerificationRepository,
-    MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
+    MatchRepository, MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
     PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
     SearchRepository, TrustScoreRepository, UserRepository, WalletRepository,
 };
@@ -74,8 +75,8 @@ use infrastructure::{
     repositories::{
         PostgresAgreementRepository, PostgresAnalyticsRepository, PostgresAuditLogRepository,
         PostgresCatalogRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMediaRepository,
-        PostgresMessageRepository, PostgresMilestoneRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMatchRepository,
+        PostgresMediaRepository, PostgresMessageRepository, PostgresMilestoneRepository,
         PostgresNotificationPreferenceRepository, PostgresNotificationRepository,
         PostgresNotificationTemplateRepository, PostgresPartyRepository,
         PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
@@ -149,6 +150,12 @@ async fn main() -> anyhow::Result<()> {
     let media_repo: Arc<dyn MediaRepository> = Arc::new(PostgresMediaRepository::new(pool.clone()));
     let search_repo: Arc<dyn SearchRepository> =
         Arc::new(PostgresSearchRepository::new(pool.clone()));
+    let match_repo: Arc<dyn MatchRepository> = Arc::new(PostgresMatchRepository::new(pool.clone()));
+    let generate_matches =
+        GenerateMatches::new(match_repo.clone(), party_repo.clone(), catalog_repo.clone());
+    let list_matches = ListMatches::new(match_repo.clone(), party_repo.clone());
+    let respond_to_match = RespondToMatch::new(match_repo.clone(), party_repo.clone());
+    let admin_match_controls = AdminMatchControls::new(match_repo.clone());
     let media_storage: Arc<dyn MediaStorage> = Arc::new(LocalFileStorage::new(
         settings.media.storage_path.clone(),
         settings.media.public_base_url.clone(),
@@ -717,11 +724,16 @@ async fn main() -> anyhow::Result<()> {
         db_pool: pool.clone(),
         send_notification,
         lifecycle_notifier,
+        generate_matches,
+        list_matches,
+        respond_to_match,
+        admin_match_controls,
         encryption_service,
         realtime_publisher,
         notification_realtime_publisher,
         message_repository: message_repo,
         chat_room_repository: chat_room_repo,
+        media_repo: media_repo.clone(),
         websocket_registry,
         token_validator: token_service,
         get_dashboard_summary: application::analytics::GetDashboardSummary::new(

@@ -4,7 +4,6 @@ use application::users::token::AuthContext;
 
 use crate::errors::ApiError;
 use crate::handlers::deals::create_deal::resolve_actor_party_id;
-use crate::handlers::matches::services;
 use crate::middleware::auth::require_scope_or_admin;
 use crate::AppState;
 
@@ -35,7 +34,6 @@ pub async fn generate_matches(
     cmd.actor_party_id = actor_party_id;
     cmd.is_admin = is_admin;
 
-    let use_case = services::generate_matches(state.db_pool.clone());
-    let result = use_case.execute(cmd).await?;
+    let result = state.generate_matches.execute(cmd).await?;
     Ok(HttpResponse::Created().json(result))
 }
