@@ -1,12 +1,11 @@
 use actix_web::http::StatusCode;
-use actix_web::{http::header, test, web::Data};
+use actix_web::{test, web::Data};
 use api::routes;
 use api::websocket::SessionRegistry;
 use api::AppState;
 use application::agreements::{
     AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
 };
-use application::deals::dto::SetValueDistributionCommand;
 use application::deals::{
     AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
     ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
@@ -61,17 +60,16 @@ use application::{
 use async_trait::async_trait;
 use domain::entities::notification_preference::NotificationPreference;
 use domain::entities::{
-    Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, Dispute,
-    DisputeResponse, DisputeStatus, DistributionModel, Email, EmailVerification, Enhancement,
-    Milestone, Need, Notification, NotificationChannel, NotificationStatus, NotificationTemplate,
-    NotificationType, PasswordHash, PasswordResetToken, PlatformWallet, Resource, Review, Role,
-    RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
-    Username,
+    Agreement, ApprovalDecision, Currency, DealRole, DealWallet, Dispute, DisputeResponse,
+    DisputeStatus, Email, EmailVerification, Enhancement, Milestone, Need, Notification,
+    NotificationChannel, NotificationStatus, NotificationTemplate, NotificationType,
+    PasswordResetToken, PlatformWallet, Resource, Review, Role, RoleProfile, Signature,
+    TransactionApproval, TransactionStatus, TransactionType, User, Username,
 };
 use domain::entities::{
     ChatRoom, ChatRoomMemberRole, ChatRoomMembership, Conversation, Message, MessageReaction,
-    MessageRead, Party, PartyType, PartyVerification, PartyVerificationStatus,
-    PartyVerificationType, RecipientType, UserPartyMembership,
+    MessageRead, Party, PartyVerification, PartyVerificationStatus, PartyVerificationType,
+    RecipientType, UserPartyMembership,
 };
 use domain::errors::DomainError;
 use domain::repositories::PartySearchCriteria;
@@ -87,7 +85,6 @@ use domain::repositories::{
     VerificationListFilters, VerificationListResult, WalletRepository,
 };
 use domain::services::ValidationConfig;
-use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
@@ -2827,6 +2824,7 @@ impl EncryptionService for FakeEncryptionService {
     }
 }
 
+#[allow(dead_code)]
 pub struct TestFixtures {
     pub state: AppState,
     pub repo: Arc<FakeRepo>,

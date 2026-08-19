@@ -103,19 +103,9 @@ impl GetTrustScore {
 #[cfg(test)]
 mod coverage_tests {
     use super::*;
-    use crate::test_helpers::{FakePartyRepo, FakeTrustScoreRepo};
+    use crate::test_helpers::FakeTrustScoreRepo;
     use domain::entities::trust_score::TrustScoreRow;
-    use domain::entities::{DisplayName, Email, Party, PartyType};
     use uuid::Uuid;
-
-    fn party(id: Uuid) -> Party {
-        Party::new(
-            id,
-            PartyType::Organization,
-            DisplayName::new("Acme Corp").unwrap(),
-            Email::new("acme@example.com").unwrap(),
-        )
-    }
 
     #[tokio::test]
     async fn get_returns_existing_row_with_formula_breakdown() {

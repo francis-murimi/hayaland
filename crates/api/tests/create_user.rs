@@ -1,97 +1,14 @@
 use actix_web::http::StatusCode;
 use actix_web::{http::header, test, web::Data};
 use api::routes;
-use api::websocket::SessionRegistry;
 use api::AppState;
-use application::agreements::{
-    AdminUpdateAgreement, GenerateAgreement, GetAgreement, SignAgreement,
-};
 use application::deals::dto::SetValueDistributionCommand;
-use application::deals::{
-    AcceptTerm, CounterTerm, CreateDeal, ExecuteTransition, GetDeal, GetValueDistribution,
-    ListDeals, ListTerms, ProposeTerm, RejectTerm, SetValueDistribution, SubmitDeal, UpdateDeal,
-    ValidateDeal, WithdrawTerm,
-};
-use application::email::dto::VerifyEmailCommand;
-use application::email::queue::{EmailQueue, EmailQueueItem};
-use application::email::resend_verification::ResendVerificationEmail;
-use application::email::verify_email::VerifyEmail;
-use application::milestones::{
-    CompleteMilestone, CreateMilestone, DeleteMilestone, GetDealProgress, ListMilestones,
-    StartMilestone, UpdateMilestone, VerifyMilestone,
-};
-use application::parties::{
-    AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
-    SearchParties, SoftDeleteParty, UpdateParty,
-};
-use application::password_reset::request_password_reset::RequestPasswordReset;
-use application::password_reset::reset_password::ResetPassword;
-use application::payments::{
-    ApproveTransaction, CreateWallet, DeductFee, DepositPoints, GetDealWallet, GetTransaction,
-    GetWallet, HoldEscrow, ListDealTransactions, ListPendingApprovals, ListWalletTransactions,
-    RecordAdjustment, ReleaseEscrow, WithdrawPoints,
-};
-use application::ports::{EncryptionService, NoOpTrustScoreRecalculation, RealtimePublisher};
-use application::roles::assign_user_roles::AssignUserRoles;
-use application::roles::list_roles::ListRoles;
-use application::roles::update_role_scopes::UpdateRoleScopes;
-use application::users::authenticate_user::AuthenticateUser;
-use application::users::create_user::{CreateUser, PasswordHasher};
-use application::users::deactivate_user::DeactivateUser;
-use application::users::get_user::GetUser;
-use application::users::list_users::ListUsers;
-use application::users::token::{AuthContext, TokenGenerator, TokenVerifier};
-use application::users::update_user::UpdateUser;
-use application::{
-    catalog::{
-        AdminUpdateCatalogFlags, BindCatalogItemToDeal, ContactCatalogOwner, CreateEnhancement,
-        CreateNeed, CreateResource, DeleteEnhancement, DeleteNeed, DeleteResource, GetEnhancement,
-        GetNeed, GetResource, ListDealCatalogItems, ListEnhancements, ListNeeds, ListResources,
-        UpdateEnhancement, UpdateNeed, UpdatePartyCatalogSettings, UpdateResource,
-    },
-    chatrooms::{
-        CreateChatRoom, GetChatRoom, JoinChatRoom, LeaveChatRoom, ListChatRooms,
-        ManageChatRoomMembership, SoftDeleteChatRoom, UpdateChatRoom,
-    },
-    messages::{
-        AdminBroadcast, EditMessage, GetMessage, GetUnreadCount, ListConversations, ListMessages,
-        MarkRead, PinMessage, SendMessage, SoftDeleteMessage, ToggleReaction, UnpinMessage,
-    },
-};
-use async_trait::async_trait;
-use domain::entities::notification_preference::NotificationPreference;
+use domain::entities::PartyType;
 use domain::entities::{
-    Agreement, ApprovalDecision, Currency, DealRole, DealStatus, DealWallet, Dispute,
-    DisputeResponse, DisputeStatus, DistributionModel, Email, EmailVerification, Enhancement,
-    Milestone, Need, Notification, NotificationChannel, NotificationStatus, NotificationTemplate,
-    NotificationType, PasswordHash, PasswordResetToken, PlatformWallet, Resource, Review, Role,
-    RoleProfile, Signature, TransactionApproval, TransactionStatus, TransactionType, User,
-    Username,
+    DealRole, DealStatus, DistributionModel, Email, PasswordHash, User, Username,
 };
-use domain::entities::{
-    ChatRoom, ChatRoomMemberRole, ChatRoomMembership, Conversation, Message, MessageReaction,
-    MessageRead, Party, PartyType, PartyVerification, PartyVerificationStatus,
-    PartyVerificationType, RecipientType, UserPartyMembership,
-};
-use domain::errors::DomainError;
-use domain::repositories::PartySearchCriteria;
-use domain::repositories::{
-    AdminFlags, AgreementRepository, CatalogItemType, CatalogListResult, CatalogRepository,
-    CatalogSearchCriteria, CategoryItemCounts, ChatRoomListQuery, ChatRoomRepository,
-    DealAggregate, DealListResult, DealRepository, DealSearchCriteria, DeliveryResult,
-    DisputeFilters, DisputeListResult, DisputeRepository, EmailVerificationRepository,
-    MessageListQuery, MessageRepository, MilestoneRepository, NotificationFilters,
-    NotificationListResult, NotificationPreferenceRepository, NotificationRepository,
-    NotificationTemplateRepository, Pagination, PartyRepository, PartyVerificationRepository,
-    PasswordResetRepository, ReviewRepository, RoleRepository, TransactionFilters, UserRepository,
-    VerificationListFilters, VerificationListResult, WalletRepository,
-};
-use domain::services::ValidationConfig;
+use domain::repositories::UserRepository;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, Once};
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 mod fakes;
