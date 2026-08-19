@@ -81,6 +81,7 @@ pub async fn delete_match_suggestions_for_party(
         admin_user_id: ctx.user_id,
         party_id: path.into_inner(),
         status: None,
+        reason: None,
     };
 
     let deleted = state.admin_match_controls.delete_for_party(cmd).await?;

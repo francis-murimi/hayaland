@@ -35,7 +35,7 @@ use application::notifications::{
     AdminCreateTemplate, AdminDeleteTemplate, AdminGetTemplate, AdminListTemplates,
     AdminSendNotification, AdminUpdateTemplate, DeleteNotification, GetNotification,
     GetNotificationPreferences, LifecycleNotifier, ListNotifications, MarkAllNotificationsRead,
-    MarkNotificationRead, SendNotification, UpdateNotificationPreferences,
+    MarkNotificationRead, RegisterPushToken, SendNotification, UpdateNotificationPreferences,
 };
 use application::parties::{
     AddPartyRole, CreateParty, GetParty, ListMyParties, ListPartyRoles, RemovePartyRole,
@@ -66,8 +66,9 @@ use async_trait::async_trait;
 use domain::repositories::{
     AgreementRepository, AnalyticsRepository, AuditLogRepository, CatalogRepository,
     ChatRoomRepository, DealRepository, DisputeRepository, EmailVerificationRepository,
-    MatchRepository, MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
-    PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
+    EncryptionKeyRepository, MatchRepository, MatchSuggestionAuditLogRepository, MediaRepository,
+    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, PushTokenRepository, ReviewRepository, RoleRepository,
     SearchRepository, TrustScoreRepository, UserRepository, WalletRepository,
 };
 use domain::services::ValidationConfig;
@@ -77,10 +78,12 @@ use infrastructure::{
     repositories::{
         PostgresAgreementRepository, PostgresAnalyticsRepository, PostgresAuditLogRepository,
         PostgresCatalogRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMatchRepository,
-        PostgresMediaRepository, PostgresMessageRepository, PostgresMilestoneRepository,
-        PostgresPartyRepository, PostgresPartyVerificationRepository,
-        PostgresPasswordResetRepository, PostgresReviewRepository, PostgresRoleRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository,
+        PostgresEncryptionKeyRepository, PostgresMatchRepository,
+        PostgresMatchSuggestionAuditLogRepository, PostgresMediaRepository,
+        PostgresMessageRepository, PostgresMilestoneRepository, PostgresPartyRepository,
+        PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
+        PostgresPushTokenRepository, PostgresReviewRepository, PostgresRoleRepository,
         PostgresSearchRepository, PostgresTrustScoreRepository, PostgresUserRepository,
         PostgresWalletRepository,
     },
@@ -180,11 +183,18 @@ pub fn build_state_sync(pool: PgPool) -> AppState {
     let search_repo: Arc<dyn SearchRepository> =
         Arc::new(PostgresSearchRepository::new(pool.clone()));
     let match_repo: Arc<dyn MatchRepository> = Arc::new(PostgresMatchRepository::new(pool.clone()));
+    let match_audit_repo: Arc<dyn MatchSuggestionAuditLogRepository> =
+        Arc::new(PostgresMatchSuggestionAuditLogRepository::new(pool.clone()));
     let generate_matches =
         GenerateMatches::new(match_repo.clone(), party_repo.clone(), catalog_repo.clone());
     let list_matches = ListMatches::new(match_repo.clone(), party_repo.clone());
     let respond_to_match = RespondToMatch::new(match_repo.clone(), party_repo.clone());
-    let admin_match_controls = AdminMatchControls::new(match_repo.clone());
+    let admin_match_controls =
+        AdminMatchControls::new(match_repo.clone(), match_audit_repo.clone());
+    let encryption_key_repo: Arc<dyn EncryptionKeyRepository> =
+        Arc::new(PostgresEncryptionKeyRepository::new(pool.clone()));
+    let push_token_repo: Arc<dyn PushTokenRepository> =
+        Arc::new(PostgresPushTokenRepository::new(pool.clone()));
     let media_storage: Arc<dyn MediaStorage> = Arc::new(LocalFileStorage::new(
         "./test-uploads".to_string(),
         "/uploads".to_string(),
@@ -196,8 +206,9 @@ pub fn build_state_sync(pool: PgPool) -> AppState {
     let notification_realtime_publisher: Arc<
         dyn application::ports::NotificationRealtimePublisher,
     > = Arc::new(application::ports::NoOpNotificationRealtimePublisher);
-    let push_sender: Arc<dyn application::ports::PushNotificationSender> =
-        Arc::new(infrastructure::notifications::NoOpPushSender::new());
+    let push_sender: Arc<dyn application::ports::PushNotificationSender> = Arc::new(
+        infrastructure::notifications::LoggingPushSender::new(push_token_repo.clone()),
+    );
     let sms_sender: Arc<dyn application::ports::SmsSender> =
         Arc::new(infrastructure::notifications::NoOpSmsSender::new());
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher);
@@ -612,6 +623,7 @@ pub fn build_state_sync(pool: PgPool) -> AppState {
         admin_get_template: AdminGetTemplate::new(notification_template_repo.clone()),
         admin_update_template: AdminUpdateTemplate::new(notification_template_repo.clone()),
         admin_delete_template: AdminDeleteTemplate::new(notification_template_repo.clone()),
+        register_push_token: RegisterPushToken::new(push_token_repo.clone()),
         create_resource: CreateResource::new(catalog_repo.clone(), party_repo.clone()),
         update_resource: UpdateResource::new(catalog_repo.clone(), party_repo.clone()),
         delete_resource: DeleteResource::new(catalog_repo.clone(), party_repo.clone()),
@@ -655,6 +667,7 @@ pub fn build_state_sync(pool: PgPool) -> AppState {
         message_repository: message_repo,
         chat_room_repository: chat_room_repo,
         media_repo: media_repo.clone(),
+        encryption_key_repo: encryption_key_repo.clone(),
         websocket_registry: SessionRegistry::new(),
         token_validator: token_service,
         get_dashboard_summary: application::analytics::GetDashboardSummary::new(

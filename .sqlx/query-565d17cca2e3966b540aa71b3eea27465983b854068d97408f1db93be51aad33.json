@@ -1,0 +1,74 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, key_name, key_bytes, is_active, created_at\n            FROM encryption_keys\n            WHERE is_active = true\n            ORDER BY created_at DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "encryption_keys",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "key_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "encryption_keys",
+            "name": "key_name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "key_bytes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "encryption_keys",
+            "name": "key_bytes"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "encryption_keys",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "encryption_keys",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "565d17cca2e3966b540aa71b3eea27465983b854068d97408f1db93be51aad33"
+}

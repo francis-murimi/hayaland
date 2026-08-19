@@ -5,7 +5,10 @@ use aes_gcm::{
 use application::errors::ApplicationError;
 use application::ports::EncryptionService;
 use async_trait::async_trait;
+use domain::entities::EncryptionKey;
+use domain::repositories::EncryptionKeyRepository;
 use rand::RngCore;
+use std::sync::Arc;
 
 const KEY_LEN: usize = 32;
 const IV_LEN: usize = 12;
@@ -58,6 +61,58 @@ impl MessageEncryptionService {
             ApplicationError::Infrastructure("APP_MESSAGES__ENCRYPTION_KEY is not set".to_string())
         })?;
         Self::from_base64(&encoded)
+    }
+
+    /// Load the active key from the registry, falling back to a base64-encoded key.
+    /// If no active key exists in the registry, the fallback key is used.
+    pub async fn from_repository(
+        repo: Arc<dyn EncryptionKeyRepository>,
+        fallback_encoded: &str,
+    ) -> Result<Self, ApplicationError> {
+        let active = repo.find_active().await.map_err(|e| {
+            ApplicationError::Infrastructure(format!(
+                "failed to load active encryption key from registry: {e}"
+            ))
+        })?;
+
+        let encoded = match active {
+            Some(key) => key.key_bytes,
+            None => fallback_encoded.to_string(),
+        };
+
+        Self::from_base64(&encoded)
+    }
+
+    /// Ensure an active encryption key exists in the registry.
+    /// If the registry has no active key, inserts the fallback key under `key_name`.
+    pub async fn seed_active_key(
+        repo: Arc<dyn EncryptionKeyRepository>,
+        key_name: &str,
+        fallback_encoded: &str,
+    ) -> Result<(), ApplicationError> {
+        let active = repo.find_active().await.map_err(|e| {
+            ApplicationError::Infrastructure(format!(
+                "failed to load active encryption key from registry: {e}"
+            ))
+        })?;
+
+        if active.is_none() {
+            // Validate the fallback key before storing it.
+            let _ = Self::from_base64(fallback_encoded)?;
+            repo.create(&EncryptionKey::new(
+                uuid::Uuid::now_v7(),
+                key_name,
+                fallback_encoded,
+            ))
+            .await
+            .map_err(|e| {
+                ApplicationError::Infrastructure(format!(
+                    "failed to seed encryption key in registry: {e}"
+                ))
+            })?;
+        }
+
+        Ok(())
     }
 
     fn encrypt_sync(&self, plaintext: &str) -> Result<String, ApplicationError> {

@@ -9,6 +9,7 @@ pub mod lifecycle_notifier;
 pub mod list_notifications;
 pub mod mark_all_read;
 pub mod mark_read;
+pub mod register_push_token;
 pub mod render;
 pub mod route;
 pub mod send_notification;
@@ -27,6 +28,7 @@ pub use lifecycle_notifier::LifecycleNotifier;
 pub use list_notifications::ListNotifications;
 pub use mark_all_read::MarkAllNotificationsRead;
 pub use mark_read::MarkNotificationRead;
+pub use register_push_token::{RegisterPushToken, RegisterPushTokenCommand};
 pub use send_notification::SendNotification;
 pub use update_preferences::UpdateNotificationPreferences;
 

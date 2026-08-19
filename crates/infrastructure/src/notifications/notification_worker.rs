@@ -4,11 +4,12 @@ use application::ports::{
     NotificationEvent, NotificationRealtimePublisher, PushNotificationSender, SmsSender,
 };
 use domain::entities::{Notification, NotificationChannel, NotificationStatus};
-use domain::repositories::{DeliveryResult, NotificationRepository};
+use domain::repositories::{DeliveryResult, NotificationRepository, PushTokenRepository};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{interval, sleep};
 use tracing::{debug, error, info};
+use uuid::Uuid;
 
 /// Configuration for the notification background worker.
 #[derive(Clone)]
@@ -42,6 +43,7 @@ pub async fn run_notification_worker(
     push_sender: Arc<dyn PushNotificationSender>,
     _sms_sender: Arc<dyn SmsSender>,
     realtime_publisher: Arc<dyn NotificationRealtimePublisher>,
+    push_token_repo: Arc<dyn PushTokenRepository>,
     config: NotificationWorkerConfig,
 ) {
     if !config.enabled {
@@ -58,6 +60,7 @@ pub async fn run_notification_worker(
             repo.clone(),
             push_sender.clone(),
             realtime_publisher.clone(),
+            push_token_repo.clone(),
             config.batch_size,
         )
         .await;
@@ -68,6 +71,7 @@ async fn tick_once(
     repo: Arc<dyn NotificationRepository>,
     push_sender: Arc<dyn PushNotificationSender>,
     realtime_publisher: Arc<dyn NotificationRealtimePublisher>,
+    push_token_repo: Arc<dyn PushTokenRepository>,
     batch_size: usize,
 ) {
     let batch = match repo.list_pending(batch_size, None).await {
@@ -86,6 +90,7 @@ async fn tick_once(
         repo.clone(),
         push_sender.clone(),
         realtime_publisher.clone(),
+        push_token_repo.clone(),
         batch,
     )
     .await;
@@ -95,6 +100,7 @@ async fn process_notification_batch(
     repo: Arc<dyn NotificationRepository>,
     push_sender: Arc<dyn PushNotificationSender>,
     realtime_publisher: Arc<dyn NotificationRealtimePublisher>,
+    push_token_repo: Arc<dyn PushTokenRepository>,
     batch: Vec<Notification>,
 ) {
     debug!(count = batch.len(), "processing notification batch");
@@ -104,6 +110,7 @@ async fn process_notification_batch(
             repo.clone(),
             push_sender.clone(),
             realtime_publisher.clone(),
+            push_token_repo.clone(),
             notification,
         )
         .await;
@@ -114,6 +121,7 @@ async fn process_notification(
     repo: Arc<dyn NotificationRepository>,
     push_sender: Arc<dyn PushNotificationSender>,
     realtime_publisher: Arc<dyn NotificationRealtimePublisher>,
+    push_token_repo: Arc<dyn PushTokenRepository>,
     notification: Notification,
 ) {
     if notification.status != NotificationStatus::Pending {
@@ -131,25 +139,38 @@ async fn process_notification(
                 Some(DeliveryResult::Sent)
             }
             NotificationChannel::Push => {
-                let tokens = notification
-                    .metadata
-                    .get("push_tokens")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                dispatch_push(
-                    push_sender.clone(),
-                    &tokens,
-                    &notification.title,
-                    &notification.body,
-                    notification.metadata.clone(),
-                )
-                .await
-                .ok()
+                if let Some(user_id) = notification.user_id {
+                    dispatch_push_to_user(
+                        push_sender.clone(),
+                        push_token_repo.clone(),
+                        user_id,
+                        &notification.title,
+                        &notification.body,
+                        notification.metadata.clone(),
+                    )
+                    .await
+                    .ok()
+                } else {
+                    let tokens = notification
+                        .metadata
+                        .get("push_tokens")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    dispatch_push(
+                        push_sender.clone(),
+                        &tokens,
+                        &notification.title,
+                        &notification.body,
+                        notification.metadata.clone(),
+                    )
+                    .await
+                    .ok()
+                }
             }
             NotificationChannel::Sms => {
                 // SMS requires a phone number; skip if unavailable.
@@ -224,6 +245,44 @@ async fn dispatch_push(
     }
 
     let results = sender.send(tokens, title, body, data).await?;
+    let all_success = results.iter().all(|r| r.success);
+    if all_success {
+        Ok(DeliveryResult::Delivered)
+    } else {
+        let message = results
+            .iter()
+            .filter_map(|r| r.error.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Ok(DeliveryResult::Failed {
+            message: if message.is_empty() {
+                "push send failed".to_string()
+            } else {
+                message
+            },
+        })
+    }
+}
+
+async fn dispatch_push_to_user(
+    sender: Arc<dyn PushNotificationSender>,
+    push_token_repo: Arc<dyn PushTokenRepository>,
+    user_id: Uuid,
+    title: &str,
+    body: &str,
+    data: serde_json::Value,
+) -> Result<DeliveryResult, ApplicationError> {
+    let tokens = push_token_repo
+        .list_by_user(user_id)
+        .await
+        .map_err(|e| ApplicationError::Infrastructure(format!("push token lookup failed: {e}")))?;
+
+    let token_strings: Vec<String> = tokens.into_iter().map(|t| t.device_token).collect();
+    if token_strings.is_empty() {
+        return Ok(DeliveryResult::Sent);
+    }
+
+    let results = sender.send(&token_strings, title, body, data).await?;
     let all_success = results.iter().all(|r| r.success);
     if all_success {
         Ok(DeliveryResult::Delivered)
@@ -363,6 +422,106 @@ mod tests {
     #[async_trait]
     impl SmsSender for NoOpSmsSender {
         async fn send(&self, _phone: &str, _body: &str) -> Result<(), ApplicationError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakePushTokenRepository;
+
+    #[async_trait]
+    impl PushTokenRepository for FakePushTokenRepository {
+        async fn upsert(&self, _token: &domain::entities::PushToken) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn list_by_user(
+            &self,
+            _user_id: Uuid,
+        ) -> Result<Vec<domain::entities::PushToken>, DomainError> {
+            Ok(vec![])
+        }
+
+        async fn find_by_id(
+            &self,
+            _id: Uuid,
+        ) -> Result<Option<domain::entities::PushToken>, DomainError> {
+            Ok(None)
+        }
+
+        async fn delete(&self, _id: Uuid) -> Result<bool, DomainError> {
+            Ok(false)
+        }
+
+        async fn delete_by_user(&self, _user_id: Uuid) -> Result<u64, DomainError> {
+            Ok(0)
+        }
+
+        async fn touch(&self, _id: Uuid) -> Result<(), DomainError> {
+            Ok(())
+        }
+    }
+
+    fn empty_push_tokens() -> Arc<dyn PushTokenRepository> {
+        Arc::new(FakePushTokenRepository)
+    }
+
+    fn push_tokens_for(tokens: Vec<String>) -> Arc<dyn PushTokenRepository> {
+        Arc::new(ConfigurablePushTokenRepository::with_tokens(tokens))
+    }
+
+    struct ConfigurablePushTokenRepository {
+        tokens: Vec<domain::entities::PushToken>,
+    }
+
+    impl ConfigurablePushTokenRepository {
+        fn with_tokens(tokens: Vec<String>) -> Self {
+            Self {
+                tokens: tokens
+                    .into_iter()
+                    .map(|t| {
+                        domain::entities::PushToken::new(
+                            Uuid::now_v7(),
+                            Uuid::nil(),
+                            t,
+                            "FCM",
+                            None,
+                        )
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl PushTokenRepository for ConfigurablePushTokenRepository {
+        async fn upsert(&self, _token: &domain::entities::PushToken) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn list_by_user(
+            &self,
+            _user_id: Uuid,
+        ) -> Result<Vec<domain::entities::PushToken>, DomainError> {
+            Ok(self.tokens.clone())
+        }
+
+        async fn find_by_id(
+            &self,
+            _id: Uuid,
+        ) -> Result<Option<domain::entities::PushToken>, DomainError> {
+            Ok(None)
+        }
+
+        async fn delete(&self, _id: Uuid) -> Result<bool, DomainError> {
+            Ok(false)
+        }
+
+        async fn delete_by_user(&self, _user_id: Uuid) -> Result<u64, DomainError> {
+            Ok(0)
+        }
+
+        async fn touch(&self, _id: Uuid) -> Result<(), DomainError> {
             Ok(())
         }
     }
@@ -562,6 +721,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             repo.list_pending(10, None).await.unwrap(),
         )
         .await;
@@ -584,6 +744,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -611,6 +772,7 @@ mod tests {
             push,
             sms_sender,
             realtime,
+            empty_push_tokens(),
             config,
         )
         .await;
@@ -624,7 +786,14 @@ mod tests {
         let push = Arc::new(FakePushSender::default());
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        tick_once(repo.clone(), push.clone(), realtime.clone(), 10).await;
+        tick_once(
+            repo.clone(),
+            push.clone(),
+            realtime.clone(),
+            empty_push_tokens(),
+            10,
+        )
+        .await;
         // No panic means the error path was exercised.
         assert!(realtime.events.lock().unwrap().is_empty());
     }
@@ -635,7 +804,14 @@ mod tests {
         let push = Arc::new(FakePushSender::default());
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        tick_once(repo.clone(), push.clone(), realtime.clone(), 10).await;
+        tick_once(
+            repo.clone(),
+            push.clone(),
+            realtime.clone(),
+            empty_push_tokens(),
+            10,
+        )
+        .await;
 
         assert!(realtime.events.lock().unwrap().is_empty());
     }
@@ -649,7 +825,14 @@ mod tests {
         let notification = pending_notification(vec![NotificationChannel::InApp]);
         repo.create(&notification).await.unwrap();
 
-        tick_once(repo.clone(), push.clone(), realtime.clone(), 10).await;
+        tick_once(
+            repo.clone(),
+            push.clone(),
+            realtime.clone(),
+            empty_push_tokens(),
+            10,
+        )
+        .await;
 
         let stored = repo.find_by_id(notification.id).await.unwrap().unwrap();
         assert_eq!(stored.status, NotificationStatus::Sent);
@@ -669,6 +852,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -689,13 +873,16 @@ mod tests {
         let push = Arc::new(FakePushSender::default());
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        let notification = pending_notification(vec![NotificationChannel::Push]);
+        // Party-level notification falls back to metadata tokens.
+        let mut notification = pending_notification(vec![NotificationChannel::Push]);
+        notification.user_id = None;
         repo.create(&notification).await.unwrap();
 
         process_notification_batch(
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -722,16 +909,52 @@ mod tests {
         ])));
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        let notification = pending_notification_with_metadata(
+        // Party-level notification falls back to metadata tokens.
+        let mut notification = pending_notification_with_metadata(
             vec![NotificationChannel::Push],
             serde_json::json!({ "push_tokens": ["token-1"] }),
         );
+        notification.user_id = None;
         repo.create(&notification).await.unwrap();
 
         process_notification_batch(
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
+            vec![notification.clone()],
+        )
+        .await;
+
+        let stored = repo.find_by_id(notification.id).await.unwrap().unwrap();
+        assert_eq!(stored.status, NotificationStatus::Sent);
+
+        let deliveries = repo.deliveries.lock().unwrap();
+        assert_eq!(deliveries.len(), 1);
+        assert!(matches!(deliveries[0].2, DeliveryResult::Delivered));
+    }
+
+    #[tokio::test]
+    async fn routes_push_channel_by_user_id_lookup() {
+        let repo = Arc::new(FakeNotificationRepo::default());
+        let push = Arc::new(ConfigurablePushSender::returning(Ok(vec![
+            application::ports::PushResult {
+                device_token: "user-token-1".to_string(),
+                success: true,
+                error: None,
+            },
+        ])));
+        let realtime = Arc::new(FakeRealtimePublisher::default());
+        let push_tokens = push_tokens_for(vec!["user-token-1".to_string()]);
+
+        let notification = pending_notification(vec![NotificationChannel::Push]);
+        repo.create(&notification).await.unwrap();
+
+        process_notification_batch(
+            repo.clone(),
+            push.clone(),
+            realtime.clone(),
+            push_tokens,
             vec![notification.clone()],
         )
         .await;
@@ -757,6 +980,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -783,6 +1007,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -809,6 +1034,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -924,16 +1150,19 @@ mod tests {
         )));
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        let notification = pending_notification_with_metadata(
+        // Party-level notification falls back to metadata tokens.
+        let mut notification = pending_notification_with_metadata(
             vec![NotificationChannel::Push],
             serde_json::json!({ "push_tokens": ["token-1"] }),
         );
+        notification.user_id = None;
         repo.create(&notification).await.unwrap();
 
         process_notification_batch(
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -954,16 +1183,19 @@ mod tests {
         ])));
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        let notification = pending_notification_with_metadata(
+        // Party-level notification falls back to metadata tokens.
+        let mut notification = pending_notification_with_metadata(
             vec![NotificationChannel::Push],
             serde_json::json!({ "push_tokens": ["token-1"] }),
         );
+        notification.user_id = None;
         repo.create(&notification).await.unwrap();
 
         process_notification_batch(
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -985,6 +1217,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -1006,6 +1239,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -1027,6 +1261,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             vec![notification.clone()],
         )
         .await;
@@ -1041,7 +1276,14 @@ mod tests {
         let push = Arc::new(FakePushSender::default());
         let realtime = Arc::new(FakeRealtimePublisher::default());
 
-        process_notification_batch(repo.clone(), push.clone(), realtime.clone(), vec![]).await;
+        process_notification_batch(
+            repo.clone(),
+            push.clone(),
+            realtime.clone(),
+            empty_push_tokens(),
+            vec![],
+        )
+        .await;
 
         assert!(repo.notifications.lock().unwrap().is_empty());
         assert!(realtime.events.lock().unwrap().is_empty());
@@ -1062,6 +1304,7 @@ mod tests {
             repo.clone(),
             push.clone(),
             realtime.clone(),
+            empty_push_tokens(),
             repo.list_pending(10, None).await.unwrap(),
         )
         .await;

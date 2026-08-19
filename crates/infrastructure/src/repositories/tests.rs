@@ -1,6 +1,7 @@
 use crate::repositories::{
     PostgresCatalogRepository, PostgresChatRoomRepository, PostgresMatchRepository,
-    PostgresMessageRepository, PostgresPartyRepository, PostgresUserRepository,
+    PostgresMatchSuggestionAuditLogRepository, PostgresMessageRepository, PostgresPartyRepository,
+    PostgresUserRepository,
 };
 use domain::entities::{
     ChatRoom, ChatRoomMemberRole, ChatRoomMembership, ChatRoomName, ChatRoomType, Conversation,
@@ -12,10 +13,12 @@ use domain::entities::{
 use domain::errors::DomainError;
 use domain::repositories::{
     CatalogRepository, ChatRoomListQuery, ChatRoomRepository, MatchFilters, MatchRepository,
-    MessageListQuery, MessageRepository, PartyRepository, UserRepository,
+    MatchSuggestionAuditLogRepository, MessageListQuery, MessageRepository, PartyRepository,
+    UserRepository,
 };
 use rust_decimal::prelude::{Decimal, FromPrimitive};
 use sqlx::PgPool;
+use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -1138,7 +1141,10 @@ async fn match_generate_use_case_creates_suggestions(pool: PgPool) {
     };
     respond.execute(response_cmd).await.unwrap();
 
-    let admin_controls = application::matching::AdminMatchControls::new(match_repo.clone());
+    let match_audit_repo: Arc<dyn MatchSuggestionAuditLogRepository> =
+        Arc::new(PostgresMatchSuggestionAuditLogRepository::new(pool.clone()));
+    let admin_controls =
+        application::matching::AdminMatchControls::new(match_repo.clone(), match_audit_repo);
     let counts = admin_controls.count_for_party(supplier.id).await.unwrap();
     assert_eq!(counts.accepted, 1);
     assert_eq!(counts.pending, 0);
@@ -1163,6 +1169,7 @@ async fn match_generate_use_case_creates_suggestions(pool: PgPool) {
         admin_user_id: user.id,
         party_id: consumer.id,
         status: None,
+        reason: Some("cleanup".to_string()),
     };
     let deleted = admin_controls.delete_for_party(delete_cmd).await.unwrap();
     assert_eq!(deleted, 1);

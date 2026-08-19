@@ -511,6 +511,59 @@ async fn admin_template_endpoints_require_admin_scope(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn register_push_token_for_current_user(pool: PgPool) {
+    let state = common::build_state(pool.clone()).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state.clone()))
+            .configure(routes::configure),
+    )
+    .await;
+
+    let user = common::create_active_user(&pool, "pushtokenuser@example.com").await;
+    let token = common::auth_token(user, vec!["notifications:write".to_string()]).await;
+
+    let resp = test::TestRequest::post()
+        .uri("/api/v1/users/me/push-tokens")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .set_json(json!({
+            "deviceToken": "test-device-token-123",
+            "provider": "FCM",
+            "deviceType": "android"
+        }))
+        .send_request(&app)
+        .await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["id"].as_str().is_some());
+
+    // Re-registering the same (user, device_token) updates metadata instead of duplicating.
+    let resp = test::TestRequest::post()
+        .uri("/api/v1/users/me/push-tokens")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .set_json(json!({
+            "deviceToken": "test-device-token-123",
+            "provider": "APNS",
+            "deviceType": "ios"
+        }))
+        .send_request(&app)
+        .await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // A missing token is rejected.
+    let resp = test::TestRequest::post()
+        .uri("/api/v1/users/me/push-tokens")
+        .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        .set_json(json!({
+            "deviceToken": "",
+            "provider": "FCM"
+        }))
+        .send_request(&app)
+        .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn get_notification_returns_notification(pool: PgPool) {
     let state = common::build_state(pool.clone()).await;
     let app = test::init_service(

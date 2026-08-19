@@ -132,4 +132,5 @@ pub struct AdminDeleteMatchesCommand {
     pub admin_user_id: Uuid,
     pub party_id: Uuid,
     pub status: Option<MatchStatus>,
+    pub reason: Option<String>,
 }

@@ -19,6 +19,7 @@ pub mod milestones;
 pub mod notifications;
 pub mod parties;
 pub mod payments;
+pub mod register_push_token;
 pub mod resend_verification;
 pub mod reset_password;
 pub mod reviews;

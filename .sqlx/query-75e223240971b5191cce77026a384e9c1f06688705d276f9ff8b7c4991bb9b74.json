@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE encryption_keys\n            SET is_active = true\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "75e223240971b5191cce77026a384e9c1f06688705d276f9ff8b7c4991bb9b74"
+}

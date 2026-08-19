@@ -39,6 +39,21 @@ pub struct AssignUserRolesRequest {
 }
 
 #[derive(Debug, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterPushTokenRequest {
+    #[validate(length(min = 1, message = "device token cannot be empty"))]
+    pub device_token: String,
+    #[validate(length(min = 1, message = "provider cannot be empty"))]
+    pub provider: String,
+    pub device_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterPushTokenResponse {
+    pub id: Uuid,
+}
+
+#[derive(Debug, Deserialize, Validate)]
 pub struct UpdateRoleScopesRequest {
     pub scopes: Vec<String>,
 }

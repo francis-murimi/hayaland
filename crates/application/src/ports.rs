@@ -154,6 +154,19 @@ pub trait PushNotificationSender: Send + Sync {
         body: &str,
         data: serde_json::Value,
     ) -> Result<Vec<PushResult>, ApplicationError>;
+
+    /// Send a push notification to all tokens registered for a specific user.
+    /// The default implementation sends to an empty token list; concrete adapters
+    /// that have access to a token registry should override this to look up tokens.
+    async fn send_to_user(
+        &self,
+        _user_id: Uuid,
+        title: &str,
+        body: &str,
+        data: serde_json::Value,
+    ) -> Result<Vec<PushResult>, ApplicationError> {
+        self.send(&[], title, body, data).await
+    }
 }
 
 #[derive(Debug, Clone)]

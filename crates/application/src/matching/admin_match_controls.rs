@@ -3,7 +3,8 @@ use crate::matching::dto::{
     AdminDeleteMatchesCommand, AdminUpdateMatchCommand, MatchStatusCountsResult,
 };
 use crate::matching::generate_matches::map_to_result;
-use domain::repositories::{MatchFilters, MatchRepository};
+use domain::entities::MatchSuggestionAuditLogEntry;
+use domain::repositories::{MatchFilters, MatchRepository, MatchSuggestionAuditLogRepository};
 use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
@@ -12,11 +13,18 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AdminMatchControls {
     match_repo: Arc<dyn MatchRepository>,
+    audit_repo: Arc<dyn MatchSuggestionAuditLogRepository>,
 }
 
 impl AdminMatchControls {
-    pub fn new(match_repo: Arc<dyn MatchRepository>) -> Self {
-        Self { match_repo }
+    pub fn new(
+        match_repo: Arc<dyn MatchRepository>,
+        audit_repo: Arc<dyn MatchSuggestionAuditLogRepository>,
+    ) -> Self {
+        Self {
+            match_repo,
+            audit_repo,
+        }
     }
 
     #[instrument(skip(self))]
@@ -33,13 +41,32 @@ impl AdminMatchControls {
         &self,
         cmd: AdminUpdateMatchCommand,
     ) -> Result<(), ApplicationError> {
-        let exists = self.match_repo.find_by_id(cmd.match_suggestion_id).await?;
-        if exists.is_none() {
+        let before = self.match_repo.find_by_id(cmd.match_suggestion_id).await?;
+        if before.is_none() {
             return Err(ApplicationError::NotFound);
         }
 
         self.match_repo
             .update_status(cmd.match_suggestion_id, cmd.new_status, cmd.reason.clone())
+            .await?;
+
+        let after = self.match_repo.find_by_id(cmd.match_suggestion_id).await?;
+        let before_snapshot = serde_json::to_value(&before)
+            .map_err(|e| ApplicationError::Infrastructure(format!("JSON error: {e}")))?;
+        let after_snapshot = serde_json::to_value(&after)
+            .map_err(|e| ApplicationError::Infrastructure(format!("JSON error: {e}")))?;
+
+        self.audit_repo
+            .create(&MatchSuggestionAuditLogEntry::new(
+                Uuid::now_v7(),
+                Some(cmd.admin_user_id),
+                "UPDATE_STATUS",
+                Some(cmd.match_suggestion_id),
+                None,
+                Some(before_snapshot),
+                Some(after_snapshot),
+                cmd.reason,
+            ))
             .await?;
 
         info!(
@@ -60,6 +87,24 @@ impl AdminMatchControls {
             .match_repo
             .delete_by_party(cmd.party_id, cmd.status)
             .await?;
+
+        let after_snapshot = serde_json::json!({
+            "deleted": deleted,
+            "status_filter": cmd.status.map(|s| s.as_str().to_string()),
+        });
+        self.audit_repo
+            .create(&MatchSuggestionAuditLogEntry::new(
+                Uuid::now_v7(),
+                Some(cmd.admin_user_id),
+                "DELETE_FOR_PARTY",
+                None,
+                Some(cmd.party_id),
+                None,
+                Some(after_snapshot),
+                cmd.reason,
+            ))
+            .await?;
+
         info!(
             party_id = %cmd.party_id,
             admin = %cmd.admin_user_id,
@@ -72,6 +117,21 @@ impl AdminMatchControls {
     #[instrument(skip(self))]
     pub async fn delete_all(&self, admin_user_id: Uuid) -> Result<u64, ApplicationError> {
         let deleted = self.match_repo.delete_all().await?;
+
+        let after_snapshot = serde_json::json!({ "deleted": deleted });
+        self.audit_repo
+            .create(&MatchSuggestionAuditLogEntry::new(
+                Uuid::now_v7(),
+                Some(admin_user_id),
+                "DELETE_ALL",
+                None,
+                None,
+                None,
+                Some(after_snapshot),
+                None,
+            ))
+            .await?;
+
         info!(
             admin = %admin_user_id,
             deleted,

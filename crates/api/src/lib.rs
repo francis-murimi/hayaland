@@ -82,12 +82,13 @@ use application::{
         AdminSendNotification, AdminUpdateTemplate, DeleteNotification, GetNotification,
         GetNotificationPreferences, GetUnreadCount as GetUnreadNotificationCount,
         LifecycleNotifier, ListNotifications, MarkAllNotificationsRead, MarkNotificationRead,
-        SendNotification, UpdateNotificationPreferences,
+        RegisterPushToken, SendNotification, UpdateNotificationPreferences,
     },
     ports::{EncryptionService, MediaStorage, NotificationRealtimePublisher, RealtimePublisher},
 };
 use domain::repositories::{
-    CatalogRepository, ChatRoomRepository, MediaRepository, MessageRepository,
+    CatalogRepository, ChatRoomRepository, EncryptionKeyRepository, MediaRepository,
+    MessageRepository,
 };
 use sqlx::PgPool;
 use std::net::TcpListener;
@@ -219,6 +220,7 @@ pub struct AppState {
     pub admin_get_template: AdminGetTemplate,
     pub admin_update_template: AdminUpdateTemplate,
     pub admin_delete_template: AdminDeleteTemplate,
+    pub register_push_token: RegisterPushToken,
     pub send_notification: Arc<SendNotification>,
     pub lifecycle_notifier: Arc<LifecycleNotifier>,
     pub generate_matches: GenerateMatches,
@@ -253,6 +255,7 @@ pub struct AppState {
     pub message_repository: Arc<dyn MessageRepository>,
     pub chat_room_repository: Arc<dyn ChatRoomRepository>,
     pub media_repo: Arc<dyn MediaRepository>,
+    pub encryption_key_repo: Arc<dyn EncryptionKeyRepository>,
     pub websocket_registry: crate::websocket::SessionRegistry,
     pub token_validator: Arc<dyn TokenVerifier>,
     // Platform services

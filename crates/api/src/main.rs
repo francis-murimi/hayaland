@@ -59,8 +59,9 @@ use application::{
 use domain::repositories::{
     AgreementRepository, AnalyticsRepository, AuditLogRepository, CatalogRepository,
     ChatRoomRepository, DealRepository, DisputeRepository, EmailVerificationRepository,
-    MatchRepository, MediaRepository, MessageRepository, MilestoneRepository, PartyRepository,
-    PartyVerificationRepository, PasswordResetRepository, ReviewRepository, RoleRepository,
+    EncryptionKeyRepository, MatchRepository, MatchSuggestionAuditLogRepository, MediaRepository,
+    MessageRepository, MilestoneRepository, PartyRepository, PartyVerificationRepository,
+    PasswordResetRepository, PushTokenRepository, ReviewRepository, RoleRepository,
     SearchRepository, TrustScoreRepository, UserRepository, WalletRepository,
 };
 use infrastructure::{
@@ -69,19 +70,22 @@ use infrastructure::{
     media::LocalFileStorage,
     migrations,
     notifications::{
-        run_notification_worker, NoOpPushSender, NoOpSmsSender, NotificationWorkerConfig,
+        run_notification_worker, LoggingPushSender, NoOpSmsSender, NotificationWorkerConfig,
     },
     realtime::{InMemoryRealtimePublisher, NotificationWebSocketPublisher},
     repositories::{
         PostgresAgreementRepository, PostgresAnalyticsRepository, PostgresAuditLogRepository,
         PostgresCatalogRepository, PostgresChatRoomRepository, PostgresDealRepository,
-        PostgresDisputeRepository, PostgresEmailVerificationRepository, PostgresMatchRepository,
-        PostgresMediaRepository, PostgresMessageRepository, PostgresMilestoneRepository,
+        PostgresDisputeRepository, PostgresEmailVerificationRepository,
+        PostgresEncryptionKeyRepository, PostgresMatchRepository,
+        PostgresMatchSuggestionAuditLogRepository, PostgresMediaRepository,
+        PostgresMessageRepository, PostgresMilestoneRepository,
         PostgresNotificationPreferenceRepository, PostgresNotificationRepository,
         PostgresNotificationTemplateRepository, PostgresPartyRepository,
         PostgresPartyVerificationRepository, PostgresPasswordResetRepository,
-        PostgresReviewRepository, PostgresRoleRepository, PostgresSearchRepository,
-        PostgresTrustScoreRepository, PostgresUserRepository, PostgresWalletRepository,
+        PostgresPushTokenRepository, PostgresReviewRepository, PostgresRoleRepository,
+        PostgresSearchRepository, PostgresTrustScoreRepository, PostgresUserRepository,
+        PostgresWalletRepository,
     },
     security::{Argon2PasswordHasher, JwtTokenService, MessageEncryptionService},
     telemetry,
@@ -151,11 +155,18 @@ async fn main() -> anyhow::Result<()> {
     let search_repo: Arc<dyn SearchRepository> =
         Arc::new(PostgresSearchRepository::new(pool.clone()));
     let match_repo: Arc<dyn MatchRepository> = Arc::new(PostgresMatchRepository::new(pool.clone()));
+    let match_audit_repo: Arc<dyn MatchSuggestionAuditLogRepository> =
+        Arc::new(PostgresMatchSuggestionAuditLogRepository::new(pool.clone()));
+    let push_token_repo: Arc<dyn PushTokenRepository> =
+        Arc::new(PostgresPushTokenRepository::new(pool.clone()));
     let generate_matches =
         GenerateMatches::new(match_repo.clone(), party_repo.clone(), catalog_repo.clone());
     let list_matches = ListMatches::new(match_repo.clone(), party_repo.clone());
     let respond_to_match = RespondToMatch::new(match_repo.clone(), party_repo.clone());
-    let admin_match_controls = AdminMatchControls::new(match_repo.clone());
+    let admin_match_controls =
+        AdminMatchControls::new(match_repo.clone(), match_audit_repo.clone());
+    let encryption_key_repo: Arc<dyn EncryptionKeyRepository> =
+        Arc::new(PostgresEncryptionKeyRepository::new(pool.clone()));
     let media_storage: Arc<dyn MediaStorage> = Arc::new(LocalFileStorage::new(
         settings.media.storage_path.clone(),
         settings.media.public_base_url.clone(),
@@ -165,9 +176,22 @@ async fn main() -> anyhow::Result<()> {
         settings.auth.secret.expose_secret().to_string(),
         settings.auth.token_expiry_seconds,
     ));
+
+    // Seed the encryption key registry with the configured fallback key if no active key exists.
+    MessageEncryptionService::seed_active_key(
+        encryption_key_repo.clone(),
+        "config-fallback",
+        settings.messages.encryption_key.expose_secret(),
+    )
+    .await
+    .context("failed to seed encryption key registry")?;
     let encryption_service: Arc<dyn EncryptionService> = Arc::new(
-        MessageEncryptionService::from_base64(settings.messages.encryption_key.expose_secret())
-            .context("failed to load message encryption service")?,
+        MessageEncryptionService::from_repository(
+            encryption_key_repo.clone(),
+            settings.messages.encryption_key.expose_secret(),
+        )
+        .await
+        .context("failed to load message encryption service")?,
     );
 
     let recalc_trust_score = Arc::new(RecalculateTrustScore::new(
@@ -191,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
         websocket_registry.clone(),
     ));
     let push_sender: Arc<dyn application::ports::PushNotificationSender> =
-        Arc::new(NoOpPushSender::new());
+        Arc::new(LoggingPushSender::new(push_token_repo.clone()));
     let sms_sender: Arc<dyn application::ports::SmsSender> = Arc::new(NoOpSmsSender::new());
     let email_sender =
         Arc::new(SmtpEmailSender::new(&settings.email).context("failed to create email sender")?);
@@ -230,6 +254,7 @@ async fn main() -> anyhow::Result<()> {
             push_sender.clone(),
             sms_sender.clone(),
             notification_realtime_publisher.clone(),
+            push_token_repo.clone(),
             NotificationWorkerConfig {
                 enabled: true,
                 interval_seconds: settings.notifications.worker_interval_seconds,
@@ -691,6 +716,9 @@ async fn main() -> anyhow::Result<()> {
         admin_delete_template: application::notifications::AdminDeleteTemplate::new(
             notification_template_repo.clone(),
         ),
+        register_push_token: application::notifications::RegisterPushToken::new(
+            push_token_repo.clone(),
+        ),
         create_resource: CreateResource::new(catalog_repo.clone(), party_repo.clone()),
         update_resource: UpdateResource::new(catalog_repo.clone(), party_repo.clone()),
         delete_resource: DeleteResource::new(catalog_repo.clone(), party_repo.clone()),
@@ -734,6 +762,7 @@ async fn main() -> anyhow::Result<()> {
         message_repository: message_repo,
         chat_room_repository: chat_room_repo,
         media_repo: media_repo.clone(),
+        encryption_key_repo: encryption_key_repo.clone(),
         websocket_registry,
         token_validator: token_service,
         get_dashboard_summary: application::analytics::GetDashboardSummary::new(
